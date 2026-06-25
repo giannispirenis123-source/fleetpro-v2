@@ -1,0 +1,623 @@
+// FleetPro v2 — Multi-Tenant Prisma Schema
+// PostgreSQL + Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  COMPANY_ADMIN
+  STAFF
+  PARTNER
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  CANCELLED
+}
+
+enum SubscriptionPlan {
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  RENTED
+  MAINTENANCE
+  INACTIVE
+}
+
+enum VehicleCategory {
+  A
+  B
+  C
+  SUV
+  PREMIUM
+  LUXURY
+  VAN
+  MOTORCYCLE
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+  HYBRID
+  ELECTRIC
+  LPG
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum InsuranceType {
+  BASIC
+  STANDARD
+  FULL
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum DamageStatus {
+  PENDING
+  RESOLVED
+}
+
+enum ServiceType {
+  REGULAR
+  KTEO
+  TYRES
+  BRAKES
+  BATTERY
+  REPAIR
+  OTHER
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum DiscountTarget {
+  ALL
+  CATEGORY
+  VEHICLE
+  CUSTOMER
+}
+
+enum NotificationType {
+  SERVICE_DUE
+  INSURANCE_EXPIRY
+  CONTRACT_UNSIGNED
+  BOOKING_NEW
+  BOOKING_CANCELLED
+  PAYMENT_OVERDUE
+  DAMAGE_REPORTED
+}
+
+// ─────────────────────────────────────────
+// PLATFORM LEVEL
+// ─────────────────────────────────────────
+
+model Tenant {
+  id               String           @id @default(cuid())
+  name             String
+  slug             String           @unique  // subdomain: slug.fleetpro.gr
+  email            String           @unique
+  phone            String?
+  address          String?
+  vat              String?
+  iban             String?
+  logoUrl          String?
+  brandColor       String           @default("#2563EB")
+  customDomain     String?          @unique
+  website          String?          // external website embed
+  status           TenantStatus     @default(TRIAL)
+  plan             SubscriptionPlan @default(STARTER)
+  trialEndsAt      DateTime?
+  stripeCustomerId String?
+  stripeSubId      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // Relations
+  users            User[]
+  vehicles         Vehicle[]
+  customers        Customer[]
+  bookings         Booking[]
+  invoices         Invoice[]
+  serviceRecords   ServiceRecord[]
+  expenses         Expense[]
+  damages          Damage[]
+  contracts        Contract[]
+  discounts        Discount[]
+  notifications    Notification[]
+  activityLogs     ActivityLog[]
+  contractTemplates ContractTemplate[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  tenantId     String?   // null = Super Admin
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         UserRole  @default(STAFF)
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Granular permissions (JSON για flexibility)
+  permissions  Json      @default("{}")
+
+  // Relations
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  activityLogs ActivityLog[]
+  sessions     Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────
+// FLEET
+// ─────────────────────────────────────────
+
+model Vehicle {
+  id              String          @id @default(cuid())
+  tenantId        String
+  brand           String
+  model           String
+  plate           String
+  year            Int
+  color           String?
+  category        VehicleCategory @default(B)
+  dailyRate       Decimal         @db.Decimal(10, 2)
+  status          VehicleStatus   @default(AVAILABLE)
+  km              Int             @default(0)
+  fuel            FuelType        @default(PETROL)
+  seats           Int             @default(5)
+  doors           Int             @default(4)
+  transmission    String          @default("Manual")
+  ac              Boolean         @default(true)
+  nextServiceKm   Int?
+  nextServiceDate DateTime?
+  insuranceExpiry DateTime?
+  kteoExpiry      DateTime?
+  images          String[]        // Cloudinary URLs
+  notes           String?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings        Booking[]
+  serviceRecords  ServiceRecord[]
+  damages         Damage[]
+  expenses        Expense[]
+
+  @@unique([tenantId, plate])
+  @@map("vehicles")
+}
+
+// ─────────────────────────────────────────
+// CUSTOMERS (CRM)
+// ─────────────────────────────────────────
+
+model Customer {
+  id              String    @id @default(cuid())
+  tenantId        String
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  phone2          String?
+  idNumber        String?   // ΑΔΤ
+  licenseNumber   String?
+  licenseExpiry   DateTime?
+  licenseCountry  String?   @default("GR")
+  dateOfBirth     DateTime?
+  address         String?
+  city            String?
+  country         String?   @default("GR")
+  nationality     String?
+  notes           String?
+  tags            String[]  // VIP, Corporate, Problematic, etc.
+  isBlacklisted   Boolean   @default(false)
+  totalRevenue    Decimal   @default(0) @db.Decimal(10, 2)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings        Booking[]
+  invoices        Invoice[]
+  contracts       Contract[]
+
+  @@map("customers")
+}
+
+// ─────────────────────────────────────────
+// BOOKINGS
+// ─────────────────────────────────────────
+
+model Booking {
+  id                String        @id @default(cuid())
+  tenantId          String
+  vehicleId         String
+  customerId        String
+  bookingNumber     String        // BP-2025-001
+  status            BookingStatus @default(PENDING)
+
+  // Dates
+  pickupDate        DateTime
+  returnDate        DateTime
+  actualReturnDate  DateTime?
+
+  // Locations
+  pickupLocation    String?
+  returnLocation    String?
+
+  // Pricing
+  dailyRate         Decimal       @db.Decimal(10, 2)
+  totalDays         Int
+  subtotal          Decimal       @db.Decimal(10, 2)
+  insurance         InsuranceType @default(BASIC)
+  insuranceCost     Decimal       @default(0) @db.Decimal(10, 2)
+  extrasTotal       Decimal       @default(0) @db.Decimal(10, 2)
+  discountAmount    Decimal       @default(0) @db.Decimal(10, 2)
+  discountCode      String?
+  total             Decimal       @db.Decimal(10, 2)
+
+  // Deposit
+  deposit           Decimal       @default(0) @db.Decimal(10, 2)
+  depositPaid       Boolean       @default(false)
+  depositReturned   Boolean       @default(false)
+
+  // Extras (JSON)
+  extras            Json          @default("{}")
+
+  // Fuel
+  fuelLevelPickup   Int           @default(100) // percentage
+  fuelLevelReturn   Int?
+
+  // KM
+  kmPickup          Int?
+  kmReturn          Int?
+
+  // Notes
+  notes             String?
+  internalNotes     String?
+
+  // Contract
+  contractId        String?       @unique
+  contractSigned    Boolean       @default(false)
+  signedAt          DateTime?
+
+  // Invoice
+  invoiceId         String?
+
+  // Source (web, phone, walk-in, partner)
+  source            String        @default("manual")
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle           Vehicle       @relation(fields: [vehicleId], references: [id])
+  customer          Customer      @relation(fields: [customerId], references: [id])
+  contract          Contract?
+  invoice           Invoice?
+  damages           Damage[]
+
+  @@map("bookings")
+}
+
+// ─────────────────────────────────────────
+// CONTRACTS
+// ─────────────────────────────────────────
+
+model ContractTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  content     String   @db.Text  // HTML template with {{placeholders}}
+  isDefault   Boolean  @default(false)
+  language    String   @default("el")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contracts   Contract[]
+
+  @@map("contract_templates")
+}
+
+model Contract {
+  id              String            @id @default(cuid())
+  tenantId        String
+  bookingId       String            @unique
+  customerId      String
+  templateId      String?
+
+  contractNumber  String            // CT-2025-001
+  content         String            @db.Text  // rendered HTML
+  signatureData   String?           @db.Text  // base64 PNG
+  signature2Data  String?           @db.Text  // second driver
+  photosBefore    String[]          // Cloudinary URLs
+  photosAfter     String[]
+
+  isSigned        Boolean           @default(false)
+  signedAt        DateTime?
+  signedIp        String?
+
+  pdfUrl          String?           // Cloudinary PDF URL
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking         Booking           @relation(fields: [bookingId], references: [id])
+  customer        Customer          @relation(fields: [customerId], references: [id])
+  template        ContractTemplate? @relation(fields: [templateId], references: [id])
+
+  @@map("contracts")
+}
+
+// ─────────────────────────────────────────
+// INVOICES
+// ─────────────────────────────────────────
+
+model Invoice {
+  id            String        @id @default(cuid())
+  tenantId      String
+  bookingId     String        @unique
+  customerId    String
+  invoiceNumber String        // INV-2025-001
+
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  paidAt        DateTime?
+
+  subtotal      Decimal       @db.Decimal(10, 2)
+  taxRate       Decimal       @default(24) @db.Decimal(5, 2)
+  taxAmount     Decimal       @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+
+  status        InvoiceStatus @default(UNPAID)
+  paymentMethod String?       // cash, card, bank, stripe
+  notes         String?
+  pdfUrl        String?
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking       Booking       @relation(fields: [bookingId], references: [id])
+  customer      Customer      @relation(fields: [customerId], references: [id])
+
+  @@map("invoices")
+}
+
+// ─────────────────────────────────────────
+// SERVICE & MAINTENANCE
+// ─────────────────────────────────────────
+
+model ServiceRecord {
+  id              String      @id @default(cuid())
+  tenantId        String
+  vehicleId       String
+  type            ServiceType
+  date            DateTime
+  km              Int?
+  cost            Decimal?    @db.Decimal(10, 2)
+  shop            String?
+  description     String?
+  nextServiceKm   Int?
+  nextServiceDate DateTime?
+  documents       String[]    // Cloudinary URLs
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle         Vehicle     @relation(fields: [vehicleId], references: [id])
+
+  @@map("service_records")
+}
+
+// ─────────────────────────────────────────
+// DAMAGES
+// ─────────────────────────────────────────
+
+model Damage {
+  id           String       @id @default(cuid())
+  tenantId     String
+  vehicleId    String
+  bookingId    String?
+  description  String
+  repairCost   Decimal?     @db.Decimal(10, 2)
+  status       DamageStatus @default(PENDING)
+  photos       String[]     // Cloudinary URLs
+  resolvedAt   DateTime?
+  notes        String?
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id])
+  booking      Booking?     @relation(fields: [bookingId], references: [id])
+
+  @@map("damages")
+}
+
+// ─────────────────────────────────────────
+// EXPENSES
+// ─────────────────────────────────────────
+
+model Expense {
+  id        String   @id @default(cuid())
+  tenantId  String
+  vehicleId String?
+  type      String   // insurance, service, fuel, salary, rent, marketing, other
+  amount    Decimal  @db.Decimal(10, 2)
+  date      DateTime
+  notes     String?
+  receipt   String?  // Cloudinary URL
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
+
+  @@map("expenses")
+}
+
+// ─────────────────────────────────────────
+// DISCOUNTS & PROMOTIONS
+// ─────────────────────────────────────────
+
+model Discount {
+  id            String         @id @default(cuid())
+  tenantId      String
+  code          String?        // null = automatic discount
+  name          String
+  description   String?
+  type          DiscountType   @default(PERCENTAGE)
+  value         Decimal        @db.Decimal(10, 2)  // % ή €
+  target        DiscountTarget @default(ALL)
+  targetValue   String?        // category name ή vehicle ID ή customer ID
+
+  minDays       Int?           // minimum rental days
+  minAmount     Decimal?       @db.Decimal(10, 2)
+  maxDiscount   Decimal?       @db.Decimal(10, 2)  // cap σε €
+
+  validFrom     DateTime?
+  validUntil    DateTime?
+  usageLimit    Int?
+  usageCount    Int            @default(0)
+  isActive      Boolean        @default(true)
+
+  // Loyalty: αυτόματη έκπτωση βάσει ιστορικού
+  isLoyalty     Boolean        @default(false)
+  loyaltyMinBookings Int?
+
+  // Seasonal
+  isSeasonal    Boolean        @default(false)
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, code])
+  @@map("discounts")
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  tenantId  String
+  type      NotificationType
+  title     String
+  message   String
+  link      String?          // relative URL
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+
+  createdAt DateTime         @default(now())
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────
+// ACTIVITY LOG (Audit Trail)
+// ─────────────────────────────────────────
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String
+  action    String   // "booking.created", "vehicle.updated", "contract.signed"
+  entity    String?  // "Booking", "Vehicle", etc.
+  entityId  String?
+  oldData   Json?
+  newData   Json?
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+// ─────────────────────────────────────────
+// PLATFORM DISCOUNT CODES (Super Admin)
+// ─────────────────────────────────────────
+
+model PlatformCoupon {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  description  String?
+  planTarget   SubscriptionPlan?  // null = all plans
+  type         DiscountType
+  value        Decimal  @db.Decimal(10, 2)
+  validFrom    DateTime?
+  validUntil   DateTime?
+  usageLimit   Int?
+  usageCount   Int      @default(0)
+  isActive     Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("platform_coupons")
+}

@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // src/app/api/tenants/[id]/route.ts
 
 import { NextRequest } from "next/server";
@@ -104,4 +105,3 @@ export const DELETE = withAuth(
   ["SUPER_ADMIN"]
 );
 
-export const dynamic = "force-dynamic";

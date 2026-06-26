@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // src/app/api/discounts/route.ts
 // Σύστημα εκπτώσεων ανά tenant
 
@@ -98,4 +99,3 @@ export const POST = withAuth(
   ["SUPER_ADMIN", "COMPANY_ADMIN"]
 );
 
-export const dynamic = "force-dynamic";

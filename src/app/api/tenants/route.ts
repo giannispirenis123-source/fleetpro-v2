@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // src/app/api/tenants/route.ts
 // Super Admin only — διαχείριση tenants
 
@@ -178,4 +179,3 @@ function getDefaultContractTemplate(): string {
   `.trim();
 }
 
-export const dynamic = "force-dynamic";

@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // src/app/api/auth/logout/route.ts
 
 import { NextResponse } from "next/server";
@@ -7,4 +8,3 @@ export async function POST() {
   response.cookies.delete("fleetpro_token");
   return response;
 }
-export const dynamic = "force-dynamic";

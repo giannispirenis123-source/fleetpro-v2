@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // src/app/api/auth/me/route.ts
 
 import { NextRequest } from "next/server";
@@ -38,4 +39,3 @@ export async function GET(req: NextRequest) {
   if (!user) return unauthorized();
   return ok(user);
 }
-export const dynamic = "force-dynamic";

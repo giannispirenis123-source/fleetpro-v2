@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // src/app/api/discounts/validate/route.ts
 // Επαλήθευση κωδικού έκπτωσης
 
@@ -105,4 +106,3 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export const dynamic = "force-dynamic";

@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // src/app/api/auth/login/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
@@ -112,4 +113,3 @@ export async function POST(req: NextRequest) {
     return serverError("Σφάλμα κατά τη σύνδεση");
   }
 }
-export const dynamic = "force-dynamic";

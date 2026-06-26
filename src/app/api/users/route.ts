@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 // src/app/api/users/route.ts
 // Διαχείριση χρηστών (Company Admin + Super Admin)
 
@@ -201,4 +202,3 @@ function getDefaultPermissions(role: string): Record<string, boolean> {
   return Object.fromEntries(Object.keys(staffDefaults).map((k) => [k, true]));
 }
 
-export const dynamic = "force-dynamic";

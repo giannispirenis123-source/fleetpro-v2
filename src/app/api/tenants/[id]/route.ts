@@ -103,3 +103,4 @@ export const DELETE = withAuth(
   },
   ["SUPER_ADMIN"]
 );
+\nexport const dynamic = "force-dynamic";

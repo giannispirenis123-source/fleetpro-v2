@@ -200,3 +200,4 @@ function getDefaultPermissions(role: string): Record<string, boolean> {
   if (role === "PARTNER") return partnerDefaults;
   return Object.fromEntries(Object.keys(staffDefaults).map((k) => [k, true]));
 }
+\nexport const dynamic = "force-dynamic";

@@ -97,3 +97,4 @@ export const POST = withAuth(
   },
   ["SUPER_ADMIN", "COMPANY_ADMIN"]
 );
+\nexport const dynamic = "force-dynamic";

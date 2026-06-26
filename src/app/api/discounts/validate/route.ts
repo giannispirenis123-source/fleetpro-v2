@@ -104,4 +104,5 @@ export async function POST(req: NextRequest) {
     return serverError();
   }
 }
-\nexport const dynamic = "force-dynamic";
+
+export const dynamic = "force-dynamic";

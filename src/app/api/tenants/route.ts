@@ -177,4 +177,5 @@ function getDefaultContractTemplate(): string {
 </html>
   `.trim();
 }
-\nexport const dynamic = "force-dynamic";
+
+export const dynamic = "force-dynamic";

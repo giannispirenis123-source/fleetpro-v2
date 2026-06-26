@@ -7,3 +7,4 @@ export async function POST() {
   response.cookies.delete("fleetpro_token");
   return response;
 }
+export const dynamic = "force-dynamic";

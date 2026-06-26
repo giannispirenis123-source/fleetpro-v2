@@ -38,3 +38,4 @@ export async function GET(req: NextRequest) {
   if (!user) return unauthorized();
   return ok(user);
 }
+export const dynamic = "force-dynamic";

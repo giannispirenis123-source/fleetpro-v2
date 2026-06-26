@@ -112,3 +112,4 @@ export async function POST(req: NextRequest) {
     return serverError("Σφάλμα κατά τη σύνδεση");
   }
 }
+export const dynamic = "force-dynamic";

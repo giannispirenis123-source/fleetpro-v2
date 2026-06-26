@@ -1,19 +1,11 @@
-// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "res.cloudinary.com",
-      },
-    ],
+    remotePatterns: [{ protocol: "https", hostname: "res.cloudinary.com" }],
   },
-  // Επιτρέπουμε imports από src/
   experimental: {
-    serverActions: {
-      allowedOrigins: ["localhost:3000"],
-    },
+    serverActions: { allowedOrigins: ["localhost:3000"] },
   },
 };
 

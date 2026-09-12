@@ -5,9 +5,20 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-);
+// Το JWT secret ΠΡΕΠΕΙ να ορίζεται στο environment.
+// Δεν υπάρχει προεπιλογή: χωρίς αυτό η εφαρμογή σταματά με καθαρό σφάλμα.
+function getJwtSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    throw new Error(
+      "JWT_SECRET is not set. Ορίστε τη μεταβλητή περιβάλλοντος JWT_SECRET " +
+        "(τουλάχιστον 32 χαρακτήρες) πριν εκκινήσετε την εφαρμογή."
+    );
+  }
+
+  return new TextEncoder().encode(secret);
+}
 
 export interface JWTPayload {
   userId: string;
@@ -24,13 +35,17 @@ export async function signToken(payload: JWTPayload): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 // Επαλήθευση JWT token
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
+  // Εκτός του try: αν λείπει το JWT_SECRET πρέπει να φανεί το σφάλμα,
+  // όχι να θεωρηθεί απλώς «άκυρο token».
+  const secret = getJwtSecret();
+
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, secret);
     return payload as unknown as JWTPayload;
   } catch {
     return null;

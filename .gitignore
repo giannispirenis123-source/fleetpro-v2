@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────
+# FleetPro v2 — Git ignore
+# ─────────────────────────────────────────
+
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# Next.js build output
+/.next/
+/out/
+next-env.d.ts
+
+# Production build
+/build
+/dist
+
+# Environment variables (ΠΟΤΕ στο git)
+.env
+.env*.local
+.env.development
+.env.production
+.env.test
+!.env.example
+
+# Prisma
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/migrations/dev.db*
+
+# Testing
+/coverage
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Caches
+.eslintcache
+.turbo
+*.tsbuildinfo
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+
+# Replit
+.replit.local
+.config/
+.upm/
+.breakpoints
+
+# Vercel
+.vercel
+
+# Archives / temp
+*.zip
+*.tar.gz
+*.tmp

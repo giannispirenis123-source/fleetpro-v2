@@ -34,13 +34,13 @@ interface NavItem {
   disabled?: boolean;
 }
 
-// Ενεργά: Πίνακας, Στόλος. Τα υπόλοιπα ανοίγουν σε επόμενη φάση.
+// Ενεργά: Πίνακας, Στόλος, Πελάτες. Τα υπόλοιπα ανοίγουν σε επόμενη φάση.
 const NAV: NavItem[] = [
   { href: "/dashboard", labelKey: "overview", icon: LayoutDashboard, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"], disabled: true },
   { href: "/dashboard/calendar", labelKey: "calendar", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"], disabled: true },
   { href: "/dashboard/fleet", labelKey: "fleet", icon: Car, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
-  { href: "/dashboard/customers", labelKey: "customers", icon: Users, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
+  { href: "/dashboard/customers", labelKey: "customers", icon: Users, roles: ["COMPANY_ADMIN", "STAFF"] },
   { href: "/dashboard/contracts", labelKey: "contracts", icon: FileText, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
   { href: "/dashboard/invoices", labelKey: "invoices", icon: Receipt, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
   { href: "/dashboard/service", labelKey: "service", icon: Wrench, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },

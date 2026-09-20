@@ -111,6 +111,42 @@
   border-radius: 5px;
 }
 
+/* ---------- Language toggle ---------- */
+.dash-lang {
+  display: flex;
+  gap: 4px;
+  margin: 0 14px 10px;
+  padding: 3px;
+  background: #12121f;
+  border: 1px solid #1e1e2e;
+  border-radius: 9px;
+}
+.dash-lang-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #64748b;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 6px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.dash-lang-btn:hover:not(:disabled) {
+  color: #e2e8f0;
+}
+.dash-lang-btn.active {
+  background: #6366f1;
+  color: #fff;
+}
+.dash-lang-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .dash-user {
   border-top: 1px solid #1e1e2e;
   padding: 14px;

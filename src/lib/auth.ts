@@ -4,6 +4,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
+import { normalizeLocale, type Locale } from "./i18n/locale";
 
 // Το JWT secret ΠΡΕΠΕΙ να ορίζεται στο environment.
 // Δεν υπάρχει προεπιλογή: χωρίς αυτό η εφαρμογή σταματά με καθαρό σφάλμα.
@@ -27,6 +28,7 @@ export interface JWTPayload {
   tenantId: string | null;
   tenantSlug: string | null;
   name: string;
+  locale: Locale;
 }
 
 // Δημιουργία JWT token
@@ -46,7 +48,11 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
 
   try {
     const { payload } = await jwtVerify(token, secret);
-    return payload as unknown as JWTPayload;
+    const claims = payload as unknown as JWTPayload;
+
+    // Τα tokens που εκδόθηκαν πριν την προσθήκη της γλώσσας δεν έχουν locale.
+    // Κανονικοποιούμε εδώ, ώστε κάθε session να έχει πάντα έγκυρη τιμή.
+    return { ...claims, locale: normalizeLocale(claims.locale) };
   } catch {
     return null;
   }

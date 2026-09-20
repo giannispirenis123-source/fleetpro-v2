@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { translator } from "@/lib/i18n";
 import {
   Car,
   KeyRound,
@@ -17,22 +18,28 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const eur = (n: number) =>
-  new Intl.NumberFormat("el-GR", {
+const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
+
+const eur = (n: number, locale: string) =>
+  new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR", {
     style: "currency",
     currency: "EUR",
     maximumFractionDigits: 0,
   }).format(n);
 
-const shortDate = (d: Date) =>
-  new Intl.DateTimeFormat("el-GR", { day: "2-digit", month: "short" }).format(d);
+const shortDate = (d: Date, locale: string) =>
+  new Intl.DateTimeFormat(INTL_LOCALE[locale] ?? "el-GR", {
+    day: "2-digit",
+    month: "short",
+  }).format(d);
 
-const BOOKING_STATUS: Record<string, { label: string; cls: string }> = {
-  PENDING: { label: "Εκκρεμεί", cls: "warn" },
-  CONFIRMED: { label: "Επιβεβαιωμένη", cls: "info" },
-  ACTIVE: { label: "Ενεργή", cls: "ok" },
-  COMPLETED: { label: "Ολοκληρώθηκε", cls: "muted" },
-  CANCELLED: { label: "Ακυρώθηκε", cls: "bad" },
+// Η ετικέτα έρχεται από το namespace "status"· εδώ μένει μόνο το χρώμα.
+const STATUS_CLASS: Record<string, string> = {
+  PENDING: "warn",
+  CONFIRMED: "info",
+  ACTIVE: "ok",
+  COMPLETED: "muted",
+  CANCELLED: "bad",
 };
 
 export default async function DashboardPage() {
@@ -42,6 +49,8 @@ export default async function DashboardPage() {
   if (!session.tenantId) redirect("/login");
 
   const tenantId = session.tenantId;
+  const locale = session.locale;
+  const tr = translator(locale);
 
   const now = new Date();
   const in30 = new Date(now.getTime() + 30 * 86400000);
@@ -118,10 +127,10 @@ export default async function DashboardPage() {
   return (
     <>
       <div className="dash-page-head">
-        <h1 className="dash-page-title">Καλημέρα, {session.name.split(" ")[0]} 👋</h1>
-        <p className="dash-page-sub">
-          Ορίστε μια γρήγορη εικόνα της επιχείρησής σου σήμερα.
-        </p>
+        <h1 className="dash-page-title">
+          {tr("dashboard.greeting")}, {session.name.split(" ")[0]} 👋
+        </h1>
+        <p className="dash-page-sub">{tr("dashboard.subtitle")}</p>
       </div>
 
       {/* KPIs */}
@@ -130,56 +139,59 @@ export default async function DashboardPage() {
           <div className="dash-card-icon"><Car size={22} /></div>
           <div>
             <span className="dash-card-value">{available}</span>
-            <span className="dash-card-label">Διαθέσιμα οχήματα</span>
+            <span className="dash-card-label">{tr("dashboard.availableVehicles")}</span>
           </div>
         </div>
         <div className="dash-card dash-card--indigo">
           <div className="dash-card-icon"><KeyRound size={22} /></div>
           <div>
             <span className="dash-card-value">{rented}</span>
-            <span className="dash-card-label">Ενοικιασμένα</span>
+            <span className="dash-card-label">{tr("dashboard.rentedVehicles")}</span>
           </div>
         </div>
         <div className="dash-card dash-card--amber">
           <div className="dash-card-icon"><Wrench size={22} /></div>
           <div>
             <span className="dash-card-value">{maintenance}</span>
-            <span className="dash-card-label">Σε συντήρηση</span>
+            <span className="dash-card-label">{tr("dashboard.inMaintenance")}</span>
           </div>
         </div>
         <div className="dash-card dash-card--emerald">
           <div className="dash-card-icon"><Euro size={22} /></div>
           <div>
-            <span className="dash-card-value">{eur(monthRevenue)}</span>
-            <span className="dash-card-label">Έσοδα μήνα</span>
+            <span className="dash-card-value">{eur(monthRevenue, locale)}</span>
+            <span className="dash-card-label">{tr("dashboard.monthRevenue")}</span>
           </div>
         </div>
         <div className="dash-card dash-card--violet">
           <div className="dash-card-icon"><Gauge size={22} /></div>
           <div>
             <span className="dash-card-value">{occupancy}%</span>
-            <span className="dash-card-label">Πληρότητα στόλου</span>
+            <span className="dash-card-label">{tr("dashboard.fleetOccupancy")}</span>
           </div>
         </div>
         <div className="dash-card dash-card--indigo">
           <div className="dash-card-icon"><CalendarDays size={22} /></div>
           <div>
             <span className="dash-card-value">{activeBookings}</span>
-            <span className="dash-card-label">Ενεργές κρατήσεις</span>
+            <span className="dash-card-label">{tr("dashboard.activeBookings")}</span>
           </div>
         </div>
       </div>
 
       {/* Alerts */}
       <h2 className="dash-section-title">
-        <AlertTriangle size={17} /> Ειδοποιήσεις
+        <AlertTriangle size={17} /> {tr("dashboard.alerts")}
       </h2>
       <div className="dash-alerts">
         {serviceSoon > 0 && (
           <div className="dash-alert dash-alert--warn">
             <Wrench size={20} />
             <span className="dash-alert-text">
-              <strong>{serviceSoon}</strong> {serviceSoon === 1 ? "όχημα χρειάζεται" : "οχήματα χρειάζονται"} service (≤30 ημέρες)
+              <strong>{serviceSoon}</strong>{" "}
+              {serviceSoon === 1
+                ? tr("dashboard.alertServiceOne")
+                : tr("dashboard.alertServiceMany")}
             </span>
           </div>
         )}
@@ -187,7 +199,7 @@ export default async function DashboardPage() {
           <div className="dash-alert dash-alert--danger">
             <ShieldAlert size={20} />
             <span className="dash-alert-text">
-              <strong>{insuranceSoon}</strong> ασφάλ. λήγει σύντομα (≤60 ημέρες)
+              <strong>{insuranceSoon}</strong> {tr("dashboard.alertInsurance")}
             </span>
           </div>
         )}
@@ -195,7 +207,7 @@ export default async function DashboardPage() {
           <div className="dash-alert dash-alert--danger">
             <ShieldAlert size={20} />
             <span className="dash-alert-text">
-              <strong>{kteoSoon}</strong> ΚΤΕΟ λήγει σύντομα (≤60 ημέρες)
+              <strong>{kteoSoon}</strong> {tr("dashboard.alertMot")}
             </span>
           </div>
         )}
@@ -203,13 +215,13 @@ export default async function DashboardPage() {
           <div className="dash-alert dash-alert--info">
             <PenLine size={20} />
             <span className="dash-alert-text">
-              <strong>{unsignedContracts}</strong> ανυπόγραφα συμβόλαια
+              <strong>{unsignedContracts}</strong> {tr("dashboard.alertUnsignedContracts")}
             </span>
           </div>
         )}
         {!hasAlerts && (
           <div className="dash-alert-ok">
-            <CheckCircle2 size={18} /> Όλα εντάξει — καμία εκκρεμότητα αυτή τη στιγμή.
+            <CheckCircle2 size={18} /> {tr("dashboard.allClear")}
           </div>
         )}
       </div>
@@ -218,16 +230,14 @@ export default async function DashboardPage() {
       <div className="dash-cols">
         <div className="dash-panel">
           <h2 className="dash-section-title">
-            <CalendarDays size={17} /> Πρόσφατες κρατήσεις
+            <CalendarDays size={17} /> {tr("dashboard.recentBookings")}
           </h2>
           {recentBookings.length === 0 ? (
-            <div className="dash-empty">Δεν υπάρχουν κρατήσεις ακόμα.</div>
+            <div className="dash-empty">{tr("dashboard.noBookings")}</div>
           ) : (
             recentBookings.map((b) => {
-              const st = BOOKING_STATUS[b.status] ?? {
-                label: b.status,
-                cls: "muted",
-              };
+              const statusCls = STATUS_CLASS[b.status] ?? "muted";
+              const statusLabel = tr(`status.${b.status}`);
               return (
                 <div key={b.id} className="dash-booking">
                   <div className="dash-booking-main">
@@ -244,11 +254,14 @@ export default async function DashboardPage() {
                     </span>
                   </div>
                   <div className="dash-booking-dates">
-                    {shortDate(b.pickupDate)} → {shortDate(b.returnDate)}
+                    {shortDate(b.pickupDate, locale)} →{" "}
+                    {shortDate(b.returnDate, locale)}
                   </div>
-                  <div className="dash-booking-total">{eur(Number(b.total))}</div>
-                  <span className={`dash-status dash-status--${st.cls}`}>
-                    {st.label}
+                  <div className="dash-booking-total">
+                    {eur(Number(b.total), locale)}
+                  </div>
+                  <span className={`dash-status dash-status--${statusCls}`}>
+                    {statusLabel}
                   </span>
                 </div>
               );
@@ -258,11 +271,12 @@ export default async function DashboardPage() {
 
         <div className="dash-panel">
           <h2 className="dash-section-title">
-            <Gauge size={17} /> Εκκρεμότητες
+            <Gauge size={17} /> {tr("dashboard.pendingItems")}
           </h2>
           <div className="dash-ministat">
             <span className="dash-ministat-label">
-              <AlertTriangle size={17} color="#f59e0b" /> Ζημιές σε εκκρεμότητα
+              <AlertTriangle size={17} color="#f59e0b" />{" "}
+              {tr("dashboard.pendingDamages")}
             </span>
             <span
               className="dash-ministat-value"
@@ -273,7 +287,7 @@ export default async function DashboardPage() {
           </div>
           <div className="dash-ministat">
             <span className="dash-ministat-label">
-              <Receipt size={17} color="#ef4444" /> Απλήρωτα τιμολόγια
+              <Receipt size={17} color="#ef4444" /> {tr("dashboard.unpaidInvoices")}
             </span>
             <span
               className="dash-ministat-value"
@@ -284,7 +298,7 @@ export default async function DashboardPage() {
           </div>
           <div className="dash-ministat">
             <span className="dash-ministat-label">
-              <Car size={17} color="#818cf8" /> Σύνολο στόλου
+              <Car size={17} color="#818cf8" /> {tr("dashboard.totalFleet")}
             </span>
             <span className="dash-ministat-value">{totalVehicles}</span>
           </div>

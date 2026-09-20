@@ -172,6 +172,7 @@ model User {
   name         String
   phone        String?
   role         UserRole  @default(STAFF)
+  locale       String    @default("el") // "el" | "en" — προτίμηση γλώσσας ανά χρήστη
   avatarUrl    String?
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?

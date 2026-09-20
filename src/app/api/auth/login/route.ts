@@ -6,6 +6,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { signToken } from "@/lib/auth";
+import { normalizeLocale } from "@/lib/i18n/locale";
 import { badRequest, serverError } from "@/lib/api";
 
 const loginSchema = z.object({
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
       tenantId: user.tenantId,
       tenantSlug: user.tenant?.slug || null,
       name: user.name,
+      locale: normalizeLocale(user.locale),
     });
 
     // Ενημέρωση lastLoginAt
@@ -90,6 +92,7 @@ export async function POST(req: NextRequest) {
           tenantId: user.tenantId,
           tenant: user.tenant,
           permissions: user.permissions,
+          locale: normalizeLocale(user.locale),
         },
         redirectTo:
           user.role === "SUPER_ADMIN"

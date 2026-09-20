@@ -5,6 +5,8 @@
 
 import { useState } from "react";
 import { Eye, EyeOff, Zap, Car } from "lucide-react";
+import { t } from "@/lib/i18n";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locale";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,9 +15,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Στη σελίδα σύνδεσης δεν υπάρχει ακόμη χρήστης, άρα η γλώσσα είναι
+  // απλή τοπική επιλογή της φόρμας — δεν αποθηκεύεται πουθενά.
+  const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
+  const tr = (key: string) => t(key, locale);
+
   const handleLogin = async () => {
     if (!email || !password) {
-      setError("Συμπληρώστε email και κωδικό");
+      setError(tr("auth.errorMissingFields"));
       return;
     }
 
@@ -32,13 +39,13 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.message || "Σφάλμα σύνδεσης");
+        setError(data.message || tr("auth.errorDefault"));
         return;
       }
 
       window.location.href = data.data.redirectTo;
     } catch {
-      setError("Σφάλμα σύνδεσης. Δοκιμάστε ξανά.");
+      setError(tr("auth.errorGeneric"));
     } finally {
       setLoading(false);
     }
@@ -57,26 +64,18 @@ export default function LoginPage() {
 
         <div className="login-hero">
           <h1>
-            Διαχείριση στόλου
+            {tr("auth.heroTitleLine1")}
             <br />
-            <span className="login-accent">χωρίς όρια</span>
+            <span className="login-accent">{tr("auth.heroTitleLine2")}</span>
           </h1>
-          <p>
-            Η πλατφόρμα που χρειάζεται κάθε εταιρία ενοικίασης οχημάτων
-            για να λειτουργεί αποδοτικά και επαγγελματικά.
-          </p>
+          <p>{tr("auth.heroSubtitle")}</p>
         </div>
 
         <div className="login-features">
-          {[
-            "Multi-tenant αρχιτεκτονική",
-            "Ηλεκτρονικά συμβόλαια & υπογραφές",
-            "Σύστημα εκπτώσεων & προσφορών",
-            "Αναφορές & στατιστικά σε πραγματικό χρόνο",
-          ].map((f) => (
-            <div key={f} className="login-feature">
+          {["feature1", "feature2", "feature3", "feature4"].map((key) => (
+            <div key={key} className="login-feature">
               <span className="login-dot" />
-              {f}
+              {tr(`auth.${key}`)}
             </div>
           ))}
         </div>
@@ -89,27 +88,46 @@ export default function LoginPage() {
       {/* Right Panel */}
       <div className="login-right">
         <div className="login-form-wrap">
+          <div className="login-lang" role="group" aria-label={tr("common.language")}>
+            <button
+              type="button"
+              className={`login-lang-btn ${locale === "el" ? "active" : ""}`}
+              onClick={() => setLocale("el")}
+              aria-pressed={locale === "el"}
+            >
+              ΕΛ
+            </button>
+            <button
+              type="button"
+              className={`login-lang-btn ${locale === "en" ? "active" : ""}`}
+              onClick={() => setLocale("en")}
+              aria-pressed={locale === "en"}
+            >
+              EN
+            </button>
+          </div>
+
           <div className="login-form-header">
-            <h2>Καλώς ήρθατε</h2>
-            <p>Συνδεθείτε με τον λογαριασμό σας</p>
+            <h2>{tr("auth.welcome")}</h2>
+            <p>{tr("auth.signInPrompt")}</p>
           </div>
 
           <div className="login-form">
             <label className="login-label">
-              Email
+              {tr("auth.email")}
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                placeholder="email@company.gr"
+                placeholder={tr("auth.emailPlaceholder")}
                 className="login-input"
                 autoFocus
               />
             </label>
 
             <label className="login-label">
-              Κωδικός Πρόσβασης
+              {tr("auth.password")}
               <div className="login-password-wrap">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -123,6 +141,9 @@ export default function LoginPage() {
                   type="button"
                   className="login-eye"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={
+                    showPassword ? tr("auth.hidePassword") : tr("auth.showPassword")
+                  }
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -139,19 +160,19 @@ export default function LoginPage() {
               {loading ? (
                 <span className="login-spinner" />
               ) : (
-                "Σύνδεση"
+                tr("auth.signIn")
               )}
             </button>
           </div>
 
           <div className="login-hint">
-            <p>Δεν έχετε λογαριασμό;</p>
-            <a href="mailto:support@fleetpro.gr">Επικοινωνήστε μαζί μας</a>
+            <p>{tr("auth.noAccount")}</p>
+            <a href="mailto:support@fleetpro.gr">{tr("auth.contactUs")}</a>
           </div>
 
           {/* Demo accounts */}
           <div className="login-demo">
-            <div className="login-demo-title">Demo λογαριασμοί</div>
+            <div className="login-demo-title">{tr("auth.demoAccounts")}</div>
             {[
               { role: "Super Admin", email: "superadmin@fleetpro.gr", pass: "FleetPro2025!" },
               { role: "Company Admin", email: "admin@prentals.gr", pass: "Admin2025!" },
@@ -287,6 +308,34 @@ const loginStyles = `
     justify-content: center;
     padding: 40px;
     background: #0a0a0f;
+  }
+
+  .login-lang {
+    display: flex;
+    gap: 4px;
+    align-self: flex-end;
+    background: #12121f;
+    border: 1px solid #1e1e2e;
+    border-radius: 9px;
+    padding: 3px;
+    margin-bottom: 18px;
+  }
+  .login-lang-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 5px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .login-lang-btn:hover { color: #e2e8f0; }
+  .login-lang-btn.active {
+    background: #6366f1;
+    color: #fff;
   }
 
   .login-form-wrap {

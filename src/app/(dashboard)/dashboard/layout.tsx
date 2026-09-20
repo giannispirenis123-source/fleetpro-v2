@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { I18nProvider } from "@/lib/i18n/I18nProvider";
+import { t } from "@/lib/i18n";
 import DashboardSidebar from "./DashboardSidebar";
 import "./dashboard.css";
 
@@ -24,14 +26,18 @@ export default async function DashboardLayout({
     select: { name: true },
   });
 
+  const locale = session.locale;
+
   return (
-    <div className="dash-shell">
-      <DashboardSidebar
-        name={session.name}
-        role={session.role}
-        companyName={tenant?.name ?? "Η εταιρία μου"}
-      />
-      <main className="dash-main">{children}</main>
-    </div>
+    <I18nProvider locale={locale}>
+      <div className="dash-shell">
+        <DashboardSidebar
+          name={session.name}
+          role={session.role}
+          companyName={tenant?.name ?? t("common.myCompany", locale)}
+        />
+        <main className="dash-main">{children}</main>
+      </div>
+    </I18nProvider>
   );
 }

@@ -34,12 +34,12 @@ interface NavItem {
   disabled?: boolean;
 }
 
-// Φάση 1: μόνο το Dashboard είναι ενεργό. Τα υπόλοιπα ανοίγουν στη Φάση 2.
+// Ενεργά: Πίνακας, Στόλος. Τα υπόλοιπα ανοίγουν σε επόμενη φάση.
 const NAV: NavItem[] = [
   { href: "/dashboard", labelKey: "overview", icon: LayoutDashboard, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"], disabled: true },
   { href: "/dashboard/calendar", labelKey: "calendar", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"], disabled: true },
-  { href: "/dashboard/fleet", labelKey: "fleet", icon: Car, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"], disabled: true },
+  { href: "/dashboard/fleet", labelKey: "fleet", icon: Car, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/customers", labelKey: "customers", icon: Users, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
   { href: "/dashboard/contracts", labelKey: "contracts", icon: FileText, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
   { href: "/dashboard/invoices", labelKey: "invoices", icon: Receipt, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
@@ -148,7 +148,12 @@ export default function DashboardSidebar({
         <nav className="dash-nav">
           {items.map((it) => {
             const Icon = it.icon;
-            const active = pathname === it.href;
+            // Το "/dashboard" θέλει ακριβή ισότητα, αλλιώς θα ήταν πάντα ενεργό.
+            const active =
+              it.href === "/dashboard"
+                ? pathname === it.href
+                : pathname === it.href ||
+                  pathname.startsWith(`${it.href}/`);
             if (it.disabled) {
               return (
                 <div key={it.href} className="dash-nav-item disabled">

@@ -458,3 +458,359 @@
   }
   .dash-booking-dates { display: none; }
 }
+
+/* ============================================
+   Φάση 2 — Στόλος: toolbar, κάρτες, modals
+   ============================================ */
+
+.dash-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ---------- Κουμπιά ---------- */
+.dash-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 15px;
+  border-radius: 9px;
+  border: 1px solid #1e1e2e;
+  background: #12121f;
+  color: #e2e8f0;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.dash-btn:hover:not(:disabled) { background: #1a1a2e; }
+.dash-btn:disabled { opacity: 0.6; cursor: default; }
+.dash-btn--primary {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+.dash-btn--primary:hover:not(:disabled) { background: #4f46e5; }
+.dash-btn--danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
+}
+.dash-btn--danger:hover:not(:disabled) { background: #991b1b; }
+
+.dash-icon-btn {
+  background: none;
+  border: 1px solid #1e1e2e;
+  color: #94a3b8;
+  border-radius: 8px;
+  padding: 7px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dash-icon-btn:hover { background: #1a1a2e; color: #e2e8f0; }
+.dash-icon-btn--danger:hover {
+  background: #2a1015;
+  color: #f87171;
+  border-color: #7f1d1d;
+}
+
+/* ---------- Toolbar ---------- */
+.dash-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.dash-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: #0f0f1a;
+  border: 1px solid #1e1e2e;
+  border-radius: 10px;
+  padding: 0 12px;
+  flex: 1;
+  min-width: 220px;
+  color: #64748b;
+}
+.dash-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #e2e8f0;
+  font-size: 13.5px;
+  padding: 10px 0;
+}
+.dash-search input::placeholder { color: #475569; }
+
+.dash-filters {
+  display: flex;
+  gap: 4px;
+  background: #0f0f1a;
+  border: 1px solid #1e1e2e;
+  border-radius: 10px;
+  padding: 3px;
+}
+.dash-filter {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.dash-filter:hover { color: #e2e8f0; }
+.dash-filter.active { background: #6366f1; color: #fff; }
+
+.dash-count {
+  font-size: 12.5px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---------- Κάρτες οχημάτων ---------- */
+.dash-vehicles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+.dash-vehicle {
+  background: #0f0f1a;
+  border: 1px solid #1e1e2e;
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dash-vehicle-top {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.dash-vehicle-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.14);
+  color: #818cf8;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.dash-vehicle-id { flex: 1; min-width: 0; }
+.dash-vehicle-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+.dash-vehicle-plate {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.04em;
+}
+.dash-vehicle-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+.dash-vehicle-specs span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dash-vehicle-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dash-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.dash-badge--warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+.dash-badge--bad {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+.dash-vehicle-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #1a1a2e;
+  padding-top: 12px;
+  margin-top: auto;
+}
+.dash-vehicle-rate {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+.dash-vehicle-rate small {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #64748b;
+  margin-left: 2px;
+}
+.dash-vehicle-actions { display: flex; gap: 6px; }
+
+/* ---------- Modals ---------- */
+.dash-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 60;
+  overflow-y: auto;
+}
+.dash-modal {
+  background: #0f0f1a;
+  border: 1px solid #1e1e2e;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  margin: auto;
+}
+.dash-modal--sm { max-width: 420px; }
+.dash-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #1e1e2e;
+}
+.dash-modal-header h2 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.dash-modal-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+}
+.dash-modal-close:hover { background: #1a1a2e; color: #e2e8f0; }
+.dash-modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.dash-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid #1e1e2e;
+}
+
+/* ---------- Φόρμα ---------- */
+.dash-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+.dash-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.dash-field--wide { grid-column: 1 / -1; }
+.dash-field input,
+.dash-field select,
+.dash-field textarea {
+  background: #0a0a0f;
+  border: 1px solid #1e1e2e;
+  border-radius: 9px;
+  padding: 9px 11px;
+  color: #e2e8f0;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 400;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.dash-field input:focus,
+.dash-field select:focus,
+.dash-field textarea:focus { border-color: #6366f1; }
+.dash-field textarea { resize: vertical; }
+.dash-field--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  align-self: end;
+  padding-bottom: 9px;
+}
+.dash-field--check input {
+  width: auto;
+  accent-color: #6366f1;
+}
+
+.dash-form-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(239, 68, 68, 0.09);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  font-size: 13px;
+}
+.dash-form-note {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #64748b;
+}
+.dash-confirm-vehicle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+@media (max-width: 640px) {
+  .dash-form-grid { grid-template-columns: 1fr; }
+  .dash-toolbar { gap: 10px; }
+  .dash-filters { width: 100%; overflow-x: auto; }
+}

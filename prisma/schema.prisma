@@ -99,6 +99,22 @@ enum ServiceType {
   OTHER
 }
 
+enum ChargeType {
+  PER_DAY
+  ONE_OFF
+}
+
+enum ExtraType {
+  EXTRA
+  INSURANCE
+}
+
+// Τρόπος λειτουργίας της εταιρίας: άμεση κράτηση ή αίτημα προς έγκριση.
+enum RentalMode {
+  BOOKING
+  REQUEST
+}
+
 enum DiscountType {
   PERCENTAGE
   FIXED_AMOUNT
@@ -128,7 +144,7 @@ enum NotificationType {
 model Tenant {
   id               String           @id @default(cuid())
   name             String
-  slug             String           @unique  // subdomain: slug.fleetpro.gr
+  slug             String           @unique // subdomain: slug.fleetpro.gr
   email            String           @unique
   phone            String?
   address          String?
@@ -137,9 +153,10 @@ model Tenant {
   logoUrl          String?
   brandColor       String           @default("#2563EB")
   customDomain     String?          @unique
-  website          String?          // external website embed
+  website          String? // external website embed
   status           TenantStatus     @default(TRIAL)
   plan             SubscriptionPlan @default(STARTER)
+  rentalMode       RentalMode       @default(BOOKING)
   trialEndsAt      DateTime?
   stripeCustomerId String?
   stripeSubId      String?
@@ -147,26 +164,27 @@ model Tenant {
   updatedAt        DateTime         @updatedAt
 
   // Relations
-  users            User[]
-  vehicles         Vehicle[]
-  customers        Customer[]
-  bookings         Booking[]
-  invoices         Invoice[]
-  serviceRecords   ServiceRecord[]
-  expenses         Expense[]
-  damages          Damage[]
-  contracts        Contract[]
-  discounts        Discount[]
-  notifications    Notification[]
-  activityLogs     ActivityLog[]
+  users             User[]
+  vehicles          Vehicle[]
+  customers         Customer[]
+  bookings          Booking[]
+  invoices          Invoice[]
+  serviceRecords    ServiceRecord[]
+  expenses          Expense[]
+  damages           Damage[]
+  contracts         Contract[]
+  discounts         Discount[]
+  notifications     Notification[]
+  activityLogs      ActivityLog[]
   contractTemplates ContractTemplate[]
+  extras            Extra[]
 
   @@map("tenants")
 }
 
 model User {
   id           String    @id @default(cuid())
-  tenantId     String?   // null = Super Admin
+  tenantId     String? // null = Super Admin
   email        String    @unique
   passwordHash String
   name         String
@@ -180,10 +198,10 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   // Granular permissions (JSON για flexibility)
-  permissions  Json      @default("{}")
+  permissions Json @default("{}")
 
   // Relations
-  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   activityLogs ActivityLog[]
   sessions     Session[]
 
@@ -197,7 +215,7 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
 }
@@ -227,17 +245,17 @@ model Vehicle {
   nextServiceDate DateTime?
   insuranceExpiry DateTime?
   kteoExpiry      DateTime?
-  images          String[]        // Cloudinary URLs
+  images          String[] // Cloudinary URLs
   notes           String?
   isActive        Boolean         @default(true)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bookings        Booking[]
-  serviceRecords  ServiceRecord[]
-  damages         Damage[]
-  expenses        Expense[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings       Booking[]
+  serviceRecords ServiceRecord[]
+  damages        Damage[]
+  expenses       Expense[]
 
   @@unique([tenantId, plate])
   @@map("vehicles")
@@ -248,33 +266,33 @@ model Vehicle {
 // ─────────────────────────────────────────
 
 model Customer {
-  id              String    @id @default(cuid())
-  tenantId        String
-  firstName       String
-  lastName        String
-  email           String?
-  phone           String?
-  phone2          String?
-  idNumber        String?   // ΑΔΤ
-  licenseNumber   String?
-  licenseExpiry   DateTime?
-  licenseCountry  String?   @default("GR")
-  dateOfBirth     DateTime?
-  address         String?
-  city            String?
-  country         String?   @default("GR")
-  nationality     String?
-  notes           String?
-  tags            String[]  // VIP, Corporate, Problematic, etc.
-  isBlacklisted   Boolean   @default(false)
-  totalRevenue    Decimal   @default(0) @db.Decimal(10, 2)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  tenantId       String
+  firstName      String
+  lastName       String
+  email          String?
+  phone          String?
+  phone2         String?
+  idNumber       String? // ΑΔΤ
+  licenseNumber  String?
+  licenseExpiry  DateTime?
+  licenseCountry String?   @default("GR")
+  dateOfBirth    DateTime?
+  address        String?
+  city           String?
+  country        String?   @default("GR")
+  nationality    String?
+  notes          String?
+  tags           String[] // VIP, Corporate, Problematic, etc.
+  isBlacklisted  Boolean   @default(false)
+  totalRevenue   Decimal   @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bookings        Booking[]
-  invoices        Invoice[]
-  contracts       Contract[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings  Booking[]
+  invoices  Invoice[]
+  contracts Contract[]
 
   @@map("customers")
 }
@@ -284,73 +302,73 @@ model Customer {
 // ─────────────────────────────────────────
 
 model Booking {
-  id                String        @id @default(cuid())
-  tenantId          String
-  vehicleId         String
-  customerId        String
-  bookingNumber     String        // BP-2025-001
-  status            BookingStatus @default(PENDING)
+  id            String        @id @default(cuid())
+  tenantId      String
+  vehicleId     String
+  customerId    String
+  bookingNumber String // BP-2025-001
+  status        BookingStatus @default(PENDING)
 
   // Dates
-  pickupDate        DateTime
-  returnDate        DateTime
-  actualReturnDate  DateTime?
+  pickupDate       DateTime
+  returnDate       DateTime
+  actualReturnDate DateTime?
 
   // Locations
-  pickupLocation    String?
-  returnLocation    String?
+  pickupLocation String?
+  returnLocation String?
 
   // Pricing
-  dailyRate         Decimal       @db.Decimal(10, 2)
-  totalDays         Int
-  subtotal          Decimal       @db.Decimal(10, 2)
-  insurance         InsuranceType @default(BASIC)
-  insuranceCost     Decimal       @default(0) @db.Decimal(10, 2)
-  extrasTotal       Decimal       @default(0) @db.Decimal(10, 2)
-  discountAmount    Decimal       @default(0) @db.Decimal(10, 2)
-  discountCode      String?
-  total             Decimal       @db.Decimal(10, 2)
+  dailyRate      Decimal       @db.Decimal(10, 2)
+  totalDays      Int
+  subtotal       Decimal       @db.Decimal(10, 2)
+  insurance      InsuranceType @default(BASIC)
+  insuranceCost  Decimal       @default(0) @db.Decimal(10, 2)
+  extrasTotal    Decimal       @default(0) @db.Decimal(10, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(10, 2)
+  discountCode   String?
+  total          Decimal       @db.Decimal(10, 2)
 
   // Deposit
-  deposit           Decimal       @default(0) @db.Decimal(10, 2)
-  depositPaid       Boolean       @default(false)
-  depositReturned   Boolean       @default(false)
+  deposit         Decimal @default(0) @db.Decimal(10, 2)
+  depositPaid     Boolean @default(false)
+  depositReturned Boolean @default(false)
 
   // Extras (JSON)
-  extras            Json          @default("{}")
+  extras Json @default("{}")
 
   // Fuel
-  fuelLevelPickup   Int           @default(100) // percentage
-  fuelLevelReturn   Int?
+  fuelLevelPickup Int  @default(100) // percentage
+  fuelLevelReturn Int?
 
   // KM
-  kmPickup          Int?
-  kmReturn          Int?
+  kmPickup Int?
+  kmReturn Int?
 
   // Notes
-  notes             String?
-  internalNotes     String?
+  notes         String?
+  internalNotes String?
 
   // Contract
-  contractId        String?       @unique
-  contractSigned    Boolean       @default(false)
-  signedAt          DateTime?
+  contractId     String?   @unique
+  contractSigned Boolean   @default(false)
+  signedAt       DateTime?
 
   // Invoice
-  invoiceId         String?
+  invoiceId String?
 
   // Source (web, phone, walk-in, partner)
-  source            String        @default("manual")
+  source String @default("manual")
 
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle           Vehicle       @relation(fields: [vehicleId], references: [id])
-  customer          Customer      @relation(fields: [customerId], references: [id])
-  contract          Contract?
-  invoice           Invoice?
-  damages           Damage[]
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle  Vehicle   @relation(fields: [vehicleId], references: [id])
+  customer Customer  @relation(fields: [customerId], references: [id])
+  contract Contract?
+  invoice  Invoice?
+  damages  Damage[]
 
   @@map("bookings")
 }
@@ -360,48 +378,48 @@ model Booking {
 // ─────────────────────────────────────────
 
 model ContractTemplate {
-  id          String   @id @default(cuid())
-  tenantId    String
-  name        String
-  content     String   @db.Text  // HTML template with {{placeholders}}
-  isDefault   Boolean  @default(false)
-  language    String   @default("el")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  content   String   @db.Text // HTML template with {{placeholders}}
+  isDefault Boolean  @default(false)
+  language  String   @default("el")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contracts   Contract[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contracts Contract[]
 
   @@map("contract_templates")
 }
 
 model Contract {
-  id              String            @id @default(cuid())
-  tenantId        String
-  bookingId       String            @unique
-  customerId      String
-  templateId      String?
+  id         String  @id @default(cuid())
+  tenantId   String
+  bookingId  String  @unique
+  customerId String
+  templateId String?
 
-  contractNumber  String            // CT-2025-001
-  content         String            @db.Text  // rendered HTML
-  signatureData   String?           @db.Text  // base64 PNG
-  signature2Data  String?           @db.Text  // second driver
-  photosBefore    String[]          // Cloudinary URLs
-  photosAfter     String[]
+  contractNumber String // CT-2025-001
+  content        String   @db.Text // rendered HTML
+  signatureData  String?  @db.Text // base64 PNG
+  signature2Data String?  @db.Text // second driver
+  photosBefore   String[] // Cloudinary URLs
+  photosAfter    String[]
 
-  isSigned        Boolean           @default(false)
-  signedAt        DateTime?
-  signedIp        String?
+  isSigned Boolean   @default(false)
+  signedAt DateTime?
+  signedIp String?
 
-  pdfUrl          String?           // Cloudinary PDF URL
+  pdfUrl String? // Cloudinary PDF URL
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  booking         Booking           @relation(fields: [bookingId], references: [id])
-  customer        Customer          @relation(fields: [customerId], references: [id])
-  template        ContractTemplate? @relation(fields: [templateId], references: [id])
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking  Booking           @relation(fields: [bookingId], references: [id])
+  customer Customer          @relation(fields: [customerId], references: [id])
+  template ContractTemplate? @relation(fields: [templateId], references: [id])
 
   @@map("contracts")
 }
@@ -411,32 +429,32 @@ model Contract {
 // ─────────────────────────────────────────
 
 model Invoice {
-  id            String        @id @default(cuid())
+  id            String @id @default(cuid())
   tenantId      String
-  bookingId     String        @unique
+  bookingId     String @unique
   customerId    String
-  invoiceNumber String        // INV-2025-001
+  invoiceNumber String // INV-2025-001
 
-  issueDate     DateTime      @default(now())
-  dueDate       DateTime
-  paidAt        DateTime?
+  issueDate DateTime  @default(now())
+  dueDate   DateTime
+  paidAt    DateTime?
 
-  subtotal      Decimal       @db.Decimal(10, 2)
-  taxRate       Decimal       @default(24) @db.Decimal(5, 2)
-  taxAmount     Decimal       @db.Decimal(10, 2)
-  total         Decimal       @db.Decimal(10, 2)
+  subtotal  Decimal @db.Decimal(10, 2)
+  taxRate   Decimal @default(24) @db.Decimal(5, 2)
+  taxAmount Decimal @db.Decimal(10, 2)
+  total     Decimal @db.Decimal(10, 2)
 
   status        InvoiceStatus @default(UNPAID)
-  paymentMethod String?       // cash, card, bank, stripe
+  paymentMethod String? // cash, card, bank, stripe
   notes         String?
   pdfUrl        String?
 
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  booking       Booking       @relation(fields: [bookingId], references: [id])
-  customer      Customer      @relation(fields: [customerId], references: [id])
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking  Booking  @relation(fields: [bookingId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
 
   @@map("invoices")
 }
@@ -457,13 +475,13 @@ model ServiceRecord {
   description     String?
   nextServiceKm   Int?
   nextServiceDate DateTime?
-  documents       String[]    // Cloudinary URLs
+  documents       String[] // Cloudinary URLs
 
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle         Vehicle     @relation(fields: [vehicleId], references: [id])
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
   @@map("service_records")
 }
@@ -473,23 +491,23 @@ model ServiceRecord {
 // ─────────────────────────────────────────
 
 model Damage {
-  id           String       @id @default(cuid())
-  tenantId     String
-  vehicleId    String
-  bookingId    String?
-  description  String
-  repairCost   Decimal?     @db.Decimal(10, 2)
-  status       DamageStatus @default(PENDING)
-  photos       String[]     // Cloudinary URLs
-  resolvedAt   DateTime?
-  notes        String?
+  id          String       @id @default(cuid())
+  tenantId    String
+  vehicleId   String
+  bookingId   String?
+  description String
+  repairCost  Decimal?     @db.Decimal(10, 2)
+  status      DamageStatus @default(PENDING)
+  photos      String[] // Cloudinary URLs
+  resolvedAt  DateTime?
+  notes       String?
 
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id])
-  booking      Booking?     @relation(fields: [bookingId], references: [id])
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle Vehicle  @relation(fields: [vehicleId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id])
 
   @@map("damages")
 }
@@ -502,17 +520,17 @@ model Expense {
   id        String   @id @default(cuid())
   tenantId  String
   vehicleId String?
-  type      String   // insurance, service, fuel, salary, rent, marketing, other
+  type      String // insurance, service, fuel, salary, rent, marketing, other
   amount    Decimal  @db.Decimal(10, 2)
   date      DateTime
   notes     String?
-  receipt   String?  // Cloudinary URL
+  receipt   String? // Cloudinary URL
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
 
   @@map("expenses")
 }
@@ -521,38 +539,57 @@ model Expense {
 // DISCOUNTS & PROMOTIONS
 // ─────────────────────────────────────────
 
+// Πρόσθετα και ασφάλειες που ορίζει η κάθε εταιρία· θα μπαίνουν στις
+// κρατήσεις στο Βήμα 2.
+model Extra {
+  id         String     @id @default(cuid())
+  tenantId   String
+  name       String
+  price      Decimal    @db.Decimal(10, 2)
+  chargeType ChargeType @default(PER_DAY)
+  type       ExtraType  @default(EXTRA)
+  isActive   Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("extras")
+}
+
 model Discount {
-  id            String         @id @default(cuid())
-  tenantId      String
-  code          String?        // null = automatic discount
-  name          String
-  description   String?
-  type          DiscountType   @default(PERCENTAGE)
-  value         Decimal        @db.Decimal(10, 2)  // % ή €
-  target        DiscountTarget @default(ALL)
-  targetValue   String?        // category name ή vehicle ID ή customer ID
+  id          String         @id @default(cuid())
+  tenantId    String
+  code        String? // null = automatic discount
+  name        String
+  description String?
+  type        DiscountType   @default(PERCENTAGE)
+  value       Decimal        @db.Decimal(10, 2) // % ή €
+  target      DiscountTarget @default(ALL)
+  targetValue String? // category name ή vehicle ID ή customer ID
 
-  minDays       Int?           // minimum rental days
-  minAmount     Decimal?       @db.Decimal(10, 2)
-  maxDiscount   Decimal?       @db.Decimal(10, 2)  // cap σε €
+  minDays     Int? // minimum rental days
+  minAmount   Decimal? @db.Decimal(10, 2)
+  maxDiscount Decimal? @db.Decimal(10, 2) // cap σε €
 
-  validFrom     DateTime?
-  validUntil    DateTime?
-  usageLimit    Int?
-  usageCount    Int            @default(0)
-  isActive      Boolean        @default(true)
+  validFrom  DateTime?
+  validUntil DateTime?
+  usageLimit Int?
+  usageCount Int       @default(0)
+  isActive   Boolean   @default(true)
 
   // Loyalty: αυτόματη έκπτωση βάσει ιστορικού
-  isLoyalty     Boolean        @default(false)
+  isLoyalty          Boolean @default(false)
   loyaltyMinBookings Int?
 
   // Seasonal
-  isSeasonal    Boolean        @default(false)
+  isSeasonal Boolean @default(false)
 
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
   @@map("discounts")
@@ -563,18 +600,18 @@ model Discount {
 // ─────────────────────────────────────────
 
 model Notification {
-  id        String           @id @default(cuid())
-  tenantId  String
-  type      NotificationType
-  title     String
-  message   String
-  link      String?          // relative URL
-  isRead    Boolean          @default(false)
-  readAt    DateTime?
+  id       String           @id @default(cuid())
+  tenantId String
+  type     NotificationType
+  title    String
+  message  String
+  link     String? // relative URL
+  isRead   Boolean          @default(false)
+  readAt   DateTime?
 
-  createdAt DateTime         @default(now())
+  createdAt DateTime @default(now())
 
-  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
 }
@@ -584,11 +621,11 @@ model Notification {
 // ─────────────────────────────────────────
 
 model ActivityLog {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   tenantId  String?
   userId    String
-  action    String   // "booking.created", "vehicle.updated", "contract.signed"
-  entity    String?  // "Booking", "Vehicle", etc.
+  action    String // "booking.created", "vehicle.updated", "contract.signed"
+  entity    String? // "Booking", "Vehicle", etc.
   entityId  String?
   oldData   Json?
   newData   Json?
@@ -597,8 +634,8 @@ model ActivityLog {
 
   createdAt DateTime @default(now())
 
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id])
 
   @@map("activity_logs")
 }
@@ -608,20 +645,20 @@ model ActivityLog {
 // ─────────────────────────────────────────
 
 model PlatformCoupon {
-  id           String   @id @default(cuid())
-  code         String   @unique
-  description  String?
-  planTarget   SubscriptionPlan?  // null = all plans
-  type         DiscountType
-  value        Decimal  @db.Decimal(10, 2)
-  validFrom    DateTime?
-  validUntil   DateTime?
-  usageLimit   Int?
-  usageCount   Int      @default(0)
-  isActive     Boolean  @default(true)
+  id          String            @id @default(cuid())
+  code        String            @unique
+  description String?
+  planTarget  SubscriptionPlan? // null = all plans
+  type        DiscountType
+  value       Decimal           @db.Decimal(10, 2)
+  validFrom   DateTime?
+  validUntil  DateTime?
+  usageLimit  Int?
+  usageCount  Int               @default(0)
+  isActive    Boolean           @default(true)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("platform_coupons")
 }

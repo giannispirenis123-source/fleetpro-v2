@@ -17,6 +17,7 @@ import {
   Wallet,
   UserCog,
   Settings,
+  PackagePlus,
   LogOut,
   Menu,
   X,
@@ -34,12 +35,13 @@ interface NavItem {
   disabled?: boolean;
 }
 
-// Ενεργά: Πίνακας, Στόλος, Πελάτες. Τα υπόλοιπα ανοίγουν σε επόμενη φάση.
+// Ενεργά: Πίνακας, Κρατήσεις, Στόλος, Πρόσθετα, Πελάτες, Ρυθμίσεις.
 const NAV: NavItem[] = [
   { href: "/dashboard", labelKey: "overview", icon: LayoutDashboard, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
-  { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"], disabled: true },
+  { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/calendar", labelKey: "calendar", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"], disabled: true },
   { href: "/dashboard/fleet", labelKey: "fleet", icon: Car, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
+  { href: "/dashboard/extras", labelKey: "extras", icon: PackagePlus, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/customers", labelKey: "customers", icon: Users, roles: ["COMPANY_ADMIN", "STAFF"] },
   { href: "/dashboard/contracts", labelKey: "contracts", icon: FileText, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
   { href: "/dashboard/invoices", labelKey: "invoices", icon: Receipt, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
@@ -47,7 +49,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/reports", labelKey: "reports", icon: BarChart3, roles: ["COMPANY_ADMIN"], disabled: true },
   { href: "/dashboard/finance", labelKey: "finance", icon: Wallet, roles: ["COMPANY_ADMIN"], disabled: true },
   { href: "/dashboard/users", labelKey: "users", icon: UserCog, roles: ["COMPANY_ADMIN"], disabled: true },
-  { href: "/dashboard/settings", labelKey: "settings", icon: Settings, roles: ["COMPANY_ADMIN"], disabled: true },
+  { href: "/dashboard/settings", labelKey: "settings", icon: Settings, roles: ["COMPANY_ADMIN"] },
 ];
 
 const ROLE_LABEL_KEY: Record<string, string> = {

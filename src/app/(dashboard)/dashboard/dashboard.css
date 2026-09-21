@@ -850,3 +850,70 @@
   margin: 22px 0 12px;
 }
 .dash-form-section:first-child { margin-top: 0; }
+
+/* ---------- Ρυθμίσεις: επιλογή τρόπου λειτουργίας ---------- */
+.dash-settings-panel { max-width: 720px; }
+.dash-settings-lead { margin-top: 0; margin-bottom: 16px; }
+
+.dash-modes {
+  display: grid;
+  gap: 12px;
+}
+.dash-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  text-align: left;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #1e1e2e;
+  background: #0a0a0f;
+  color: #e2e8f0;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dash-mode:hover:not(:disabled) { border-color: #2a2a3e; }
+.dash-mode:disabled { opacity: 0.7; cursor: default; }
+.dash-mode.active {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.07);
+}
+.dash-mode-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: rgba(99, 102, 241, 0.14);
+  color: #818cf8;
+}
+.dash-mode-text { flex: 1; min-width: 0; }
+.dash-mode-name {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.dash-mode-desc {
+  display: block;
+  font-size: 12.5px;
+  color: #94a3b8;
+  margin-top: 3px;
+  line-height: 1.45;
+}
+.dash-mode-check {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #6366f1;
+  color: #fff;
+}
+.dash-settings-saved { margin-top: 16px; }
+.dash-mode-hint { margin-bottom: 18px; }
+
+/* Ανενεργό πρόσθετο: πιο σβηστή κάρτα */
+.dash-vehicle--off { opacity: 0.6; }

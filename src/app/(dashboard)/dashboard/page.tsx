@@ -249,7 +249,7 @@ export default async function DashboardPage() {
                   <div className="dash-booking-vehicle">
                     {b.vehicle.brand} {b.vehicle.model}
                     <br />
-                    <span style={{ color: "#64748b", fontSize: 12 }}>
+                    <span style={{ color: "var(--text-4)", fontSize: 12 }}>
                       {b.vehicle.plate}
                     </span>
                   </div>
@@ -275,30 +275,30 @@ export default async function DashboardPage() {
           </h2>
           <div className="dash-ministat">
             <span className="dash-ministat-label">
-              <AlertTriangle size={17} color="#f59e0b" />{" "}
+              <AlertTriangle size={17} color="var(--warn-icon)" />{" "}
               {tr("dashboard.pendingDamages")}
             </span>
             <span
               className="dash-ministat-value"
-              style={{ color: pendingDamages > 0 ? "#fbbf24" : "#e2e8f0" }}
+              style={{ color: pendingDamages > 0 ? "var(--warn-fg)" : "var(--text-4)" }}
             >
               {pendingDamages}
             </span>
           </div>
           <div className="dash-ministat">
             <span className="dash-ministat-label">
-              <Receipt size={17} color="#ef4444" /> {tr("dashboard.unpaidInvoices")}
+              <Receipt size={17} color="var(--bad-icon)" /> {tr("dashboard.unpaidInvoices")}
             </span>
             <span
               className="dash-ministat-value"
-              style={{ color: unpaidInvoices > 0 ? "#f87171" : "#e2e8f0" }}
+              style={{ color: unpaidInvoices > 0 ? "var(--bad-fg)" : "var(--text-4)" }}
             >
               {unpaidInvoices}
             </span>
           </div>
           <div className="dash-ministat">
             <span className="dash-ministat-label">
-              <Car size={17} color="#818cf8" /> {tr("dashboard.totalFleet")}
+              <Car size={17} color="var(--primary)" /> {tr("dashboard.totalFleet")}
             </span>
             <span className="dash-ministat-value">{totalVehicles}</span>
           </div>

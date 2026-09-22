@@ -1,4 +1,71 @@
-/* src/app/globals.css */
+/* src/app/globals.css
+ *
+ * ΜΙΑ ΠΗΓΗ ΑΛΗΘΕΙΑΣ ΓΙΑ ΤΑ ΧΡΩΜΑΤΑ
+ * ----------------------------------
+ * Όλες οι ζώνες του app (dash-*, sa-*, login-*) διαβάζουν από εδώ.
+ * Για να αλλάξει το θέμα, αλλάζουν ΜΟΝΟ οι τιμές παρακάτω — καμία
+ * αλλαγή σε components.
+ */
+
+:root {
+  /* Λέει στον browser να αποδίδει τα native controls (date picker,
+     select, scrollbars) σε ανοιχτό θέμα — αλλιώς βγαίνουν σκούρα. */
+  color-scheme: light;
+
+  /* ── Επιφάνειες ── */
+  --bg: #ffffff;          /* φόντο σελίδας */
+  --surface: #ffffff;     /* κάρτες, sidebar, modals, panels */
+  --surface-2: #f8fafc;   /* ανασηκωμένα: toolbars, πεδία, ομάδες κουμπιών */
+  --border: #e2e8f0;      /* το βασικό περίγραμμα που ξεχωρίζει τις κάρτες */
+  --border-strong: #cbd5e1;
+  --hover: #f1f5f9;       /* ελαφρύ γκρι για hover — όχι «λευκό σε λευκό» */
+  --hover-2: #e2e8f0;     /* εντονότερο hover */
+
+  /* ── Κείμενο (σκούρο σε λευκό) ── */
+  --text: #0f172a;        /* κύριο */
+  --text-2: #334155;      /* δευτερεύον */
+  --text-3: #475569;      /* υπότιτλοι, ετικέτες */
+  --text-4: #64748b;      /* διακριτικό */
+  --placeholder: #94a3b8;
+
+  /* ── Κύριο χρώμα ── */
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-soft: #4f46e5;
+  --primary-bg: rgba(99, 102, 241, 0.12);   /* απαλό γέμισμα για active/selected */
+  --violet: #8b5cf6;
+  --violet-fg: #7c3aed;
+  --violet-bg: #f5f3ff;
+  --on-primary: #ffffff;
+
+  /* ── Καταστάσεις: σκουρόχρωμο κείμενο πάνω στις ήδη απαλές rgba αποχρώσεις ── */
+  --ok-fg: #15803d;
+  --ok-icon: #16a34a;
+  --emerald-fg: #059669;
+  --info-fg: #4338ca;
+  --warn-fg: #b45309;
+  --warn-icon: #d97706;
+  --bad-fg: #b91c1c;
+  --bad-icon: #dc2626;
+  --bad-bg: #fef2f2;
+  --bad-border: #fecaca;
+  --blue-fg: #1d4ed8;
+  --blue-bg: #eff6ff;
+
+  --danger-btn: #b91c1c;
+  --danger-btn-hover: #991b1b;
+
+  /* ── Βάθος: σε λευκό φόντο οι κάρτες χρειάζονται περίγραμμα + ελαφριά σκιά ── */
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-raised: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-dropdown: 0 8px 24px rgba(15, 23, 42, 0.12);
+  --shadow-modal: 0 20px 45px rgba(15, 23, 42, 0.18);
+
+  /* Σκίαση πίσω από modals/drawers — γαλαζογκρί αντί για μαύρο, ώστε να
+     μην «βαραίνει» το ανοιχτό θέμα. */
+  --overlay: rgba(15, 23, 42, 0.45);
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -10,8 +77,8 @@ html {
 }
 
 body {
-  background: #0a0a0f;
-  color: #e2e8f0;
+  background: var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

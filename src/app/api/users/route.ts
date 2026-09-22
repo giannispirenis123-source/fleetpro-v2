@@ -52,10 +52,16 @@ export const GET = withAuth(
     try {
       const { skip, limit } = getPagination(req);
 
-      // Super Admin βλέπει όλους, Company Admin βλέπει μόνο τους δικούς του
+      // Ο Super Admin μπορεί να περιορίσει τη λίστα σε μία εταιρία.
+      // Για τον Company Admin η παράμετρος αγνοείται: βλέπει πάντα μόνο
+      // τους χρήστες της δικής του εταιρίας.
+      const tenantId = new URL(req.url).searchParams.get("tenantId");
+
       const where =
         session.role === "SUPER_ADMIN"
-          ? {}
+          ? tenantId
+            ? { tenantId }
+            : {}
           : { tenantId: session.tenantId! };
 
       const [users, total] = await Promise.all([

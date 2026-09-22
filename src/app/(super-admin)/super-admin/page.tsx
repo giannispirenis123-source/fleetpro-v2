@@ -65,6 +65,18 @@ interface PlatformStats {
   mrr: number;
 }
 
+/** Ρόλοι χρηστών εταιρίας — ο SUPER_ADMIN δεν ρεσετάρεται από εδώ. */
+type UserRole = "SUPER_ADMIN" | "COMPANY_ADMIN" | "STAFF" | "PARTNER";
+
+interface TenantUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  lastLoginAt: string | null;
+}
+
 // ─── Constants ───────────────────────────
 
 const PLAN_LABELS: Record<SubscriptionPlan, string> = {
@@ -77,6 +89,13 @@ const PLAN_PRICES: Record<SubscriptionPlan, number> = {
   STARTER: 49,
   PRO: 129,
   ENTERPRISE: 299,
+};
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  SUPER_ADMIN: "Super Admin",
+  COMPANY_ADMIN: "Διαχειριστής",
+  STAFF: "Προσωπικό",
+  PARTNER: "Συνεργάτης",
 };
 
 const STATUS_CONFIG: Record<
@@ -105,6 +124,23 @@ const STATUS_CONFIG: Record<
   },
 };
 
+/**
+ * Τα στατιστικά της πλατφόρμας βγαίνουν από την ίδια τη λίστα εταιριών.
+ * Το MRR μετρά μόνο τις ενεργές συνδρομές — οι δοκιμαστικές δεν πληρώνουν.
+ */
+function computeStats(list: Tenant[]): PlatformStats {
+  return {
+    totalTenants: list.length,
+    activeTenants: list.filter((t) => t.status === "ACTIVE").length,
+    trialTenants: list.filter((t) => t.status === "TRIAL").length,
+    totalVehicles: list.reduce((sum, t) => sum + t._count.vehicles, 0),
+    totalBookings: list.reduce((sum, t) => sum + t._count.bookings, 0),
+    mrr: list
+      .filter((t) => t.status === "ACTIVE")
+      .reduce((sum, t) => sum + PLAN_PRICES[t.plan], 0),
+  };
+}
+
 // ─── Main Component ──────────────────────
 
 export default function SuperAdminDashboard() {
@@ -117,83 +153,39 @@ export default function SuperAdminDashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [showTenantMenu, setShowTenantMenu] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState("");
+  // Εταιρία της οποίας βλέπουμε τους χρήστες (λίστα + reset κωδικού).
+  const [usersOfTenant, setUsersOfTenant] = useState<Tenant | null>(null);
   const [activeTab, setActiveTab] = useState<
     "tenants" | "stats" | "discounts" | "settings"
   >("tenants");
 
-  // ─── Mock data for UI (θα αντικατασταθεί με API calls) ───
-  useEffect(() => {
-    setTimeout(() => {
-      setTenants([
-        {
-          id: "1",
-          name: "P Rentals Χανιά",
-          slug: "p-rentals",
-          email: "info@prentals.gr",
-          phone: "2821055555",
-          status: "ACTIVE",
-          plan: "PRO",
-          brandColor: "#2563EB",
-          createdAt: "2025-01-15T10:00:00Z",
-          _count: { users: 4, vehicles: 28, bookings: 156 },
-        },
-        {
-          id: "2",
-          name: "DriveEasy Ηράκλειο",
-          slug: "driveeasy",
-          email: "info@driveeasy.gr",
-          status: "ACTIVE",
-          plan: "STARTER",
-          brandColor: "#10B981",
-          createdAt: "2025-02-20T10:00:00Z",
-          _count: { users: 2, vehicles: 12, bookings: 89 },
-        },
-        {
-          id: "3",
-          name: "AutoRent Ρόδος",
-          slug: "autorent-rodos",
-          email: "hello@autorent.gr",
-          status: "TRIAL",
-          plan: "PRO",
-          brandColor: "#F59E0B",
-          trialEndsAt: "2025-08-01T00:00:00Z",
-          createdAt: "2025-07-01T10:00:00Z",
-          _count: { users: 1, vehicles: 0, bookings: 0 },
-        },
-        {
-          id: "4",
-          name: "Island Cars Κέρκυρα",
-          slug: "island-cars",
-          email: "cars@islandcars.gr",
-          status: "SUSPENDED",
-          plan: "STARTER",
-          brandColor: "#8B5CF6",
-          createdAt: "2024-11-10T10:00:00Z",
-          _count: { users: 3, vehicles: 8, bookings: 45 },
-        },
-        {
-          id: "5",
-          name: "Premium Fleet Αθήνα",
-          slug: "premium-fleet",
-          email: "fleet@premiumfleet.gr",
-          status: "ACTIVE",
-          plan: "ENTERPRISE",
-          brandColor: "#0F172A",
-          createdAt: "2024-08-01T10:00:00Z",
-          _count: { users: 12, vehicles: 87, bookings: 620 },
-        },
-      ]);
-      setStats({
-        totalTenants: 5,
-        activeTenants: 3,
-        trialTenants: 1,
-        totalVehicles: 135,
-        totalBookings: 910,
-        mrr: 3 * 129 + 2 * 49 + 299, // 3 Pro + 2 Starter + 1 Enterprise (simplified)
-      });
+  // ─── Φόρτωση εταιριών από το API ───
+  const loadTenants = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const res = await fetch("/api/tenants?limit=100");
+      const data = await res.json();
+
+      if (!res.ok) {
+        setLoadError(data.message || "Δεν ήταν δυνατή η φόρτωση των εταιριών");
+        return;
+      }
+
+      const list: Tenant[] = data.data.tenants;
+      setTenants(list);
+      setStats(computeStats(list));
+    } catch {
+      setLoadError("Σφάλμα σύνδεσης");
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   }, []);
+
+  useEffect(() => {
+    loadTenants();
+  }, [loadTenants]);
 
   const filteredTenants = tenants.filter((t) => {
     const matchSearch =
@@ -376,6 +368,15 @@ export default function SuperAdminDashboard() {
               </div>
             </div>
 
+            {loadError && (
+              <div className="sa-load-error">
+                <AlertTriangle size={15} /> {loadError}
+                <button className="sa-btn-ghost" onClick={loadTenants}>
+                  Δοκίμασε ξανά
+                </button>
+              </div>
+            )}
+
             {/* Table */}
             {loading ? (
               <div className="sa-loading">
@@ -410,6 +411,10 @@ export default function SuperAdminDashboard() {
                           )
                         }
                         onEdit={() => setSelectedTenant(tenant)}
+                        onShowUsers={() => {
+                          setUsersOfTenant(tenant);
+                          setShowTenantMenu(null);
+                        }}
                         onStatusChange={(status) => {
                           setTenants((prev) =>
                             prev.map((t) =>
@@ -480,6 +485,14 @@ export default function SuperAdminDashboard() {
         />
       )}
 
+      {/* Χρήστες εταιρίας + reset κωδικού */}
+      {usersOfTenant && (
+        <TenantUsersModal
+          tenant={usersOfTenant}
+          onClose={() => setUsersOfTenant(null)}
+        />
+      )}
+
       {/* Edit Tenant Modal */}
       {selectedTenant && (
         <EditTenantModal
@@ -506,12 +519,14 @@ function TenantRow({
   showMenu,
   onMenuToggle,
   onEdit,
+  onShowUsers,
   onStatusChange,
 }: {
   tenant: Tenant;
   showMenu: boolean;
   onMenuToggle: () => void;
   onEdit: () => void;
+  onShowUsers: () => void;
   onStatusChange: (s: TenantStatus) => void;
 }) {
   const status = STATUS_CONFIG[tenant.status];
@@ -582,6 +597,9 @@ function TenantRow({
               <div className="sa-dropdown">
                 <button onClick={onEdit}>
                   <Edit size={12} /> Επεξεργασία
+                </button>
+                <button onClick={onShowUsers}>
+                  <Users size={12} /> Χρήστες & κωδικοί
                 </button>
                 {tenant.status !== "ACTIVE" && (
                   <button onClick={() => onStatusChange("ACTIVE")}>
@@ -1112,6 +1130,265 @@ function EditTenantModal({
           <button className="sa-btn-ghost" onClick={onClose}>Ακύρωση</button>
           <button className="sa-btn-primary" onClick={handleSubmit} disabled={loading}>
             {loading ? "Αποθήκευση..." : "Αποθήκευση"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Χρήστες εταιρίας — λίστα + reset κωδικού
+   ───────────────────────────────────────────── */
+
+function TenantUsersModal({
+  tenant,
+  onClose,
+}: {
+  tenant: Tenant;
+  onClose: () => void;
+}) {
+  const [users, setUsers] = useState<TenantUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [resetting, setResetting] = useState<TenantUser | null>(null);
+  const [done, setDone] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/users?tenantId=${tenant.id}&limit=100`);
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (!res.ok) {
+          setError(data.message || "Δεν ήταν δυνατή η φόρτωση των χρηστών");
+          return;
+        }
+        setUsers(data.data.users);
+      } catch {
+        if (!cancelled) setError("Σφάλμα σύνδεσης");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenant.id]);
+
+  return (
+    <div className="sa-modal-overlay" onClick={onClose}>
+      <div className="sa-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="sa-modal-header">
+          <h2>Χρήστες · {tenant.name}</h2>
+          <button className="sa-modal-close" onClick={onClose}>
+            <XCircle size={18} />
+          </button>
+        </div>
+
+        <div className="sa-modal-body">
+          {done && (
+            <div className="sa-ok-banner">
+              <CheckCircle size={15} /> {done}
+            </div>
+          )}
+
+          {loading && <div className="sa-skeleton" />}
+          {error && <div className="sa-error">{error}</div>}
+
+          {!loading && !error && users.length === 0 && (
+            <p className="sa-muted-note">Η εταιρία δεν έχει χρήστες.</p>
+          )}
+
+          {!loading && !error && users.length > 0 && (
+            <ul className="sa-user-list">
+              {users.map((u) => {
+                // Ο Super Admin δεν ρεσετάρεται από εδώ — το ίδιο επιβάλλει
+                // και ο server, αυτό είναι μόνο για να μη μπερδεύει το UI.
+                const canReset = u.role !== "SUPER_ADMIN";
+                return (
+                  <li key={u.id} className="sa-user-row">
+                    <div className="sa-user-main">
+                      <span className="sa-user-row-name">
+                        {u.name}
+                        {!u.isActive && (
+                          <span className="sa-user-off">ανενεργός</span>
+                        )}
+                      </span>
+                      <span className="sa-user-row-email">{u.email}</span>
+                    </div>
+                    <span className="sa-role-badge">{ROLE_LABELS[u.role]}</span>
+                    <button
+                      className="sa-btn-ghost"
+                      onClick={() => {
+                        setDone("");
+                        setResetting(u);
+                      }}
+                      disabled={!canReset}
+                      title={
+                        canReset
+                          ? "Ορισμός νέου κωδικού"
+                          : "Δεν επιτρέπεται reset σε Super Admin"
+                      }
+                    >
+                      <Shield size={12} /> Reset κωδικού
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="sa-modal-footer">
+          <button className="sa-btn-ghost" onClick={onClose}>
+            Κλείσιμο
+          </button>
+        </div>
+      </div>
+
+      {resetting && (
+        <ResetPasswordModal
+          user={resetting}
+          onClose={() => setResetting(null)}
+          onSuccess={(name) => {
+            setDone(`Ο κωδικός του χρήστη ${name} άλλαξε.`);
+            setResetting(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ResetPasswordModal({
+  user,
+  onClose,
+  onSuccess,
+}: {
+  user: TenantUser;
+  onClose: () => void;
+  onSuccess: (name: string) => void;
+}) {
+  // Τα πεδία ξεκινούν ΠΑΝΤΑ κενά: ο υπάρχων κωδικός δεν υπάρχει σε καθαρή
+  // μορφή πουθενά και δεν φτάνει ποτέ στον browser.
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const tooShort = password.length > 0 && password.length < 8;
+  const mismatch = confirm.length > 0 && password !== confirm;
+  const valid = password.length >= 8 && password === confirm;
+
+  const submit = async () => {
+    if (!valid || saving) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const res = await fetch(`/api/users/${user.id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.message || "Δεν ήταν δυνατή η αλλαγή");
+        return;
+      }
+
+      onSuccess(user.name);
+    } catch {
+      setError("Σφάλμα σύνδεσης");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="sa-modal-overlay" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="sa-modal sa-modal--sm"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sa-modal-header">
+          <h2>Νέος κωδικός</h2>
+          <button className="sa-modal-close" onClick={onClose}>
+            <XCircle size={18} />
+          </button>
+        </div>
+
+        <div className="sa-modal-body">
+          <p className="sa-muted-note">
+            {user.name} · {user.email}
+          </p>
+
+          <label className="sa-label">
+            Νέος κωδικός
+            <div className="sa-password-wrap">
+              <input
+                type={show ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                placeholder="Τουλάχιστον 8 χαρακτήρες"
+              />
+              <button
+                type="button"
+                className="sa-eye"
+                onClick={() => setShow(!show)}
+                aria-label={show ? "Απόκρυψη" : "Εμφάνιση"}
+              >
+                {show ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          </label>
+
+          <label className="sa-label">
+            Επιβεβαίωση
+            <input
+              type={show ? "text" : "password"}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+              autoComplete="new-password"
+            />
+          </label>
+
+          {tooShort && (
+            <div className="sa-error">
+              Ο κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες
+            </div>
+          )}
+          {mismatch && (
+            <div className="sa-error">Οι δύο κωδικοί δεν ταιριάζουν</div>
+          )}
+          {error && <div className="sa-error">{error}</div>}
+
+          <p className="sa-muted-note">
+            Δώσε τον νέο κωδικό στον χρήστη με ασφαλή τρόπο. Δεν εμφανίζεται
+            ξανά μετά την αποθήκευση.
+          </p>
+        </div>
+
+        <div className="sa-modal-footer">
+          <button className="sa-btn-ghost" onClick={onClose} disabled={saving}>
+            Άκυρο
+          </button>
+          <button
+            className="sa-btn-primary"
+            onClick={submit}
+            disabled={!valid || saving}
+          >
+            {saving ? "Αποθήκευση…" : "Αλλαγή κωδικού"}
           </button>
         </div>
       </div>
@@ -1653,6 +1930,89 @@ const superAdminStyles = `
     color: var(--bad-fg);
     font-size: 12px;
   }
+
+  /* ── Χρήστες εταιρίας + reset κωδικού ── */
+  .sa-ok-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 8px;
+    color: var(--ok-fg);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .sa-muted-note { color: var(--text-4); font-size: 12px; margin-bottom: 14px; }
+
+  .sa-user-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .sa-user-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 11px 13px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .sa-user-main { flex: 1; min-width: 150px; display: flex; flex-direction: column; gap: 2px; }
+  .sa-user-row-name {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .sa-user-row-email {
+    font-size: 11px;
+    color: var(--text-4);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .sa-user-off {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bad-bg);
+    color: var(--bad-fg);
+  }
+  .sa-role-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 100px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-3);
+    white-space: nowrap;
+  }
+  .sa-user-row .sa-btn-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .sa-load-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 11px 13px;
+    background: var(--bad-bg);
+    border: 1px solid var(--bad-border);
+    border-radius: 9px;
+    color: var(--bad-fg);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  .sa-modal--sm { width: 440px; }
 
   /* ── Scrollbar ── */
   ::-webkit-scrollbar { width: 4px; height: 4px; }

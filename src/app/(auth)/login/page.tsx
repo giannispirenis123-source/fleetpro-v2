@@ -8,6 +8,17 @@ import { Eye, EyeOff, Zap, Car } from "lucide-react";
 import { t } from "@/lib/i18n";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locale";
 
+/**
+ * Demo λογαριασμοί για γρήγορη συμπλήρωση του email.
+ * ΠΟΤΕ κωδικοί εδώ — η σελίδα είναι client component και ό,τι μπει σε
+ * αυτό το αρχείο ταξιδεύει στον browser κάθε επισκέπτη.
+ */
+const DEMO_ACCOUNTS = [
+  { role: "Super Admin", email: "superadmin@fleetpro.gr" },
+  { role: "Company Admin", email: "admin@prentals.gr" },
+  { role: "Staff", email: "staff@prentals.gr" },
+] as const;
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -170,21 +181,17 @@ export default function LoginPage() {
             <a href="mailto:support@fleetpro.gr">{tr("auth.contactUs")}</a>
           </div>
 
-          {/* Demo accounts */}
+          {/* Demo λογαριασμοί — ΜΟΝΟ email.
+              Κανένας κωδικός δεν φτάνει στο UI: η σελίδα είναι client
+              component, οπότε οτιδήποτε γράφεται εδώ καταλήγει στο
+              JavaScript bundle και είναι ορατό σε όποιον την ανοίξει. */}
           <div className="login-demo">
             <div className="login-demo-title">{tr("auth.demoAccounts")}</div>
-            {[
-              { role: "Super Admin", email: "superadmin@fleetpro.gr", pass: "FleetPro2025!" },
-              { role: "Company Admin", email: "admin@prentals.gr", pass: "Admin2025!" },
-              { role: "Staff", email: "staff@prentals.gr", pass: "Staff2025!" },
-            ].map((demo) => (
+            {DEMO_ACCOUNTS.map((demo) => (
               <button
                 key={demo.role}
                 className="login-demo-btn"
-                onClick={() => {
-                  setEmail(demo.email);
-                  setPassword(demo.pass);
-                }}
+                onClick={() => setEmail(demo.email)}
               >
                 <span className="login-demo-role">{demo.role}</span>
                 <span className="login-demo-email">{demo.email}</span>

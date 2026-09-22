@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 // src/app/api/bookings/route.ts
-// Κρατήσεις ανά tenant — Βήμα 1: λίστα και δημιουργία.
+// Κρατήσεις ανά tenant — λίστα και δημιουργία.
 //
-// ΔΕΝ γίνεται ακόμη: υπολογισμός τιμής με extras/εκπτώσεις, έλεγχος
-// επικάλυψης ημερομηνιών, αυτόματο τιμολόγιο. Έρχονται στο Βήμα 2.
+// ΔΕΝ γίνεται ακόμη: υπολογισμός τιμής με extras/εκπτώσεις, αυτόματο
+// τιμολόγιο. Έρχονται στο Βήμα 2.
 
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -12,26 +12,37 @@ import {
   ok,
   created,
   badRequest,
+  conflict,
+  forbidden,
   serverError,
 } from "@/lib/api";
 import {
   BOOKING_STATUSES,
   RESERVING_STATUSES,
+  TIME_RE,
   countDays,
+  instantOf,
   toBookingDTO,
 } from "@/lib/bookings";
+import { checkVehicleConflicts } from "@/lib/bookingConflicts";
 
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Μορφή ημερομηνίας: YYYY-MM-DD");
 
+const isoTime = z.string().regex(TIME_RE, "Μορφή ώρας: HH:mm");
+
 const createBookingSchema = z.object({
   customerId: z.string().min(1, "Απαιτείται πελάτης"),
   vehicleId: z.string().min(1, "Απαιτείται όχημα"),
   pickupDate: isoDate,
+  pickupTime: isoTime,
   returnDate: isoDate,
+  returnTime: isoTime,
   status: z.enum(BOOKING_STATUSES).optional(),
   notes: z.union([z.string(), z.null()]).optional(),
+  /** Ρητή έγκριση διαχειριστή για να περάσει παρά τη σύγκρουση. */
+  override: z.boolean().optional(),
 });
 
 const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -94,8 +105,11 @@ export const POST = withAuth(
 
       const data = parsed.data;
 
-      if (data.returnDate < data.pickupDate) {
-        return badRequest("Η επιστροφή δεν μπορεί να προηγείται της παραλαβής");
+      const startsAt = instantOf(data.pickupDate, data.pickupTime, "start");
+      const endsAt = instantOf(data.returnDate, data.returnTime, "end");
+
+      if (endsAt <= startsAt) {
+        return badRequest("Η επιστροφή πρέπει να είναι μετά την παραλαβή");
       }
 
       // Πελάτης και όχημα πρέπει να ανήκουν στην ίδια εταιρία με τον χρήστη.
@@ -110,13 +124,38 @@ export const POST = withAuth(
         }),
         db.tenant.findUnique({
           where: { id: session.tenantId! },
-          select: { rentalMode: true },
+          select: { rentalMode: true, prepTimeMinutes: true },
         }),
       ]);
 
       if (!customer) return badRequest("Ο πελάτης δεν βρέθηκε");
       if (!vehicle) return badRequest("Το όχημα δεν βρέθηκε");
       if (!tenant) return badRequest("Η εταιρία δεν βρέθηκε");
+
+      // Έλεγχος σύγκρουσης: το όχημα δεν είναι ελεύθερο πριν περάσει ο
+      // χρόνος προετοιμασίας από την προηγούμενη επιστροφή. Με σύγκρουση
+      // προχωράμε μόνο αν ο διαχειριστής το εγκρίνει ρητά.
+      const conflicts = await checkVehicleConflicts({
+        tenantId: session.tenantId!,
+        vehicleId: vehicle.id,
+        pickupDate: data.pickupDate,
+        pickupTime: data.pickupTime,
+        returnDate: data.returnDate,
+        returnTime: data.returnTime,
+        prepMinutes: tenant.prepTimeMinutes,
+      });
+
+      if (conflicts.length > 0) {
+        if (!data.override) {
+          return conflict(
+            "Το όχημα δεν είναι διαθέσιμο σε αυτό το διάστημα",
+            conflicts
+          );
+        }
+        if (session.role !== "COMPANY_ADMIN") {
+          return forbidden("Η παράκαμψη απαιτεί έγκριση διαχειριστή");
+        }
+      }
 
       // Σε λειτουργία REQUEST κάθε νέα εγγραφή είναι αίτημα: μπαίνει PENDING
       // ανεξάρτητα από το τι ζήτησε η φόρμα, και το όχημα δεν δεσμεύεται.
@@ -135,7 +174,9 @@ export const POST = withAuth(
           bookingNumber: await nextBookingNumber(session.tenantId!),
           status,
           pickupDate: toDate(data.pickupDate),
+          pickupTime: data.pickupTime,
           returnDate: toDate(data.returnDate),
+          returnTime: data.returnTime,
           // Βήμα 1: η τιμή είναι απλώς ημερήσια × ημέρες, ώστε να καλυφθούν
           // τα υποχρεωτικά πεδία. Ο πλήρης υπολογισμός έρχεται στο Βήμα 2.
           dailyRate,

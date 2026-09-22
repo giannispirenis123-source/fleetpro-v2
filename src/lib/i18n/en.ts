@@ -236,6 +236,14 @@ export const en: Dictionary = {
       "The record becomes a booking straight away and the vehicle is reserved immediately.",
     rentalModeREQUESTHelp:
       "The record is filed as a pending request; the vehicle is reserved only once it is approved.",
+    prepTime: "Vehicle turnaround time",
+    prepTimeHelp:
+      "The time after a return until the vehicle is ready for the next booking: cleaning, inspection, preparation, delivery to the customer. Applies to every vehicle in the company.",
+    prepTimeHours: "Hours",
+    prepTimeMinutes: "Minutes",
+    prepTimeCurrent: "Current setting",
+    prepTimeNone: "No turnaround time",
+    prepTimeSave: "Save",
     saved: "Saved",
     errorSave: "Could not save",
     errorConnection: "Connection error",
@@ -265,8 +273,11 @@ export const en: Dictionary = {
     selectCustomer: "— Select a customer —",
     vehicle: "Vehicle",
     selectVehicle: "— Select a vehicle —",
-    pickupDate: "Pick-up",
-    returnDate: "Return",
+    pickupDate: "Pick-up date",
+    pickupTime: "Pick-up time",
+    returnDate: "Return date",
+    returnTime: "Return time",
+    noTime: "no time",
     status: "Status",
     notes: "Notes",
     edit: "Edit",
@@ -276,6 +287,7 @@ export const en: Dictionary = {
     priceNote:
       "The price is provisionally daily rate × days. Extras and discounts come in the next step.",
     errorMissing: "Select a customer and a vehicle",
+    errorMissingTime: "Enter a pick-up time and a return time",
     errorSave: "Could not save",
     errorConnection: "Connection error",
     cancel: "Cancel",
@@ -286,6 +298,19 @@ export const en: Dictionary = {
       "The record moves to Cancelled and the vehicle is released. Its history is kept.",
     confirmCancel: "Cancel record",
     cancelling: "Cancelling…",
+    conflictTitle: "The vehicle is not available",
+    conflictLead:
+      "This record clashes with the following bookings for the same vehicle:",
+    conflictOverlap: "Overlaps the rental",
+    conflictPrep: "Falls inside the turnaround time",
+    conflictReturnAt: "Returned",
+    conflictReadyAt: "Ready",
+    conflictAdminNote:
+      "As an administrator you can approve it and go ahead anyway.",
+    conflictStaffNote:
+      "An administrator has to approve this. Change the times or ask for approval.",
+    conflictApprove: "Approve and save",
+    conflictBack: "Change the times",
   },
 
   chargeType: {

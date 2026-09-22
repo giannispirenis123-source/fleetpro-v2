@@ -11,6 +11,8 @@ import {
   Car,
   User,
   ArrowRight,
+  AlertTriangle,
+  Timer,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -18,8 +20,11 @@ import {
   BOOKING_STATUS_CLASS,
   STATUS_TRANSITIONS,
   countDays,
+  readyAt,
+  type BookingConflict,
   type BookingDTO,
 } from "@/lib/bookings";
+import { formatPrepTime } from "@/lib/prepTime";
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
@@ -35,6 +40,23 @@ const shortDate = (iso: string, locale: string) =>
     day: "2-digit",
     month: "short",
   }).format(new Date(`${iso}T00:00:00.000Z`));
+
+/** "12 Οκτ 10:30" — η ώρα μπαίνει μόνο αν υπάρχει. */
+const dateWithTime = (iso: string, time: string | null, locale: string) =>
+  time ? `${shortDate(iso, locale)} ${time}` : shortDate(iso, locale);
+
+/** Οι ISO στιγμές του server σε "12 Οκτ 10:30" της τοπικής μορφής. */
+const stampFromIso = (iso: string, locale: string) =>
+  new Intl.DateTimeFormat(INTL_LOCALE[locale] ?? "el-GR", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    // 24ωρη μορφή: οι ώρες αποθηκεύονται ως "HH:mm" και οι κρατήσεις
+    // διαβάζονται ευκολότερα χωρίς π.μ./μ.μ.
+    hourCycle: "h23",
+    timeZone: "UTC",
+  }).format(new Date(iso));
 
 interface Option {
   id: string;
@@ -53,11 +75,16 @@ const FILTERS: StatusFilter[] = [
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** Τυπική ώρα γραφείου, ώστε να μη χρειάζεται πληκτρολόγηση στη συνηθισμένη περίπτωση. */
+const DEFAULT_TIME = "10:00";
+
 const emptyForm = (): FormState => ({
   customerId: "",
   vehicleId: "",
   pickupDate: today(),
+  pickupTime: DEFAULT_TIME,
   returnDate: today(),
+  returnTime: DEFAULT_TIME,
   status: "PENDING",
   notes: "",
 });
@@ -66,16 +93,22 @@ interface FormState {
   customerId: string;
   vehicleId: string;
   pickupDate: string;
+  pickupTime: string;
   returnDate: string;
+  returnTime: string;
   status: string;
   notes: string;
 }
 
+// Οι παλιές κρατήσεις δεν έχουν ώρες· τα πεδία ανοίγουν κενά και η φόρμα
+// τις απαιτεί πριν την αποθήκευση.
 const formFromBooking = (b: BookingDTO): FormState => ({
   customerId: b.customerId,
   vehicleId: b.vehicleId,
   pickupDate: b.pickupDate,
+  pickupTime: b.pickupTime ?? "",
   returnDate: b.returnDate,
+  returnTime: b.returnTime ?? "",
   status: b.status,
   notes: b.notes ?? "",
 });
@@ -85,18 +118,22 @@ export default function BookingsClient({
   customers,
   vehicles,
   rentalMode,
+  prepMinutes,
   role,
 }: {
   initialBookings: BookingDTO[];
   customers: Option[];
   vehicles: Option[];
   rentalMode: string;
+  prepMinutes: number;
   role: string;
 }) {
   const tr = useT();
   const locale = useLocale();
 
   const canManage = role === "COMPANY_ADMIN" || role === "STAFF";
+  // Μόνο ο διαχειριστής μπορεί να εγκρίνει κράτηση που συγκρούεται.
+  const isAdmin = role === "COMPANY_ADMIN";
   const isRequestMode = rentalMode === "REQUEST";
 
   // Η ίδια ορολογία παντού: «Κράτηση» ή «Αίτημα». Οι φράσεις είναι πλήρεις
@@ -202,6 +239,7 @@ export default function BookingsClient({
               locale={locale}
               tr={tr}
               recordWord={recordWord}
+              prepMinutes={prepMinutes}
               canManage={canManage}
               onEdit={() => setEditing(b)}
               onCancel={() => setCancelling(b)}
@@ -214,9 +252,12 @@ export default function BookingsClient({
         <BookingModal
           mode="create"
           tr={tr}
+          locale={locale}
           customers={customers}
           vehicles={vehicles}
           isRequestMode={isRequestMode}
+          isAdmin={isAdmin}
+          prepMinutes={prepMinutes}
           recordWord={recordWord}
           onClose={() => setShowCreate(false)}
           onSaved={(booking) => {
@@ -231,9 +272,12 @@ export default function BookingsClient({
           mode="edit"
           booking={editing}
           tr={tr}
+          locale={locale}
           customers={customers}
           vehicles={vehicles}
           isRequestMode={isRequestMode}
+          isAdmin={isAdmin}
+          prepMinutes={prepMinutes}
           recordWord={recordWord}
           onClose={() => setEditing(null)}
           onSaved={(booking) => {
@@ -267,6 +311,7 @@ function BookingCard({
   locale,
   tr,
   recordWord,
+  prepMinutes,
   canManage,
   onEdit,
   onCancel,
@@ -275,11 +320,22 @@ function BookingCard({
   locale: string;
   tr: (key: string) => string;
   recordWord: string;
+  prepMinutes: number;
   canManage: boolean;
   onEdit: () => void;
   onCancel: () => void;
 }) {
   const closed = b.status === "CANCELLED" || b.status === "COMPLETED";
+
+  // Πότε το όχημα είναι ξανά ελεύθερο. Το δείχνουμε μόνο όταν η κράτηση
+  // κρατά ακόμη το όχημα και η εταιρία έχει ορίσει χρόνο προετοιμασίας.
+  const showReady = !closed && prepMinutes > 0;
+  const readyStamp = showReady
+    ? stampFromIso(
+        new Date(readyAt(b.returnDate, b.returnTime, prepMinutes)).toISOString(),
+        locale
+      )
+    : null;
 
   return (
     <div className="dash-vehicle">
@@ -310,10 +366,18 @@ function BookingCard({
           <Car size={13} /> {b.vehicleName} · {b.vehiclePlate}
         </span>
         <span>
-          <CalendarDays size={13} /> {shortDate(b.pickupDate, locale)}{" "}
-          <ArrowRight size={11} /> {shortDate(b.returnDate, locale)} ({b.totalDays}{" "}
+          <CalendarDays size={13} />{" "}
+          {dateWithTime(b.pickupDate, b.pickupTime, locale)}{" "}
+          <ArrowRight size={11} />{" "}
+          {dateWithTime(b.returnDate, b.returnTime, locale)} ({b.totalDays}{" "}
           {b.totalDays === 1 ? tr("bookings.dayOne") : tr("bookings.days")})
         </span>
+        {readyStamp && (
+          <span className="dash-booking-ready">
+            <Timer size={13} /> {tr("bookings.conflictReadyAt")} {readyStamp} ·{" "}
+            {formatPrepTime(prepMinutes, locale)}
+          </span>
+        )}
       </div>
 
       <div className="dash-vehicle-foot">
@@ -353,9 +417,12 @@ function BookingModal({
   mode,
   booking,
   tr,
+  locale,
   customers,
   vehicles,
   isRequestMode,
+  isAdmin,
+  prepMinutes,
   recordWord,
   onClose,
   onSaved,
@@ -363,9 +430,12 @@ function BookingModal({
   mode: "create" | "edit";
   booking?: BookingDTO;
   tr: (key: string) => string;
+  locale: string;
   customers: Option[];
   vehicles: Option[];
   isRequestMode: boolean;
+  isAdmin: boolean;
+  prepMinutes: number;
   recordWord: string;
   onClose: () => void;
   onSaved: (booking: BookingDTO) => void;
@@ -375,9 +445,14 @@ function BookingModal({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [conflicts, setConflicts] = useState<BookingConflict[] | null>(null);
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    // Κάθε αλλαγή στοιχείου ακυρώνει την προηγούμενη προειδοποίηση: οι
+    // συγκρούσεις αφορούσαν τις παλιές τιμές.
+    setConflicts(null);
     setForm((f) => ({ ...f, [key]: value }));
+  };
 
   // Στη δημιουργία με λειτουργία αιτημάτων η κατάσταση είναι κλειδωμένη σε
   // PENDING — ο server το επιβάλλει ούτως ή άλλως.
@@ -394,9 +469,17 @@ function BookingModal({
       ? countDays(form.pickupDate, form.returnDate)
       : null;
 
-  const handleSubmit = async () => {
+  /**
+   * override = true σημαίνει «ο διαχειριστής είδε τη σύγκρουση και την
+   * εγκρίνει». Ο server το ξαναελέγχει και το δέχεται μόνο από COMPANY_ADMIN.
+   */
+  const handleSubmit = async (override = false) => {
     if (!form.customerId || !form.vehicleId) {
       setError(tr("bookings.errorMissing"));
+      return;
+    }
+    if (!form.pickupTime || !form.returnTime) {
+      setError(tr("bookings.errorMissingTime"));
       return;
     }
 
@@ -408,10 +491,13 @@ function BookingModal({
         customerId: form.customerId,
         vehicleId: form.vehicleId,
         pickupDate: form.pickupDate,
+        pickupTime: form.pickupTime,
         returnDate: form.returnDate,
+        returnTime: form.returnTime,
         notes: form.notes.trim() || null,
       };
       if (!lockStatus) payload.status = form.status;
+      if (override) payload.override = true;
 
       const res = await fetch(
         mode === "create" ? "/api/bookings" : `/api/bookings/${booking!.id}`,
@@ -423,7 +509,13 @@ function BookingModal({
       );
       const data = await res.json();
 
+      if (res.status === 409) {
+        setConflicts((data.conflicts as BookingConflict[]) ?? []);
+        return;
+      }
+
       if (!res.ok) {
+        setConflicts(null);
         setError(data.message || tr("bookings.errorSave"));
         return;
       }
@@ -496,22 +588,43 @@ function BookingModal({
               </select>
             </label>
 
-            <label className="dash-field">
-              {tr("bookings.pickupDate")} *
-              <input
-                type="date"
-                value={form.pickupDate}
-                onChange={(e) => set("pickupDate", e.target.value)}
-              />
-            </label>
-            <label className="dash-field">
-              {tr("bookings.returnDate")} *
-              <input
-                type="date"
-                value={form.returnDate}
-                onChange={(e) => set("returnDate", e.target.value)}
-              />
-            </label>
+            {/* Ημερομηνία και ώρα μαζί, ώστε να διαβάζονται ως ένα ζεύγος. */}
+            <div className="dash-field--wide dash-when">
+              <label className="dash-field">
+                {tr("bookings.pickupDate")} *
+                <input
+                  type="date"
+                  value={form.pickupDate}
+                  onChange={(e) => set("pickupDate", e.target.value)}
+                />
+              </label>
+              <label className="dash-field">
+                {tr("bookings.pickupTime")} *
+                <input
+                  type="time"
+                  required
+                  value={form.pickupTime}
+                  onChange={(e) => set("pickupTime", e.target.value)}
+                />
+              </label>
+              <label className="dash-field">
+                {tr("bookings.returnDate")} *
+                <input
+                  type="date"
+                  value={form.returnDate}
+                  onChange={(e) => set("returnDate", e.target.value)}
+                />
+              </label>
+              <label className="dash-field">
+                {tr("bookings.returnTime")} *
+                <input
+                  type="time"
+                  required
+                  value={form.returnTime}
+                  onChange={(e) => set("returnTime", e.target.value)}
+                />
+              </label>
+            </div>
 
             <label className="dash-field">
               {tr("bookings.status")}
@@ -541,8 +654,52 @@ function BookingModal({
           {days !== null && (
             <p className="dash-form-note">
               {days} {days === 1 ? tr("bookings.dayOne") : tr("bookings.days")}
+              {prepMinutes > 0 && (
+                <>
+                  {" · "}
+                  {tr("settings.prepTime")}:{" "}
+                  {formatPrepTime(prepMinutes, locale)}
+                </>
+              )}
             </p>
           )}
+
+          {conflicts && conflicts.length > 0 && (
+            <div className="dash-conflict">
+              <p className="dash-conflict-title">
+                <AlertTriangle size={16} /> {tr("bookings.conflictTitle")}
+              </p>
+              <p className="dash-conflict-lead">{tr("bookings.conflictLead")}</p>
+              <ul className="dash-conflict-list">
+                {conflicts.map((c) => (
+                  <li key={c.bookingId}>
+                    <strong>{c.bookingNumber}</strong>{" "}
+                    <span
+                      className={`dash-status dash-status--${
+                        c.kind === "OVERLAP" ? "bad" : "warn"
+                      }`}
+                    >
+                      {c.kind === "OVERLAP"
+                        ? tr("bookings.conflictOverlap")
+                        : tr("bookings.conflictPrep")}
+                    </span>
+                    <span className="dash-conflict-times">
+                      {tr("bookings.conflictReturnAt")}{" "}
+                      {stampFromIso(c.returnAt, locale)} ·{" "}
+                      {tr("bookings.conflictReadyAt")}{" "}
+                      {stampFromIso(c.readyAt, locale)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="dash-conflict-note">
+                {isAdmin
+                  ? tr("bookings.conflictAdminNote")
+                  : tr("bookings.conflictStaffNote")}
+              </p>
+            </div>
+          )}
+
           {error && <div className="dash-form-error">{error}</div>}
           <p className="dash-form-note">{tr("bookings.priceNote")}</p>
         </div>
@@ -551,17 +708,31 @@ function BookingModal({
           <button className="dash-btn" onClick={onClose} disabled={loading}>
             {tr("bookings.cancel")}
           </button>
-          <button
-            className="dash-btn dash-btn--primary"
-            onClick={handleSubmit}
-            disabled={loading}
-          >
-            {loading
-              ? tr("bookings.saving")
-              : isRequestMode
-                ? tr("bookings.saveRequest")
-                : tr("bookings.saveBooking")}
-          </button>
+          {conflicts && conflicts.length > 0 ? (
+            isAdmin ? (
+              <button
+                className="dash-btn dash-btn--danger"
+                onClick={() => handleSubmit(true)}
+                disabled={loading}
+              >
+                {loading
+                  ? tr("bookings.saving")
+                  : tr("bookings.conflictApprove")}
+              </button>
+            ) : null
+          ) : (
+            <button
+              className="dash-btn dash-btn--primary"
+              onClick={() => handleSubmit()}
+              disabled={loading}
+            >
+              {loading
+                ? tr("bookings.saving")
+                : isRequestMode
+                  ? tr("bookings.saveRequest")
+                  : tr("bookings.saveBooking")}
+            </button>
+          )}
         </div>
       </div>
     </div>

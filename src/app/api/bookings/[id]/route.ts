@@ -5,25 +5,42 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { withAuth, ok, badRequest, notFound, serverError } from "@/lib/api";
+import {
+  withAuth,
+  ok,
+  badRequest,
+  conflict,
+  forbidden,
+  notFound,
+  serverError,
+} from "@/lib/api";
 import {
   BOOKING_STATUSES,
   STATUS_TRANSITIONS,
+  TIME_RE,
   countDays,
+  instantOf,
   toBookingDTO,
 } from "@/lib/bookings";
+import { checkVehicleConflicts } from "@/lib/bookingConflicts";
 
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Μορφή ημερομηνίας: YYYY-MM-DD");
 
+const isoTime = z.string().regex(TIME_RE, "Μορφή ώρας: HH:mm");
+
 const updateBookingSchema = z.object({
   customerId: z.string().min(1).optional(),
   vehicleId: z.string().min(1).optional(),
   pickupDate: isoDate.optional(),
+  pickupTime: isoTime.optional(),
   returnDate: isoDate.optional(),
+  returnTime: isoTime.optional(),
   status: z.enum(BOOKING_STATUSES).optional(),
   notes: z.union([z.string(), z.null()]).optional(),
+  /** Ρητή έγκριση διαχειριστή για να περάσει παρά τη σύγκρουση. */
+  override: z.boolean().optional(),
 });
 
 const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -86,9 +103,11 @@ export const PATCH = withAuth(
 
       const pickup = data.pickupDate ?? current.pickupDate.toISOString().slice(0, 10);
       const ret = data.returnDate ?? current.returnDate.toISOString().slice(0, 10);
+      const pickupTime = data.pickupTime ?? current.pickupTime;
+      const returnTime = data.returnTime ?? current.returnTime;
 
-      if (ret < pickup) {
-        return badRequest("Η επιστροφή δεν μπορεί να προηγείται της παραλαβής");
+      if (instantOf(ret, returnTime, "end") <= instantOf(pickup, pickupTime, "start")) {
+        return badRequest("Η επιστροφή πρέπει να είναι μετά την παραλαβή");
       }
 
       // Αν αλλάζει πελάτης ή όχημα, πρέπει να ανήκουν στην ίδια εταιρία.
@@ -110,6 +129,44 @@ export const PATCH = withAuth(
         dailyRate = Number(vehicle.dailyRate);
       }
 
+      // Το όχημα που θα κρατά η κράτηση μετά την ενημέρωση.
+      const vehicleId = data.vehicleId ?? current.vehicleId;
+
+      // Έλεγχος σύγκρουσης μόνο όσο η κράτηση διεκδικεί το όχημα. Αν
+      // ακυρώνεται ή ολοκληρώνεται, το αφήνει ελεύθερο και δεν μας νοιάζει.
+      const nextStatus = data.status ?? current.status;
+      const claimsVehicle = nextStatus !== "CANCELLED" && nextStatus !== "COMPLETED";
+
+      if (claimsVehicle) {
+        const tenant = await db.tenant.findUnique({
+          where: { id: session.tenantId! },
+          select: { prepTimeMinutes: true },
+        });
+
+        const conflicts = await checkVehicleConflicts({
+          tenantId: session.tenantId!,
+          vehicleId,
+          excludeBookingId: current.id,
+          pickupDate: pickup,
+          pickupTime,
+          returnDate: ret,
+          returnTime,
+          prepMinutes: tenant?.prepTimeMinutes ?? 0,
+        });
+
+        if (conflicts.length > 0) {
+          if (!data.override) {
+            return conflict(
+              "Το όχημα δεν είναι διαθέσιμο σε αυτό το διάστημα",
+              conflicts
+            );
+          }
+          if (session.role !== "COMPANY_ADMIN") {
+            return forbidden("Η παράκαμψη απαιτεί έγκριση διαχειριστή");
+          }
+        }
+      }
+
       const totalDays = countDays(pickup, ret);
       const subtotal = dailyRate * totalDays;
 
@@ -119,7 +176,9 @@ export const PATCH = withAuth(
           ...(data.customerId !== undefined && { customerId: data.customerId }),
           ...(data.vehicleId !== undefined && { vehicleId: data.vehicleId }),
           ...(data.pickupDate !== undefined && { pickupDate: toDate(pickup) }),
+          ...(data.pickupTime !== undefined && { pickupTime: data.pickupTime }),
           ...(data.returnDate !== undefined && { returnDate: toDate(ret) }),
+          ...(data.returnTime !== undefined && { returnTime: data.returnTime }),
           ...(data.status !== undefined && { status: data.status }),
           ...(data.notes !== undefined && { notes: data.notes?.trim() || null }),
           dailyRate,

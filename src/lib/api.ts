@@ -32,6 +32,14 @@ export function forbidden(message = "Δεν έχετε πρόσβαση σε α�
   return NextResponse.json({ success: false, message }, { status: 403 });
 }
 
+/** 409 — η ενέργεια συγκρούεται με την τρέχουσα κατάσταση και θέλει έγκριση. */
+export function conflict(message: string, conflicts?: unknown) {
+  return NextResponse.json(
+    { success: false, message, conflicts },
+    { status: 409 }
+  );
+}
+
 export function notFound(message = "Δεν βρέθηκε") {
   return NextResponse.json({ success: false, message }, { status: 404 });
 }

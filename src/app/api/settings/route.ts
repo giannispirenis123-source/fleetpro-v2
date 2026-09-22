@@ -6,12 +6,32 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { withAuth, ok, badRequest, notFound, serverError } from "@/lib/api";
+import { MAX_PREP_MINUTES } from "@/lib/prepTime";
 
 const RENTAL_MODES = ["BOOKING", "REQUEST"] as const;
 
-const updateSettingsSchema = z.object({
-  rentalMode: z.enum(RENTAL_MODES),
-});
+const SELECT = {
+  id: true,
+  name: true,
+  rentalMode: true,
+  prepTimeMinutes: true,
+} as const;
+
+// Κάθε πεδίο προαιρετικό, αλλά τουλάχιστον ένα πρέπει να δοθεί: η σελίδα
+// ρυθμίσεων στέλνει μόνο αυτό που άλλαξε.
+const updateSettingsSchema = z
+  .object({
+    rentalMode: z.enum(RENTAL_MODES).optional(),
+    prepTimeMinutes: z
+      .number()
+      .int("Ο χρόνος προετοιμασίας μετριέται σε ακέραια λεπτά")
+      .min(0, "Ο χρόνος προετοιμασίας δεν μπορεί να είναι αρνητικός")
+      .max(MAX_PREP_MINUTES, "Ο χρόνος προετοιμασίας δεν μπορεί να ξεπερνά τις 24 ώρες")
+      .optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "Δεν δόθηκε καμία ρύθμιση προς αλλαγή",
+  });
 
 // GET /api/settings
 export const GET = withAuth(
@@ -19,7 +39,7 @@ export const GET = withAuth(
     try {
       const tenant = await db.tenant.findUnique({
         where: { id: session.tenantId! },
-        select: { id: true, name: true, rentalMode: true },
+        select: SELECT,
       });
       if (!tenant) return notFound("Η εταιρία δεν βρέθηκε");
 
@@ -32,7 +52,7 @@ export const GET = withAuth(
   ["COMPANY_ADMIN", "STAFF"]
 );
 
-// PATCH /api/settings — αλλαγή τρόπου λειτουργίας
+// PATCH /api/settings — τρόπος λειτουργίας και χρόνος προετοιμασίας
 export const PATCH = withAuth(
   async (req, session) => {
     try {
@@ -45,8 +65,15 @@ export const PATCH = withAuth(
 
       const tenant = await db.tenant.update({
         where: { id: session.tenantId! },
-        data: { rentalMode: parsed.data.rentalMode },
-        select: { id: true, name: true, rentalMode: true },
+        data: {
+          ...(parsed.data.rentalMode !== undefined && {
+            rentalMode: parsed.data.rentalMode,
+          }),
+          ...(parsed.data.prepTimeMinutes !== undefined && {
+            prepTimeMinutes: parsed.data.prepTimeMinutes,
+          }),
+        },
+        select: SELECT,
       });
 
       return ok(tenant);

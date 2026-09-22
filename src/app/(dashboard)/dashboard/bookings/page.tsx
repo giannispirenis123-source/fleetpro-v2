@@ -35,7 +35,7 @@ export default async function BookingsPage() {
     }),
     db.tenant.findUnique({
       where: { id: tenantId },
-      select: { rentalMode: true },
+      select: { rentalMode: true, prepTimeMinutes: true },
     }),
   ]);
 
@@ -51,6 +51,7 @@ export default async function BookingsPage() {
         label: `${v.brand} ${v.model} · ${v.plate}`,
       }))}
       rentalMode={tenant?.rentalMode ?? "BOOKING"}
+      prepMinutes={tenant?.prepTimeMinutes ?? 0}
       role={session.role}
     />
   );

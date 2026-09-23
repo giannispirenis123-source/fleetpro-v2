@@ -28,6 +28,7 @@ import {
 } from "@/lib/bookings";
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
 import { priceBooking } from "@/lib/bookingPricing";
+import { applyDiscountUsage } from "@/lib/discounts";
 import { DISCOUNT_MODES } from "@/lib/pricing";
 
 const isoDate = z
@@ -179,6 +180,7 @@ export const POST = withAuth(
       const priced = await priceBooking({
         tenantId: session.tenantId!,
         vehicleId: vehicle.id,
+        customerId: customer.id,
         totalDays,
         extraIds: data.extraIds ?? [],
         discountMode: data.discountMode ?? "NONE",
@@ -218,6 +220,14 @@ export const POST = withAuth(
           vehicle: { select: { brand: true, model: true, plate: true } },
           customer: { select: { firstName: true, lastName: true } },
         },
+      });
+
+      // Η χρήση του κωδικού μετράει μόνο όταν η κράτηση όντως αποθηκεύτηκε
+      // με αυτόν — ποτέ σε απλή προεπισκόπηση ή απορριφθέν αίτημα.
+      await applyDiscountUsage({
+        tenantId: session.tenantId!,
+        previousCode: null,
+        nextCode: priced.discountCode,
       });
 
       // Δέσμευση οχήματος μόνο όταν η κράτηση ξεκινά ήδη δεσμευτική.

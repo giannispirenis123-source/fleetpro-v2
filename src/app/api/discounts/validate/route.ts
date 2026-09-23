@@ -30,13 +30,16 @@ export async function POST(req: NextRequest) {
       return badRequest("Μη έγκυρα δεδομένα");
     }
 
-    const { code, tenantId, totalAmount, totalDays } = parsed.data;
+    const { code, tenantId, totalAmount, totalDays, customerId } = parsed.data;
 
+    // Ο customerId είναι απαραίτητος για κωδικούς δεμένους σε πελάτη: χωρίς
+    // αυτόν ο έλεγχος απορρίπτει, όπως και στην αποθήκευση της κράτησης.
     const result = await resolveDiscountCode({
       tenantId,
       code,
       baseAmount: totalAmount ?? 0,
       totalDays,
+      customerId,
     });
 
     if (!result.ok) {

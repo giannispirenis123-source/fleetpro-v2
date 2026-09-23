@@ -1093,3 +1093,23 @@
   border-style: dashed;
 }
 .dash-breakdown--card .dash-price-row { font-size: 12px; padding: 2px 0; }
+
+/* ---------- Εκπτώσεις ---------- */
+.dash-code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
+.dash-discount-value {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ok-fg);
+}
+.dash-usage { font-size: 12.5px; color: var(--text-3); }
+.dash-usage strong { color: var(--text); }
+.dash-usage small { color: var(--text-4); }
+.dash-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}

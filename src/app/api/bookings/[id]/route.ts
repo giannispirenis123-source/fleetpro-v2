@@ -24,6 +24,7 @@ import {
 } from "@/lib/bookings";
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
 import { priceBooking } from "@/lib/bookingPricing";
+import { applyDiscountUsage } from "@/lib/discounts";
 import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
 
 const isoDate = z
@@ -187,6 +188,7 @@ export const PATCH = withAuth(
       const priced = await priceBooking({
         tenantId: session.tenantId!,
         vehicleId,
+        customerId: data.customerId ?? current.customerId,
         totalDays,
         extraIds,
         discountMode,
@@ -220,6 +222,21 @@ export const PATCH = withAuth(
           extras: priced.snapshot as never,
         },
         include: withRelations,
+      });
+
+      // Μεταφορά χρήσης: μείωση του παλιού κωδικού, αύξηση του νέου. Αν
+      // είναι ο ίδιος, δεν γίνεται τίποτα.
+      //
+      // ΜΟΝΟ η ακύρωση ελευθερώνει τη χρήση. Μια ολοκληρωμένη κράτηση
+      // όντως χρησιμοποίησε την έκπτωση και συνεχίζει να τη μετράει.
+      // Μια ήδη ακυρωμένη κράτηση έχει ήδη επιστρέψει τη χρήση της, οπότε
+      // δεν την αφαιρούμε δεύτερη φορά.
+      await applyDiscountUsage({
+        tenantId: session.tenantId!,
+        previousCode:
+          current.status === "CANCELLED" ? null : current.discountCode,
+        nextCode:
+          booking.status === "CANCELLED" ? null : booking.discountCode,
       });
 
       // Ενημερώνουμε και το παλιό όχημα, αν άλλαξε.
@@ -259,6 +276,13 @@ export const DELETE = withAuth(
         where: { id: current.id },
         data: { status: "CANCELLED" },
         include: withRelations,
+      });
+
+      // Η ακύρωση ελευθερώνει τη χρήση του κωδικού.
+      await applyDiscountUsage({
+        tenantId: session.tenantId!,
+        previousCode: current.discountCode,
+        nextCode: null,
       });
 
       await syncVehicleStatus(booking.vehicleId, session.tenantId!);

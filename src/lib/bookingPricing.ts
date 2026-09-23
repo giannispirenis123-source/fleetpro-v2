@@ -22,6 +22,8 @@ import {
 export interface PricingRequest {
   tenantId: string;
   vehicleId: string;
+  /** Χρειάζεται για κωδικούς δεμένους σε συγκεκριμένο πελάτη. */
+  customerId: string;
   totalDays: number;
   extraIds: string[];
   discountMode: DiscountMode;
@@ -103,6 +105,7 @@ export async function priceBooking(
       code,
       baseAmount: base.beforeDiscount,
       totalDays: req.totalDays,
+      customerId: req.customerId,
     });
 
     if (!resolved.ok) return { ok: false, message: resolved.message };

@@ -2,8 +2,10 @@ export const dynamic = "force-dynamic";
 // src/app/api/bookings/route.ts
 // Κρατήσεις ανά tenant — λίστα και δημιουργία.
 //
-// ΔΕΝ γίνεται ακόμη: υπολογισμός τιμής με extras/εκπτώσεις, αυτόματο
-// τιμολόγιο. Έρχονται στο Βήμα 2.
+// Η τιμή ΔΕΝ έρχεται ποτέ από τη φόρμα: ο client στέλνει μόνο ids και
+// επιλογές, και το priceBooking() την ξαναβγάζει από τη βάση.
+//
+// ΔΕΝ γίνεται ακόμη: ΦΠΑ και αυτόματο τιμολόγιο — σελίδα Τιμολογίων.
 
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -25,6 +27,8 @@ import {
   toBookingDTO,
 } from "@/lib/bookings";
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
+import { priceBooking } from "@/lib/bookingPricing";
+import { DISCOUNT_MODES } from "@/lib/pricing";
 
 const isoDate = z
   .string()
@@ -43,6 +47,13 @@ const createBookingSchema = z.object({
   notes: z.union([z.string(), z.null()]).optional(),
   /** Ρητή έγκριση διαχειριστή για να περάσει παρά τη σύγκρουση. */
   override: z.boolean().optional(),
+
+  /* ── Τιμολόγηση: μόνο επιλογές, ποτέ ποσά ──
+     Τυχόν total/subtotal στο body τα πετάει το zod — δεν διαβάζονται. */
+  extraIds: z.array(z.string().min(1)).optional(),
+  discountMode: z.enum(DISCOUNT_MODES).optional(),
+  discountValue: z.number().min(0).optional(),
+  discountCode: z.union([z.string(), z.null()]).optional(),
 });
 
 const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -163,8 +174,21 @@ export const POST = withAuth(
         tenant.rentalMode === "REQUEST" ? "PENDING" : data.status ?? "PENDING";
 
       const totalDays = countDays(data.pickupDate, data.returnDate);
-      const dailyRate = Number(vehicle.dailyRate);
-      const subtotal = dailyRate * totalDays;
+
+      // Όλα τα ποσά ξαναϋπολογίζονται από τη βάση.
+      const priced = await priceBooking({
+        tenantId: session.tenantId!,
+        vehicleId: vehicle.id,
+        totalDays,
+        extraIds: data.extraIds ?? [],
+        discountMode: data.discountMode ?? "NONE",
+        discountValue: data.discountValue,
+        discountCode: data.discountCode,
+      });
+
+      if (!priced.ok) return badRequest(priced.message);
+
+      const { breakdown } = priced;
 
       const booking = await db.booking.create({
         data: {
@@ -177,12 +201,17 @@ export const POST = withAuth(
           pickupTime: data.pickupTime,
           returnDate: toDate(data.returnDate),
           returnTime: data.returnTime,
-          // Βήμα 1: η τιμή είναι απλώς ημερήσια × ημέρες, ώστε να καλυφθούν
-          // τα υποχρεωτικά πεδία. Ο πλήρης υπολογισμός έρχεται στο Βήμα 2.
-          dailyRate,
-          totalDays,
-          subtotal,
-          total: subtotal,
+          dailyRate: priced.dailyRate,
+          totalDays: breakdown.totalDays,
+          subtotal: breakdown.subtotal,
+          extrasTotal: breakdown.extrasTotal,
+          insuranceCost: breakdown.insuranceCost,
+          discountAmount: breakdown.discountAmount,
+          discountCode: priced.discountCode,
+          total: breakdown.total,
+          // Snapshot: αν αλλάξει αργότερα η τιμή ενός πρόσθετου, η παλιά
+          // κράτηση μένει όπως καταχωρήθηκε.
+          extras: priced.snapshot as never,
           notes: data.notes?.trim() || null,
         },
         include: {

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { toBookingDTO } from "@/lib/bookings";
+import { toExtraDTO } from "@/lib/extras";
 import BookingsClient from "./BookingsClient";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export default async function BookingsPage() {
 
   const tenantId = session.tenantId;
 
-  const [bookings, customers, vehicles, tenant] = await Promise.all([
+  const [bookings, customers, vehicles, extras, tenant] = await Promise.all([
     db.booking.findMany({
       where: { tenantId },
       orderBy: { createdAt: "desc" },
@@ -31,7 +32,18 @@ export default async function BookingsPage() {
     db.vehicle.findMany({
       where: { tenantId, isActive: true },
       orderBy: [{ brand: "asc" }, { model: "asc" }],
-      select: { id: true, brand: true, model: true, plate: true },
+      select: {
+        id: true,
+        brand: true,
+        model: true,
+        plate: true,
+        dailyRate: true,
+      },
+    }),
+    // Μόνο τα ενεργά πρόσθετα προσφέρονται σε νέα κράτηση.
+    db.extra.findMany({
+      where: { tenantId, isActive: true },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
     }),
     db.tenant.findUnique({
       where: { id: tenantId },
@@ -49,7 +61,11 @@ export default async function BookingsPage() {
       vehicles={vehicles.map((v) => ({
         id: v.id,
         label: `${v.brand} ${v.model} · ${v.plate}`,
+        // Decimal → number πριν περάσει σε client component.
+        dailyRate: Number(v.dailyRate),
       }))}
+      extras={extras.map(toExtraDTO)}
+      tenantId={tenantId}
       rentalMode={tenant?.rentalMode ?? "BOOKING"}
       prepMinutes={tenant?.prepTimeMinutes ?? 0}
       role={session.role}

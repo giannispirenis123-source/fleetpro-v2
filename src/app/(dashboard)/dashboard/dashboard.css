@@ -995,3 +995,101 @@
   font-weight: 600;
   color: var(--text-2);
 }
+
+/* ---------- Τιμολόγηση κράτησης ---------- */
+.dash-price-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.dash-price-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 11px;
+}
+
+.dash-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 9px;
+}
+.dash-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-2);
+  transition: border-color 0.15s, background 0.15s;
+}
+.dash-pick:hover { border-color: var(--border-strong); background: var(--hover); }
+.dash-pick.active {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.07);
+  color: var(--text);
+}
+.dash-pick input { flex-shrink: 0; }
+.dash-pick-name { flex: 1; min-width: 0; font-weight: 600; }
+.dash-pick-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-weight: 700;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.dash-pick-price small { font-weight: 500; font-size: 10.5px; color: var(--text-4); }
+
+.dash-discount-modes { margin-bottom: 12px; width: fit-content; max-width: 100%; }
+
+.dash-code-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.dash-code-row .dash-field { flex: 1; min-width: 180px; }
+.dash-code-ok { margin-top: 10px; }
+
+/* ---------- Ανάλυση τιμής ---------- */
+.dash-breakdown {
+  margin-top: 18px;
+  padding: 14px 15px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+.dash-price-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+  padding: 4px 0;
+}
+.dash-price-row.sub {
+  font-size: 12px;
+  color: var(--text-4);
+  padding-left: 12px;
+}
+.dash-price-row.minus { color: var(--ok-fg); }
+.dash-price-row.total {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Στην κάρτα η ανάλυση είναι πιο διακριτική. */
+.dash-breakdown--card {
+  margin-top: 0;
+  padding: 10px 11px;
+  background: none;
+  border-style: dashed;
+}
+.dash-breakdown--card .dash-price-row { font-size: 12px; padding: 2px 0; }

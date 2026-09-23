@@ -23,6 +23,8 @@ import {
   toBookingDTO,
 } from "@/lib/bookings";
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
+import { priceBooking } from "@/lib/bookingPricing";
+import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
 
 const isoDate = z
   .string()
@@ -41,6 +43,12 @@ const updateBookingSchema = z.object({
   notes: z.union([z.string(), z.null()]).optional(),
   /** Ρητή έγκριση διαχειριστή για να περάσει παρά τη σύγκρουση. */
   override: z.boolean().optional(),
+
+  /* ── Τιμολόγηση: μόνο επιλογές, ποτέ ποσά ── */
+  extraIds: z.array(z.string().min(1)).optional(),
+  discountMode: z.enum(DISCOUNT_MODES).optional(),
+  discountValue: z.number().min(0).optional(),
+  discountCode: z.union([z.string(), z.null()]).optional(),
 });
 
 const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -119,16 +127,6 @@ export const PATCH = withAuth(
         if (!customer) return badRequest("Ο πελάτης δεν βρέθηκε");
       }
 
-      let dailyRate = Number(current.dailyRate);
-      if (data.vehicleId && data.vehicleId !== current.vehicleId) {
-        const vehicle = await db.vehicle.findFirst({
-          where: { id: data.vehicleId, tenantId: session.tenantId! },
-          select: { id: true, dailyRate: true },
-        });
-        if (!vehicle) return badRequest("Το όχημα δεν βρέθηκε");
-        dailyRate = Number(vehicle.dailyRate);
-      }
-
       // Το όχημα που θα κρατά η κράτηση μετά την ενημέρωση.
       const vehicleId = data.vehicleId ?? current.vehicleId;
 
@@ -168,7 +166,37 @@ export const PATCH = withAuth(
       }
 
       const totalDays = countDays(pickup, ret);
-      const subtotal = dailyRate * totalDays;
+
+      // Ό,τι δεν στάλθηκε μένει όπως ήταν — τα πρόσθετα διαβάζονται από το
+      // snapshot της κράτησης, ώστε μια απλή αλλαγή ημερομηνίας να μην τα χάνει.
+      const extraIds =
+        data.extraIds ?? readExtrasSnapshot(current.extras).map((l) => l.id);
+
+      const discountMode =
+        data.discountMode ??
+        (current.discountCode
+          ? "CODE"
+          : Number(current.discountAmount) > 0
+            ? "AMOUNT"
+            : "NONE");
+
+      const discountValue =
+        data.discountValue ??
+        (discountMode === "AMOUNT" ? Number(current.discountAmount) : undefined);
+
+      const priced = await priceBooking({
+        tenantId: session.tenantId!,
+        vehicleId,
+        totalDays,
+        extraIds,
+        discountMode,
+        discountValue,
+        discountCode: data.discountCode ?? current.discountCode,
+      });
+
+      if (!priced.ok) return badRequest(priced.message);
+
+      const { breakdown } = priced;
 
       const booking = await db.booking.update({
         where: { id: current.id },
@@ -181,10 +209,15 @@ export const PATCH = withAuth(
           ...(data.returnTime !== undefined && { returnTime: data.returnTime }),
           ...(data.status !== undefined && { status: data.status }),
           ...(data.notes !== undefined && { notes: data.notes?.trim() || null }),
-          dailyRate,
-          totalDays,
-          subtotal,
-          total: subtotal,
+          dailyRate: priced.dailyRate,
+          totalDays: breakdown.totalDays,
+          subtotal: breakdown.subtotal,
+          extrasTotal: breakdown.extrasTotal,
+          insuranceCost: breakdown.insuranceCost,
+          discountAmount: breakdown.discountAmount,
+          discountCode: priced.discountCode,
+          total: breakdown.total,
+          extras: priced.snapshot as never,
         },
         include: withRelations,
       });

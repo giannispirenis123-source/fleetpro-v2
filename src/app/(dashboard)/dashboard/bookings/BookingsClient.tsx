@@ -13,6 +13,9 @@ import {
   ArrowRight,
   AlertTriangle,
   Timer,
+  Tag,
+  ShieldCheck,
+  PackagePlus,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -25,15 +28,25 @@ import {
   type BookingDTO,
 } from "@/lib/bookings";
 import { formatPrepTime } from "@/lib/prepTime";
+import type { ExtraDTO } from "@/lib/extras";
+import {
+  computePrice,
+  round2,
+  type DiscountMode,
+  type PriceBreakdown,
+} from "@/lib/pricing";
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
+// Λεπτά μόνο όταν υπάρχουν: «420 €» αλλά «12,50 €». Σε ανάλυση τιμής η
+// στρογγυλοποίηση στο ευρώ θα έκανε τις γραμμές να μην αθροίζουν στο σύνολο.
 const eur = (n: number, locale: string) =>
   new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR", {
     style: "currency",
     currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(round2(n));
 
 const shortDate = (iso: string, locale: string) =>
   new Intl.DateTimeFormat(INTL_LOCALE[locale] ?? "el-GR", {
@@ -63,6 +76,10 @@ interface Option {
   label: string;
 }
 
+interface VehicleOption extends Option {
+  dailyRate: number;
+}
+
 type StatusFilter = "ALL" | (typeof BOOKING_STATUSES)[number];
 
 const FILTERS: StatusFilter[] = [
@@ -87,6 +104,11 @@ const emptyForm = (): FormState => ({
   returnTime: DEFAULT_TIME,
   status: "PENDING",
   notes: "",
+  extraIds: [],
+  insuranceId: "",
+  discountMode: "NONE",
+  discountValue: "",
+  discountCode: "",
 });
 
 interface FormState {
@@ -98,6 +120,13 @@ interface FormState {
   returnTime: string;
   status: string;
   notes: string;
+
+  /* ── Τιμολόγηση ── */
+  extraIds: string[];
+  insuranceId: string;
+  discountMode: DiscountMode;
+  discountValue: string;
+  discountCode: string;
 }
 
 // Οι παλιές κρατήσεις δεν έχουν ώρες· τα πεδία ανοίγουν κενά και η φόρμα
@@ -111,19 +140,33 @@ const formFromBooking = (b: BookingDTO): FormState => ({
   returnTime: b.returnTime ?? "",
   status: b.status,
   notes: b.notes ?? "",
+  // Τα πρόσθετα έρχονται από το snapshot της κράτησης.
+  extraIds: b.extras.filter((e) => e.type === "EXTRA").map((e) => e.id),
+  insuranceId: b.extras.find((e) => e.type === "INSURANCE")?.id ?? "",
+  discountMode: b.discountCode
+    ? "CODE"
+    : b.discountAmount > 0
+      ? "AMOUNT"
+      : "NONE",
+  discountValue: b.discountAmount > 0 ? String(b.discountAmount) : "",
+  discountCode: b.discountCode ?? "",
 });
 
 export default function BookingsClient({
   initialBookings,
   customers,
   vehicles,
+  extras,
+  tenantId,
   rentalMode,
   prepMinutes,
   role,
 }: {
   initialBookings: BookingDTO[];
   customers: Option[];
-  vehicles: Option[];
+  vehicles: VehicleOption[];
+  extras: ExtraDTO[];
+  tenantId: string;
   rentalMode: string;
   prepMinutes: number;
   role: string;
@@ -255,6 +298,8 @@ export default function BookingsClient({
           locale={locale}
           customers={customers}
           vehicles={vehicles}
+          extras={extras}
+          tenantId={tenantId}
           isRequestMode={isRequestMode}
           isAdmin={isAdmin}
           prepMinutes={prepMinutes}
@@ -275,6 +320,8 @@ export default function BookingsClient({
           locale={locale}
           customers={customers}
           vehicles={vehicles}
+          extras={extras}
+          tenantId={tenantId}
           isRequestMode={isRequestMode}
           isAdmin={isAdmin}
           prepMinutes={prepMinutes}
@@ -299,6 +346,32 @@ export default function BookingsClient({
         />
       )}
     </>
+  );
+}
+
+/** Μία γραμμή της ανάλυσης τιμής. */
+function PriceRow({
+  label,
+  value,
+  strong,
+  sub,
+  negative,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  sub?: boolean;
+  negative?: boolean;
+}) {
+  return (
+    <div
+      className={`dash-price-row${strong ? " total" : ""}${sub ? " sub" : ""}${
+        negative ? " minus" : ""
+      }`}
+    >
+      <span>{label}</span>
+      <span>{value}</span>
+    </div>
   );
 }
 
@@ -380,6 +453,40 @@ function BookingCard({
         )}
       </div>
 
+      {/* Ανάλυση τιμής — μόνο ό,τι έχει αξία, για να μη φουσκώνει η κάρτα. */}
+      <div className="dash-breakdown dash-breakdown--card">
+        <PriceRow
+          label={`${tr("bookings.priceSubtotal")} · ${b.totalDays} × ${eur(
+            b.dailyRate,
+            locale
+          )}`}
+          value={eur(b.subtotal, locale)}
+        />
+        {b.extrasTotal > 0 && (
+          <PriceRow
+            label={tr("bookings.priceExtras")}
+            value={eur(b.extrasTotal, locale)}
+          />
+        )}
+        {b.insuranceCost > 0 && (
+          <PriceRow
+            label={tr("bookings.priceInsurance")}
+            value={eur(b.insuranceCost, locale)}
+          />
+        )}
+        {b.discountAmount > 0 && (
+          <PriceRow
+            negative
+            label={
+              b.discountCode
+                ? `${tr("bookings.priceDiscount")} · ${b.discountCode}`
+                : tr("bookings.priceDiscount")
+            }
+            value={`−${eur(b.discountAmount, locale)}`}
+          />
+        )}
+      </div>
+
       <div className="dash-vehicle-foot">
         <span className="dash-vehicle-rate">{eur(b.total, locale)}</span>
         {canManage && (
@@ -420,6 +527,8 @@ function BookingModal({
   locale,
   customers,
   vehicles,
+  extras,
+  tenantId,
   isRequestMode,
   isAdmin,
   prepMinutes,
@@ -432,7 +541,9 @@ function BookingModal({
   tr: (key: string) => string;
   locale: string;
   customers: Option[];
-  vehicles: Option[];
+  vehicles: VehicleOption[];
+  extras: ExtraDTO[];
+  tenantId: string;
   isRequestMode: boolean;
   isAdmin: boolean;
   prepMinutes: number;
@@ -447,10 +558,21 @@ function BookingModal({
   const [error, setError] = useState("");
   const [conflicts, setConflicts] = useState<BookingConflict[] | null>(null);
 
+  /** Πεδία που μετακινούν τη βάση της έκπτωσης. */
+  const PRICE_KEYS: (keyof FormState)[] = [
+    "vehicleId",
+    "pickupDate",
+    "returnDate",
+    "extraIds",
+    "insuranceId",
+  ];
+
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     // Κάθε αλλαγή στοιχείου ακυρώνει την προηγούμενη προειδοποίηση: οι
     // συγκρούσεις αφορούσαν τις παλιές τιμές.
     setConflicts(null);
+    // Ο κωδικός υπολογίστηκε πάνω στην παλιά βάση — πρέπει να ξαναμπεί.
+    if (PRICE_KEYS.includes(key)) resetCode();
     setForm((f) => ({ ...f, [key]: value }));
   };
 
@@ -468,6 +590,98 @@ function BookingModal({
     form.pickupDate && form.returnDate && form.returnDate >= form.pickupDate
       ? countDays(form.pickupDate, form.returnDate)
       : null;
+
+  /* ── Τιμολόγηση ── */
+
+  const offeredExtras = extras.filter((e) => e.type === "EXTRA");
+  const offeredInsurance = extras.filter((e) => e.type === "INSURANCE");
+
+  // Το ποσό του κωδικού το δίνει ο server· εδώ το κρατάμε μόνο για την
+  // προεπισκόπηση. Ο server το ξαναϋπολογίζει στην αποθήκευση.
+  const [codeAmount, setCodeAmount] = useState(0);
+  const [codeMessage, setCodeMessage] = useState("");
+  const [codeError, setCodeError] = useState("");
+  const [checkingCode, setCheckingCode] = useState(false);
+
+  const selectedVehicle = vehicles.find((v) => v.id === form.vehicleId);
+
+  const chosenExtras = [
+    ...offeredExtras.filter((e) => form.extraIds.includes(e.id)),
+    ...offeredInsurance.filter((e) => e.id === form.insuranceId),
+  ];
+
+  const preview: PriceBreakdown = computePrice({
+    totalDays: days ?? 1,
+    dailyRate: selectedVehicle?.dailyRate ?? 0,
+    extras: chosenExtras,
+    discountMode: form.discountMode,
+    discountValue: Number(form.discountValue) || 0,
+    codeDiscountAmount: codeAmount,
+  });
+
+  const toggleExtra = (id: string) => {
+    resetCode();
+    setConflicts(null);
+    setForm((f) => ({
+      ...f,
+      extraIds: f.extraIds.includes(id)
+        ? f.extraIds.filter((x) => x !== id)
+        : [...f.extraIds, id],
+    }));
+  };
+
+  // Κάθε αλλαγή που μετακινεί τη βάση ακυρώνει τον ήδη εφαρμοσμένο κωδικό:
+  // το ποσό του εξαρτάται από αυτήν.
+  const resetCode = () => {
+    setCodeAmount(0);
+    setCodeMessage("");
+    setCodeError("");
+  };
+
+  const applyCode = async () => {
+    const code = form.discountCode.trim();
+    if (!code || checkingCode) return;
+
+    setCheckingCode(true);
+    setCodeError("");
+    setCodeMessage("");
+
+    try {
+      const withoutDiscount = computePrice({
+        totalDays: days ?? 1,
+        dailyRate: selectedVehicle?.dailyRate ?? 0,
+        extras: chosenExtras,
+        discountMode: "NONE",
+      });
+
+      const res = await fetch("/api/discounts/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          tenantId,
+          totalAmount: withoutDiscount.beforeDiscount,
+          totalDays: days ?? 1,
+          vehicleId: form.vehicleId || undefined,
+          customerId: form.customerId || undefined,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setCodeAmount(0);
+        setCodeError(data.message || tr("bookings.discountInvalid"));
+        return;
+      }
+
+      setCodeAmount(data.data.discountAmount);
+      setCodeMessage(data.data.message);
+    } catch {
+      setCodeError(tr("bookings.errorConnection"));
+    } finally {
+      setCheckingCode(false);
+    }
+  };
 
   /**
    * override = true σημαίνει «ο διαχειριστής είδε τη σύγκρουση και την
@@ -498,6 +712,18 @@ function BookingModal({
       };
       if (!lockStatus) payload.status = form.status;
       if (override) payload.override = true;
+
+      // Στέλνουμε ΜΟΝΟ επιλογές. Κανένα ποσό — ο server τα ξαναβγάζει.
+      payload.extraIds = [
+        ...form.extraIds,
+        ...(form.insuranceId ? [form.insuranceId] : []),
+      ];
+      payload.discountMode = form.discountMode;
+      if (form.discountMode === "AMOUNT" || form.discountMode === "PERCENT") {
+        payload.discountValue = Number(form.discountValue) || 0;
+      }
+      payload.discountCode =
+        form.discountMode === "CODE" ? form.discountCode.trim() : null;
 
       const res = await fetch(
         mode === "create" ? "/api/bookings" : `/api/bookings/${booking!.id}`,
@@ -663,6 +889,214 @@ function BookingModal({
               )}
             </p>
           )}
+
+          {/* ── Πρόσθετα ── */}
+          {offeredExtras.length > 0 && (
+            <div className="dash-price-section">
+              <h3 className="dash-price-heading">
+                <PackagePlus size={15} /> {tr("bookings.extrasTitle")}
+              </h3>
+              <div className="dash-pick-grid">
+                {offeredExtras.map((e) => (
+                  <label
+                    key={e.id}
+                    className={`dash-pick ${
+                      form.extraIds.includes(e.id) ? "active" : ""
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.extraIds.includes(e.id)}
+                      onChange={() => toggleExtra(e.id)}
+                    />
+                    <span className="dash-pick-name">{e.name}</span>
+                    <span className="dash-pick-price">
+                      {eur(e.price, locale)}
+                      <small>
+                        {e.chargeType === "PER_DAY"
+                          ? tr("extras.perDay")
+                          : tr("extras.oneOff")}
+                      </small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Ασφάλεια: μία το πολύ ── */}
+          {offeredInsurance.length > 0 && (
+            <div className="dash-price-section">
+              <h3 className="dash-price-heading">
+                <ShieldCheck size={15} /> {tr("bookings.insuranceTitle")}
+              </h3>
+              <div className="dash-pick-grid">
+                <label
+                  className={`dash-pick ${!form.insuranceId ? "active" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="insurance"
+                    checked={!form.insuranceId}
+                    onChange={() => set("insuranceId", "")}
+                  />
+                  <span className="dash-pick-name">
+                    {tr("bookings.insuranceNone")}
+                  </span>
+                  <span className="dash-pick-price">—</span>
+                </label>
+                {offeredInsurance.map((e) => (
+                  <label
+                    key={e.id}
+                    className={`dash-pick ${
+                      form.insuranceId === e.id ? "active" : ""
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="insurance"
+                      checked={form.insuranceId === e.id}
+                      onChange={() => set("insuranceId", e.id)}
+                    />
+                    <span className="dash-pick-name">{e.name}</span>
+                    <span className="dash-pick-price">
+                      {eur(e.price, locale)}
+                      <small>
+                        {e.chargeType === "PER_DAY"
+                          ? tr("extras.perDay")
+                          : tr("extras.oneOff")}
+                      </small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Έκπτωση ── */}
+          <div className="dash-price-section">
+            <h3 className="dash-price-heading">
+              <Tag size={15} /> {tr("bookings.discountTitle")}
+            </h3>
+
+            <div className="dash-filters dash-discount-modes">
+              {(["NONE", "AMOUNT", "PERCENT", "CODE"] as DiscountMode[]).map(
+                (m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`dash-filter ${
+                      form.discountMode === m ? "active" : ""
+                    }`}
+                    onClick={() => {
+                      resetCode();
+                      set("discountMode", m);
+                    }}
+                    aria-pressed={form.discountMode === m}
+                  >
+                    {tr(`bookings.discountMode${m}`)}
+                  </button>
+                )
+              )}
+            </div>
+
+            {(form.discountMode === "AMOUNT" ||
+              form.discountMode === "PERCENT") && (
+              <label className="dash-field dash-field--xs">
+                {form.discountMode === "AMOUNT"
+                  ? tr("bookings.discountAmountLabel")
+                  : tr("bookings.discountPercentLabel")}
+                <input
+                  type="number"
+                  min={0}
+                  max={form.discountMode === "PERCENT" ? 100 : undefined}
+                  step={form.discountMode === "PERCENT" ? 1 : 0.5}
+                  inputMode="decimal"
+                  value={form.discountValue}
+                  onChange={(e) => set("discountValue", e.target.value)}
+                />
+              </label>
+            )}
+
+            {form.discountMode === "CODE" && (
+              <>
+                <div className="dash-code-row">
+                  <label className="dash-field">
+                    {tr("bookings.discountCodeLabel")}
+                    <input
+                      value={form.discountCode}
+                      onChange={(e) => {
+                        resetCode();
+                        set("discountCode", e.target.value.toUpperCase());
+                      }}
+                      placeholder="SUMMER25"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="dash-btn"
+                    onClick={applyCode}
+                    disabled={!form.discountCode.trim() || checkingCode}
+                  >
+                    {checkingCode
+                      ? tr("bookings.discountChecking")
+                      : tr("bookings.discountApply")}
+                  </button>
+                </div>
+                {codeMessage && (
+                  <div className="dash-alert-ok dash-code-ok">
+                    {codeMessage} · −{eur(codeAmount, locale)}
+                  </div>
+                )}
+                {codeError && <div className="dash-form-error">{codeError}</div>}
+              </>
+            )}
+          </div>
+
+          {/* ── Ζωντανή ανάλυση τιμής ── */}
+          <div className="dash-breakdown">
+            <PriceRow
+              label={`${tr("bookings.priceSubtotal")} · ${preview.totalDays} × ${eur(
+                preview.dailyRate,
+                locale
+              )}`}
+              value={eur(preview.subtotal, locale)}
+            />
+            {preview.lines
+              .filter((l) => l.type === "EXTRA")
+              .map((l) => (
+                <PriceRow
+                  key={l.id}
+                  sub
+                  label={l.name}
+                  value={eur(l.lineTotal, locale)}
+                />
+              ))}
+            {preview.extrasTotal > 0 && (
+              <PriceRow
+                label={tr("bookings.priceExtras")}
+                value={eur(preview.extrasTotal, locale)}
+              />
+            )}
+            {preview.insuranceCost > 0 && (
+              <PriceRow
+                label={tr("bookings.priceInsurance")}
+                value={eur(preview.insuranceCost, locale)}
+              />
+            )}
+            {preview.discountAmount > 0 && (
+              <PriceRow
+                negative
+                label={tr("bookings.priceDiscount")}
+                value={`−${eur(preview.discountAmount, locale)}`}
+              />
+            )}
+            <PriceRow
+              strong
+              label={tr("bookings.priceTotal")}
+              value={eur(preview.total, locale)}
+            />
+          </div>
 
           {conflicts && conflicts.length > 0 && (
             <div className="dash-conflict">

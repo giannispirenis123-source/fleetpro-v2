@@ -285,7 +285,29 @@ export const el = {
     requestModeHint:
       "Η εταιρία λειτουργεί με αιτήματα: η εγγραφή θα μπει σε αναμονή και το όχημα δεν δεσμεύεται μέχρι την έγκριση.",
     priceNote:
-      "Η τιμή υπολογίζεται προσωρινά ως ημερήσια × ημέρες. Πρόσθετα και εκπτώσεις έρχονται στο επόμενο βήμα.",
+      "Τα ποσά δεν περιλαμβάνουν ΦΠΑ. Ο τελικός υπολογισμός γίνεται πάντα στον server.",
+
+    extrasTitle: "Πρόσθετα",
+    insuranceTitle: "Ασφάλεια",
+    insuranceNone: "Χωρίς ασφάλεια",
+
+    discountTitle: "Έκπτωση",
+    discountModeNONE: "Καμία",
+    discountModeAMOUNT: "Ποσό €",
+    discountModePERCENT: "Ποσοστό %",
+    discountModeCODE: "Κωδικός",
+    discountAmountLabel: "Ποσό έκπτωσης (€)",
+    discountPercentLabel: "Ποσοστό έκπτωσης (%)",
+    discountCodeLabel: "Κωδικός έκπτωσης",
+    discountApply: "Εφαρμογή",
+    discountChecking: "Έλεγχος…",
+    discountInvalid: "Μη έγκυρος κωδικός",
+
+    priceSubtotal: "Ενοικίαση",
+    priceExtras: "Πρόσθετα",
+    priceInsurance: "Ασφάλεια",
+    priceDiscount: "Έκπτωση",
+    priceTotal: "Σύνολο",
     errorMissing: "Επίλεξε πελάτη και όχημα",
     errorMissingTime: "Συμπλήρωσε ώρα παραλαβής και ώρα επιστροφής",
     errorSave: "Δεν ήταν δυνατή η αποθήκευση",

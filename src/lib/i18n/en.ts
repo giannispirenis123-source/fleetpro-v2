@@ -285,7 +285,29 @@ export const en: Dictionary = {
     requestModeHint:
       "Your company works with requests: the record will be filed as pending and the vehicle is not reserved until it is approved.",
     priceNote:
-      "The price is provisionally daily rate × days. Extras and discounts come in the next step.",
+      "Amounts exclude VAT. The final calculation always happens on the server.",
+
+    extrasTitle: "Extras",
+    insuranceTitle: "Insurance",
+    insuranceNone: "No insurance",
+
+    discountTitle: "Discount",
+    discountModeNONE: "None",
+    discountModeAMOUNT: "Amount €",
+    discountModePERCENT: "Percentage %",
+    discountModeCODE: "Code",
+    discountAmountLabel: "Discount amount (€)",
+    discountPercentLabel: "Discount percentage (%)",
+    discountCodeLabel: "Discount code",
+    discountApply: "Apply",
+    discountChecking: "Checking…",
+    discountInvalid: "Invalid code",
+
+    priceSubtotal: "Rental",
+    priceExtras: "Extras",
+    priceInsurance: "Insurance",
+    priceDiscount: "Discount",
+    priceTotal: "Total",
     errorMissing: "Select a customer and a vehicle",
     errorMissingTime: "Enter a pick-up time and a return time",
     errorSave: "Could not save",

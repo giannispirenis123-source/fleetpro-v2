@@ -2,6 +2,7 @@
 // Κρατήσεις — κοινό σημείο για API και σελίδα.
 
 import type { Booking, Customer, Vehicle } from "@prisma/client";
+import { readExtrasSnapshot, type PricedExtraLine } from "./pricing";
 
 export const BOOKING_STATUSES = [
   "PENDING",
@@ -66,7 +67,17 @@ export interface BookingDTO {
   returnTime: string | null;
   totalDays: number;
   dailyRate: number;
+
+  /* ── Ανάλυση τιμής ── */
+  subtotal: number;
+  extrasTotal: number;
+  insuranceCost: number;
+  discountAmount: number;
+  discountCode: string | null;
   total: number;
+  /** Τα πρόσθετα όπως ίσχυαν τη στιγμή της κράτησης (snapshot). */
+  extras: PricedExtraLine[];
+
   notes: string | null;
   createdAt: string;
 }
@@ -94,7 +105,13 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
     returnTime: b.returnTime,
     totalDays: b.totalDays,
     dailyRate: Number(b.dailyRate),
+    subtotal: Number(b.subtotal),
+    extrasTotal: Number(b.extrasTotal),
+    insuranceCost: Number(b.insuranceCost),
+    discountAmount: Number(b.discountAmount),
+    discountCode: b.discountCode,
     total: Number(b.total),
+    extras: readExtrasSnapshot(b.extras),
     notes: b.notes,
     createdAt: b.createdAt.toISOString(),
   };

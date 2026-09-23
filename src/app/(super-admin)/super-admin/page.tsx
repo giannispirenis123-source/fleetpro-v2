@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Building2,
   Users,
@@ -90,6 +90,9 @@ const PLAN_PRICES: Record<SubscriptionPlan, number> = {
   PRO: 129,
   ENTERPRISE: 299,
 };
+
+/** Κατά προσέγγιση ύψος του μενού ενεργειών, για να κρίνουμε αν χωράει. */
+const MENU_HEIGHT = 190;
 
 const ROLE_LABELS: Record<UserRole, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -529,6 +532,19 @@ function TenantRow({
   onShowUsers: () => void;
   onStatusChange: (s: TenantStatus) => void;
 }) {
+  // Το μενού ανοίγει προς τα κάτω· αν δεν χωράει στο ορατό παράθυρο
+  // (τελευταία γραμμή, κοντό παράθυρο), γυρίζει προς τα πάνω.
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const [openUp, setOpenUp] = useState(false);
+
+  const handleMenuToggle = () => {
+    const rect = menuBtnRef.current?.getBoundingClientRect();
+    if (rect) {
+      setOpenUp(window.innerHeight - rect.bottom < MENU_HEIGHT + 16);
+    }
+    onMenuToggle();
+  };
+
   const status = STATUS_CONFIG[tenant.status];
   const daysLeft = tenant.trialEndsAt
     ? Math.ceil(
@@ -590,11 +606,18 @@ function TenantRow({
             <ArrowUpRight size={14} />
           </button>
           <div className="sa-menu-wrap">
-            <button className="sa-icon-btn" onClick={onMenuToggle}>
+            <button
+              ref={menuBtnRef}
+              className="sa-icon-btn"
+              onClick={handleMenuToggle}
+              aria-haspopup="menu"
+              aria-expanded={showMenu}
+              aria-label="Ενέργειες εταιρίας"
+            >
               <MoreVertical size={14} />
             </button>
             {showMenu && (
-              <div className="sa-dropdown">
+              <div className={`sa-dropdown ${openUp ? "up" : ""}`}>
                 <button onClick={onEdit}>
                   <Edit size={12} /> Επεξεργασία
                 </button>
@@ -1783,10 +1806,17 @@ const superAdminStyles = `
     border: 1px solid var(--border);
     box-shadow: var(--shadow-card);
     border-radius: 12px;
-    overflow: hidden;
+    /* ΟΧΙ overflow: hidden — έκοβε το dropdown ενεργειών της γραμμής.
+       Οι στρογγυλεμένες γωνίες γίνονται στα ακραία κελιά παρακάτω. */
   }
 
   .sa-table { width: 100%; border-collapse: collapse; }
+
+  /* Αντικαθιστά το clipping που έκανε το overflow: hidden. */
+  .sa-table thead tr:first-child th:first-child { border-top-left-radius: 11px; }
+  .sa-table thead tr:first-child th:last-child { border-top-right-radius: 11px; }
+  .sa-table tbody tr:last-child td:first-child { border-bottom-left-radius: 11px; }
+  .sa-table tbody tr:last-child td:last-child { border-bottom-right-radius: 11px; }
 
   .sa-table th {
     text-align: left;
@@ -1804,6 +1834,8 @@ const superAdminStyles = `
     border-bottom: 1px solid var(--border);
     transition: background 0.1s;
   }
+  /* Η γραμμή με ανοιχτό μενού μπαίνει μπροστά από τις επόμενες. */
+  .sa-table-row:has(.sa-dropdown) { position: relative; z-index: 60; }
   .sa-table-row:hover { background: var(--hover); }
   .sa-table-row:last-child { border-bottom: none; }
 
@@ -1864,15 +1896,18 @@ const superAdminStyles = `
   .sa-dropdown {
     position: absolute;
     right: 0;
-    top: 100%;
+    top: calc(100% + 4px);
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 4px;
-    z-index: 50;
-    min-width: 150px;
+    /* Πάνω από τις γραμμές και τη sticky κεφαλίδα, κάτω από τα modals (100). */
+    z-index: 60;
+    min-width: 170px;
     box-shadow: var(--shadow-dropdown);
   }
+  /* Όταν δεν χωράει από κάτω στο ορατό παράθυρο, ανοίγει προς τα πάνω. */
+  .sa-dropdown.up { top: auto; bottom: calc(100% + 4px); }
   .sa-dropdown button {
     display: flex;
     align-items: center;

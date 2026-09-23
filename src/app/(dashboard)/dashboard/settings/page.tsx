@@ -21,6 +21,9 @@ export default async function SettingsPage() {
       rentalMode: true,
       prepTimeMinutes: true,
       roundUpTotal: true,
+      vatRate: true,
+      invoiceIssueTrigger: true,
+      invoiceSendMode: true,
     },
   });
   if (!tenant) redirect("/dashboard");
@@ -31,6 +34,9 @@ export default async function SettingsPage() {
       initialRentalMode={tenant.rentalMode}
       initialPrepMinutes={tenant.prepTimeMinutes}
       initialRoundUp={tenant.roundUpTotal}
+      initialVatRate={Number(tenant.vatRate)}
+      initialIssueTrigger={tenant.invoiceIssueTrigger}
+      initialSendMode={tenant.invoiceSendMode}
     />
   );
 }

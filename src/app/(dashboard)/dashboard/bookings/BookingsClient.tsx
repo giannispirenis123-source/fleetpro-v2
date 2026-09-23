@@ -16,6 +16,7 @@ import {
   Tag,
   ShieldCheck,
   PackagePlus,
+  Receipt,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -198,6 +199,42 @@ export default function BookingsClient({
   const [editing, setEditing] = useState<BookingDTO | null>(null);
   const [cancelling, setCancelling] = useState<BookingDTO | null>(null);
 
+  // Χειροκίνητη έκδοση τιμολογίου από την κάρτα της κράτησης.
+  const [issuingId, setIssuingId] = useState<string | null>(null);
+  const [issueError, setIssueError] = useState("");
+
+  const issueInvoice = async (b: BookingDTO) => {
+    if (issuingId) return;
+
+    setIssuingId(b.id);
+    setIssueError("");
+
+    try {
+      const res = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: b.id }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setIssueError(data.message || tr("bookings.invoiceError"));
+        return;
+      }
+
+      // Είτε μόλις εκδόθηκε είτε υπήρχε ήδη, η κάρτα δείχνει από εδώ και
+      // πέρα τον αριθμό — άρα το κουμπί δεν ξαναεμφανίζεται.
+      const invoiceNumber: string = data.data.invoice.invoiceNumber;
+      setBookings((prev) =>
+        prev.map((x) => (x.id === b.id ? { ...x, invoiceNumber } : x))
+      );
+    } catch {
+      setIssueError(tr("bookings.invoiceError"));
+    } finally {
+      setIssuingId(null);
+    }
+  };
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return bookings.filter((b) => {
@@ -270,6 +307,8 @@ export default function BookingsClient({
         </span>
       </div>
 
+      {issueError && <div className="dash-form-error">{issueError}</div>}
+
       {visible.length === 0 ? (
         <div className="dash-panel dash-empty">
           {bookings.length === 0
@@ -289,6 +328,8 @@ export default function BookingsClient({
               canManage={canManage}
               onEdit={() => setEditing(b)}
               onCancel={() => setCancelling(b)}
+              issuing={issuingId === b.id}
+              onIssueInvoice={() => issueInvoice(b)}
             />
           ))}
         </div>
@@ -393,6 +434,8 @@ function BookingCard({
   canManage,
   onEdit,
   onCancel,
+  issuing,
+  onIssueInvoice,
 }: {
   booking: BookingDTO;
   locale: string;
@@ -402,6 +445,8 @@ function BookingCard({
   canManage: boolean;
   onEdit: () => void;
   onCancel: () => void;
+  issuing: boolean;
+  onIssueInvoice: () => void;
 }) {
   const closed = b.status === "CANCELLED" || b.status === "COMPLETED";
 
@@ -506,6 +551,25 @@ function BookingCard({
         <span className="dash-vehicle-rate">{eur(b.total, locale)}</span>
         {canManage && (
           <div className="dash-vehicle-actions">
+            {/* Μία κράτηση, ένα τιμολόγιο: με τον αριθμό εκδομένο δεν
+                υπάρχει πια κουμπί έκδοσης, μόνο η ένδειξη. */}
+            {b.invoiceNumber ? (
+              <span className="dash-badge dash-badge--ok" title={tr("bookings.invoiceLabel")}>
+                <Receipt size={13} /> {b.invoiceNumber}
+              </span>
+            ) : (
+              b.status !== "CANCELLED" && (
+                <button
+                  className="dash-icon-btn"
+                  onClick={onIssueInvoice}
+                  disabled={issuing}
+                  title={tr("bookings.issueInvoice")}
+                  aria-label={tr("bookings.issueInvoice")}
+                >
+                  <Receipt size={16} />
+                </button>
+              )
+            )}
             <button
               className="dash-icon-btn"
               onClick={onEdit}

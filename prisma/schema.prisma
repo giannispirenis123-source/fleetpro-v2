@@ -77,6 +77,18 @@ enum InsuranceType {
   FULL
 }
 
+// Πότε εκδίδεται αυτόματα το τιμολόγιο.
+enum InvoiceIssueTrigger {
+  ON_COMPLETION // με το τέλος της ενοικίασης
+  ON_CONTRACT // με την ολοκλήρωση συμβολαίου — δεν ενεργεί ακόμα
+}
+
+// Αυτόματη ή χειροκίνητη αποστολή του τιμολογίου στον πελάτη.
+enum InvoiceSendMode {
+  AUTO
+  MANUAL
+}
+
 enum InvoiceStatus {
   UNPAID
   PAID
@@ -142,32 +154,39 @@ enum NotificationType {
 // ─────────────────────────────────────────
 
 model Tenant {
-  id               String           @id @default(cuid())
-  name             String
-  slug             String           @unique // subdomain: slug.fleetpro.gr
-  email            String           @unique
-  phone            String?
-  address          String?
-  vat              String?
-  iban             String?
-  logoUrl          String?
-  brandColor       String           @default("#2563EB")
-  customDomain     String?          @unique
-  website          String? // external website embed
-  status           TenantStatus     @default(TRIAL)
-  plan             SubscriptionPlan @default(STARTER)
-  rentalMode       RentalMode       @default(BOOKING)
+  id              String           @id @default(cuid())
+  name            String
+  slug            String           @unique // subdomain: slug.fleetpro.gr
+  email           String           @unique
+  phone           String?
+  address         String?
+  vat             String?
+  iban            String?
+  logoUrl         String?
+  brandColor      String           @default("#2563EB")
+  customDomain    String?          @unique
+  website         String? // external website embed
+  status          TenantStatus     @default(TRIAL)
+  plan            SubscriptionPlan @default(STARTER)
+  rentalMode      RentalMode       @default(BOOKING)
   // Χρόνος προετοιμασίας οχήματος σε λεπτά: το κενό μετά την επιστροφή
   // (καθάρισμα, έλεγχος, μεταφορά) πριν το όχημα είναι ξανά διαθέσιμο.
-  prepTimeMinutes  Int              @default(0)
+  prepTimeMinutes Int              @default(0)
   // Στρογγυλοποίηση του ΤΕΛΙΚΟΥ ποσού κράτησης προς τα πάνω, στο
   // πλησιέστερο ακέραιο ευρώ. Οι επιμέρους γραμμές μένουν ακριβείς.
-  roundUpTotal     Boolean          @default(false)
+  roundUpTotal    Boolean          @default(false)
+
+  // Τιμολόγηση. Οι τιμές των κρατήσεων ΠΕΡΙΕΧΟΥΝ ΦΠΑ· το τιμολόγιο τις
+  // σπάει ανάποδα σε καθαρή αξία και ΦΠΑ με αυτό το ποσοστό.
+  vatRate             Decimal             @default(24) @db.Decimal(5, 2)
+  invoiceIssueTrigger InvoiceIssueTrigger @default(ON_COMPLETION)
+  invoiceSendMode     InvoiceSendMode     @default(MANUAL)
+
   trialEndsAt      DateTime?
   stripeCustomerId String?
   stripeSubId      String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   // Relations
   users             User[]
@@ -459,6 +478,9 @@ model Invoice {
   notes         String?
   pdfUrl        String?
 
+  // Πότε στάλθηκε στον πελάτη. Η αποστολή email έρχεται σε επόμενο βήμα.
+  sentAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -466,6 +488,9 @@ model Invoice {
   booking  Booking  @relation(fields: [bookingId], references: [id])
   customer Customer @relation(fields: [customerId], references: [id])
 
+  // Ο αριθμός τιμολογίου είναι μοναδικός ΜΕΣΑ στην εταιρία: το constraint
+  // είναι αυτό που κάνει ασφαλή την ταυτόχρονη έκδοση.
+  @@unique([tenantId, invoiceNumber])
   @@map("invoices")
 }
 

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { withAuth, ok, badRequest, notFound, serverError } from "@/lib/api";
 import { MAX_PREP_MINUTES } from "@/lib/prepTime";
+import { INVOICE_ISSUE_TRIGGERS, INVOICE_SEND_MODES } from "@/lib/invoices";
 
 const RENTAL_MODES = ["BOOKING", "REQUEST"] as const;
 
@@ -16,7 +17,22 @@ const SELECT = {
   rentalMode: true,
   prepTimeMinutes: true,
   roundUpTotal: true,
+  vatRate: true,
+  invoiceIssueTrigger: true,
+  invoiceSendMode: true,
 } as const;
+
+/** Decimal → number, ώστε ο client να μη λαμβάνει ποτέ ΦΠΑ ως κείμενο. */
+const toSettingsDTO = (t: {
+  id: string;
+  name: string;
+  rentalMode: string;
+  prepTimeMinutes: number;
+  roundUpTotal: boolean;
+  vatRate: unknown;
+  invoiceIssueTrigger: string;
+  invoiceSendMode: string;
+}) => ({ ...t, vatRate: Number(t.vatRate) });
 
 // Κάθε πεδίο προαιρετικό, αλλά τουλάχιστον ένα πρέπει να δοθεί: η σελίδα
 // ρυθμίσεων στέλνει μόνο αυτό που άλλαξε.
@@ -30,6 +46,15 @@ const updateSettingsSchema = z
       .max(MAX_PREP_MINUTES, "Ο χρόνος προετοιμασίας δεν μπορεί να ξεπερνά τις 24 ώρες")
       .optional(),
     roundUpTotal: z.boolean().optional(),
+    // Ποσοστό ΦΠΑ. Οι τιμές των κρατήσεων το ΠΕΡΙΕΧΟΥΝ ήδη — το ποσοστό
+    // λέει μόνο πώς σπάει το ποσό σε καθαρή αξία και ΦΠΑ.
+    vatRate: z
+      .number()
+      .min(0, "Ο ΦΠΑ δεν μπορεί να είναι αρνητικός")
+      .max(100, "Ο ΦΠΑ δεν μπορεί να ξεπερνά το 100%")
+      .optional(),
+    invoiceIssueTrigger: z.enum(INVOICE_ISSUE_TRIGGERS).optional(),
+    invoiceSendMode: z.enum(INVOICE_SEND_MODES).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "Δεν δόθηκε καμία ρύθμιση προς αλλαγή",
@@ -45,7 +70,7 @@ export const GET = withAuth(
       });
       if (!tenant) return notFound("Η εταιρία δεν βρέθηκε");
 
-      return ok(tenant);
+      return ok(toSettingsDTO(tenant));
     } catch (error) {
       console.error(error);
       return serverError();
@@ -77,11 +102,20 @@ export const PATCH = withAuth(
           ...(parsed.data.roundUpTotal !== undefined && {
             roundUpTotal: parsed.data.roundUpTotal,
           }),
+          ...(parsed.data.vatRate !== undefined && {
+            vatRate: parsed.data.vatRate,
+          }),
+          ...(parsed.data.invoiceIssueTrigger !== undefined && {
+            invoiceIssueTrigger: parsed.data.invoiceIssueTrigger,
+          }),
+          ...(parsed.data.invoiceSendMode !== undefined && {
+            invoiceSendMode: parsed.data.invoiceSendMode,
+          }),
         },
         select: SELECT,
       });
 
-      return ok(tenant);
+      return ok(toSettingsDTO(tenant));
     } catch (error) {
       console.error(error);
       return serverError();

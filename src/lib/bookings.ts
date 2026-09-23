@@ -80,11 +80,20 @@ export interface BookingDTO {
 
   notes: string | null;
   createdAt: string;
+
+  /**
+   * Ο αριθμός του τιμολογίου της κράτησης, αν έχει εκδοθεί — αλλιώς null.
+   * Με αυτό ξέρει η λίστα αν πρέπει να δείξει το κουμπί έκδοσης ή τον
+   * αριθμό του ήδη εκδομένου τιμολογίου.
+   */
+  invoiceNumber: string | null;
 }
 
 type BookingWithRelations = Booking & {
   vehicle: Pick<Vehicle, "brand" | "model" | "plate">;
   customer: Pick<Customer, "firstName" | "lastName">;
+  /** Προαιρετικό: μόνο τα ερωτήματα που το χρειάζονται το φέρνουν. */
+  invoice?: { invoiceNumber: string } | null;
 };
 
 const toDateInput = (d: Date): string => d.toISOString().slice(0, 10);
@@ -114,6 +123,7 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
     extras: readExtrasSnapshot(b.extras),
     notes: b.notes,
     createdAt: b.createdAt.toISOString(),
+    invoiceNumber: b.invoice?.invoiceNumber ?? null,
   };
 }
 

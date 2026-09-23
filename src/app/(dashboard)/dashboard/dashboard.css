@@ -1135,3 +1135,198 @@
 .dash-switch-text { display: flex; flex-direction: column; gap: 3px; }
 .dash-switch-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .dash-switch-desc { font-size: 12.5px; color: var(--text-3); line-height: 1.45; }
+
+/* ---------- Τιμολόγια ---------- */
+.dash-invoices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dash-invoice {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.dash-invoice-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 190px;
+}
+.dash-invoice-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dash-invoice-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 170px;
+}
+.dash-invoice-customer {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dash-invoice-booking {
+  font-size: 12px;
+  color: var(--text-4);
+}
+.dash-invoice-money {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 150px;
+}
+.dash-invoice-line {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.dash-invoice-line strong { color: var(--text-2); }
+.dash-invoice-total {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dash-invoice-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Το έγγραφο του τιμολογίου — ίδιο στην οθόνη και στο χαρτί. */
+.dash-inv-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.dash-inv-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.dash-inv-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-4);
+}
+.dash-inv-number {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dash-inv-dates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.dash-inv-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.dash-inv-party {
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+.dash-inv-party h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-4);
+}
+.dash-inv-party-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dash-inv-breakdown { margin: 0; }
+.dash-inv-foot { color: var(--text-4); }
+
+.dash-settings-second { margin-top: 26px; }
+.dash-mode-name .dash-soon { margin-left: 8px; }
+
+@media (max-width: 640px) {
+  .dash-inv-parties { grid-template-columns: 1fr; }
+  .dash-invoice-money { align-items: flex-start; }
+  .dash-invoice-actions { width: 100%; }
+}
+
+/* ---------- Εκτύπωση τιμολογίου ----------
+   Τυπώνεται ΜΟΝΟ το άνοιγμα του τιμολογίου: όλα τα υπόλοιπα κρύβονται
+   με visibility, ώστε να μη χρειάζεται δεύτερο, ξεχωριστό markup. */
+@media print {
+  @page { margin: 16mm; }
+
+  body * { visibility: hidden !important; }
+  .dash-print-area,
+  .dash-print-area * { visibility: visible !important; }
+
+  .dash-sidebar,
+  .dash-topbar,
+  .dash-overlay,
+  .dash-modal-header,
+  .dash-modal-footer { display: none !important; }
+
+  .dash-modal-overlay {
+    position: absolute !important;
+    inset: 0 !important;
+    display: block !important;
+    padding: 0 !important;
+    background: #fff !important;
+    overflow: visible !important;
+  }
+  .dash-modal {
+    position: static !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+  .dash-print-area {
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-height: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Τα χρώματα φόντου δεν τυπώνονται — γι' αυτό μαύρο κείμενο παντού
+     και περίγραμμα αντί για γέμισμα στην ένδειξη κατάστασης. */
+  .dash-inv-doc,
+  .dash-inv-doc * { color: #000 !important; }
+  .dash-inv-doc .dash-status {
+    background: transparent !important;
+    border: 1px solid #000;
+  }
+  .dash-inv-head,
+  .dash-inv-breakdown { border-color: #000 !important; }
+  .dash-price-row.total { border-top-color: #000 !important; }
+}

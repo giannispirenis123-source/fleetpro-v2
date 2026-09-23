@@ -25,6 +25,7 @@ import {
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
 import { priceBooking } from "@/lib/bookingPricing";
 import { applyDiscountUsage } from "@/lib/discounts";
+import { issueInvoiceForBooking } from "@/lib/invoiceIssue";
 import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
 
 const isoDate = z
@@ -57,6 +58,7 @@ const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const withRelations = {
   vehicle: { select: { brand: true, model: true, plate: true } },
   customer: { select: { firstName: true, lastName: true } },
+  invoice: { select: { invoiceNumber: true } },
 } as const;
 
 /**
@@ -245,7 +247,36 @@ export const PATCH = withAuth(
         await syncVehicleStatus(current.vehicleId, session.tenantId!);
       }
 
-      return ok({ booking: toBookingDTO(booking) });
+      // Αυτόματη έκδοση τιμολογίου με το τέλος της ενοικίασης.
+      //
+      // Δεν κοιτάμε αν ΜΟΛΙΣ πέρασε σε COMPLETED: η έκδοση είναι από μόνη
+      // της ιδεμποτική (μία κράτηση → ένα τιμολόγιο), οπότε ένα δεύτερο
+      // PATCH σε ήδη ολοκληρωμένη κράτηση δεν φτιάχνει δεύτερο τιμολόγιο.
+      let invoiceNumber = booking.invoice?.invoiceNumber ?? null;
+
+      if (booking.status === "COMPLETED") {
+        const tenant = await db.tenant.findUnique({
+          where: { id: session.tenantId! },
+          select: { invoiceIssueTrigger: true },
+        });
+
+        if (tenant?.invoiceIssueTrigger === "ON_COMPLETION") {
+          const outcome = await issueInvoiceForBooking({
+            tenantId: session.tenantId!,
+            bookingId: booking.id,
+          });
+
+          // Αποτυχία έκδοσης δεν γυρίζει πίσω την ολοκλήρωση της
+          // κράτησης — καταγράφεται και το τιμολόγιο βγαίνει χειροκίνητα.
+          if (outcome.ok) {
+            invoiceNumber = outcome.invoiceNumber;
+          } else {
+            console.error("Αυτόματη έκδοση τιμολογίου:", outcome.message);
+          }
+        }
+      }
+
+      return ok({ booking: { ...toBookingDTO(booking), invoiceNumber } });
     } catch (error) {
       console.error(error);
       return serverError();

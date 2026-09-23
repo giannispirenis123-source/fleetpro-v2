@@ -92,6 +92,7 @@ export const GET = withAuth(
         include: {
           vehicle: { select: { brand: true, model: true, plate: true } },
           customer: { select: { firstName: true, lastName: true } },
+          invoice: { select: { invoiceNumber: true } },
         },
       });
 
@@ -219,6 +220,7 @@ export const POST = withAuth(
         include: {
           vehicle: { select: { brand: true, model: true, plate: true } },
           customer: { select: { firstName: true, lastName: true } },
+          invoice: { select: { invoiceNumber: true } },
         },
       });
 

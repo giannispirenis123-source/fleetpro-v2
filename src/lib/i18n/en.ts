@@ -252,6 +252,32 @@ export const en: Dictionary = {
     roundUpOff: "Off",
     roundUpOnDesc: "e.g. €60.20 and €60.80 both become €61.",
     roundUpOffDesc: "Totals are shown with cents, exactly as calculated.",
+
+    vat: "VAT",
+    vatHelp:
+      "Booking prices ALREADY include VAT. The rate only tells the invoice how to split that amount into a net value and VAT — nothing is added on top. The rate in force at the moment of issuing is stored on the invoice, so a later change never alters invoices already issued.",
+    vatRate: "Rate (%)",
+    vatCurrent: "Current VAT",
+
+    invoiceTrigger: "When the invoice is issued",
+    invoiceTriggerHelp:
+      "Decides when a booking's invoice is created automatically.",
+    triggerON_COMPLETION: "When the rental ends",
+    triggerON_COMPLETIONHelp:
+      "As soon as the booking moves to \u201cCompleted\u201d an invoice is issued \u2014 exactly one per booking.",
+    triggerON_CONTRACT: "When the contract is completed",
+    triggerON_CONTRACTHelp:
+      "The choice is stored but does nothing yet: contracts arrive in a later step. Until then invoices are issued manually.",
+
+    invoiceSend: "Sending the invoice",
+    invoiceSendHelp: "What happens to the invoice once it has been issued.",
+    sendMANUAL: "Manually",
+    sendMANUALHelp: "The invoice is issued and waits in the list for you to hand it over.",
+    sendAUTO: "Automatically to the customer",
+    sendAUTOHelp: "The invoice will be emailed as soon as it is issued.",
+    invoiceEmailSoon:
+      "Email sending arrives in a later step. Until then the choice is stored but nothing is sent.",
+
     saved: "Saved",
     errorSave: "Could not save",
     errorConnection: "Connection error",
@@ -290,10 +316,14 @@ export const en: Dictionary = {
     notes: "Notes",
     edit: "Edit",
     cancelBooking: "Cancel",
+    issueInvoice: "Issue invoice",
+    issuingInvoice: "Issuing…",
+    invoiceLabel: "Invoice",
+    invoiceError: "Could not issue the invoice",
     requestModeHint:
       "Your company works with requests: the record will be filed as pending and the vehicle is not reserved until it is approved.",
     priceNote:
-      "Amounts exclude VAT. The final calculation always happens on the server.",
+      "Amounts include VAT. The final calculation always happens on the server.",
 
     extrasTitle: "Extras",
     insuranceTitle: "Insurance",
@@ -401,6 +431,59 @@ export const en: Dictionary = {
     confirmDeactivateTitle: "Deactivate code",
     confirmDeactivateBody:
       "The code will stop applying to new bookings. Existing bookings are unaffected and the usage history is kept.",
+  },
+
+  invoices: {
+    title: "Invoices",
+    subtitle: "Your company's invoices.",
+    searchPlaceholder: "Search number, customer or booking\u2026",
+    filterALL: "All",
+    filterUNPAID: "Unpaid",
+    filterPAID: "Paid",
+    filterOVERDUE: "Overdue",
+    count: "invoices",
+    countOne: "invoice",
+    empty: "No invoice has been issued yet.",
+    emptyFiltered: "No invoice matches your search.",
+    emptyHint:
+      "An invoice is issued automatically as soon as a booking is completed, or manually from the Bookings list.",
+
+    statusUNPAID: "Unpaid",
+    statusPAID: "Paid",
+    statusOVERDUE: "Overdue",
+    statusCANCELLED: "Cancelled",
+
+    number: "Number",
+    customer: "Customer",
+    booking: "Booking",
+    issueDate: "Issued",
+    dueDate: "Due",
+    paidAt: "Paid on",
+    net: "Net value",
+    vat: "VAT",
+    total: "Total",
+    vatNote: "Prices include VAT.",
+
+    details: "Details",
+    markPaid: "Mark as paid",
+    markUnpaid: "Undo payment",
+    marking: "Saving\u2026",
+    print: "Print",
+    close: "Close",
+
+    detailTitle: "Invoice",
+    issuer: "Company details",
+    recipient: "Customer details",
+    vatNumber: "VAT no.",
+    iban: "IBAN",
+    phone: "Phone",
+    email: "Email",
+    address: "Address",
+    noAddress: "\u2014",
+    printedNote: "This document was issued electronically by FleetPro.",
+
+    errorSave: "Could not save",
+    errorConnection: "Connection error",
   },
 
   chargeType: {

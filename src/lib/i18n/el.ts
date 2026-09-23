@@ -315,7 +315,6 @@ export const el = {
     priceExtras: "Πρόσθετα",
     priceInsurance: "Ασφάλεια",
     priceDiscount: "Έκπτωση",
-    priceRounding: "Στρογγυλοποίηση",
     priceTotal: "Σύνολο",
     errorMissing: "Επίλεξε πελάτη και όχημα",
     errorMissingTime: "Συμπλήρωσε ώρα παραλαβής και ώρα επιστροφής",

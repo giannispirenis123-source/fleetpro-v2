@@ -143,6 +143,72 @@ export function computePrice(input: PriceInput): PriceBreakdown {
   };
 }
 
+/* ─────────────────────────────────────────────
+   Κατανομή της στρογγυλοποίησης στις εμφανιζόμενες γραμμές
+   ───────────────────────────────────────────── */
+
+/**
+ * Τα ποσά όπως ΕΜΦΑΝΙΖΟΝΤΑΙ. Το αποθηκευμένο total δεν αλλάζει ποτέ —
+ * αλλάζει μόνο ο τρόπος που «σπάει» σε γραμμές, ώστε να μη χρειάζεται
+ * ξεχωριστή γραμμή «Στρογγυλοποίηση».
+ */
+export interface DisplayBreakdown {
+  subtotal: number;
+  extrasTotal: number;
+  insuranceCost: number;
+  discountAmount: number;
+  total: number;
+  /** true όταν το subtotal εμφανίζεται αυξημένο σε σχέση με ημέρες × τιμή. */
+  subtotalAdjusted: boolean;
+}
+
+/**
+ * Απορροφά τη στρογγυλοποίηση μέσα στις υπάρχουσες γραμμές:
+ *
+ *  1. Πρώτα μειώνει την εμφανιζόμενη έκπτωση, όσο φτάνει.
+ *  2. Ό,τι περισσεύει το προσθέτει στο εμφανιζόμενο subtotal.
+ *
+ * Το άθροισμα των εμφανιζόμενων γραμμών ισούται ΠΑΝΤΑ με το total:
+ *   (subtotal + υπόλοιπο) + extras + ασφάλεια − (έκπτωση − απορροφημένο)
+ *   = ακριβές + υπόλοιπο + απορροφημένο = ακριβές + στρογγυλοποίηση = total
+ */
+export function toDisplayBreakdown(b: {
+  subtotal: number;
+  extrasTotal: number;
+  insuranceCost: number;
+  discountAmount: number;
+  total: number;
+}): DisplayBreakdown {
+  const exact = round2(
+    b.subtotal + b.extrasTotal + b.insuranceCost - b.discountAmount
+  );
+  const rounding = round2(b.total - exact);
+
+  // Χωρίς στρογγυλοποίηση (ή με σβηστή ρύθμιση) τίποτα δεν αλλάζει.
+  if (rounding <= 0) {
+    return {
+      subtotal: b.subtotal,
+      extrasTotal: b.extrasTotal,
+      insuranceCost: b.insuranceCost,
+      discountAmount: b.discountAmount,
+      total: b.total,
+      subtotalAdjusted: false,
+    };
+  }
+
+  const absorbedByDiscount = Math.min(b.discountAmount, rounding);
+  const remainder = round2(rounding - absorbedByDiscount);
+
+  return {
+    subtotal: round2(b.subtotal + remainder),
+    extrasTotal: b.extrasTotal,
+    insuranceCost: b.insuranceCost,
+    discountAmount: round2(b.discountAmount - absorbedByDiscount),
+    total: b.total,
+    subtotalAdjusted: remainder > 0,
+  };
+}
+
 /* ─── Snapshot των πρόσθετων στο Booking.extras (Json) ───
    Κρατάμε τιμή και χρέωση όπως ίσχυαν τη στιγμή της κράτησης, ώστε μια
    μελλοντική αλλαγή τιμής να μην αναδρομικά αλλοιώνει παλιές κρατήσεις. */

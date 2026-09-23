@@ -32,6 +32,7 @@ import type { ExtraDTO } from "@/lib/extras";
 import {
   computePrice,
   round2,
+  toDisplayBreakdown,
   type DiscountMode,
   type PriceBreakdown,
 } from "@/lib/pricing";
@@ -404,12 +405,9 @@ function BookingCard({
 }) {
   const closed = b.status === "CANCELLED" || b.status === "COMPLETED";
 
-  // Η διαφορά ανάμεσα στο αποθηκευμένο σύνολο και στο ακριβές άθροισμα των
-  // γραμμών είναι ό,τι πρόσθεσε η στρογγυλοποίηση τη στιγμή της κράτησης.
-  const exact = round2(
-    b.subtotal + b.extrasTotal + b.insuranceCost - b.discountAmount
-  );
-  const rounding = round2(b.total - exact);
+  // Η στρογγυλοποίηση απορροφάται στις υπάρχουσες γραμμές — ίδιος κανόνας
+  // με τη φόρμα, ώστε η κάρτα να δείχνει ακριβώς το ίδιο σπάσιμο.
+  const view = toDisplayBreakdown(b);
 
   // Πότε το όχημα είναι ξανά ελεύθερο. Το δείχνουμε μόνο όταν η κράτηση
   // κρατά ακόμη το όχημα και η εταιρία έχει ορίσει χρόνο προετοιμασίας.
@@ -467,25 +465,31 @@ function BookingCard({
       {/* Ανάλυση τιμής — μόνο ό,τι έχει αξία, για να μη φουσκώνει η κάρτα. */}
       <div className="dash-breakdown dash-breakdown--card">
         <PriceRow
-          label={`${tr("bookings.priceSubtotal")} · ${b.totalDays} × ${eur(
-            b.dailyRate,
-            locale
-          )}`}
-          value={eur(b.subtotal, locale)}
+          label={
+            // Το «ημέρες × τιμή» φεύγει όταν το subtotal έχει απορροφήσει
+            // στρογγυλοποίηση — αλλιώς ο πολλαπλασιασμός δεν θα έβγαινε.
+            view.subtotalAdjusted
+              ? tr("bookings.priceSubtotal")
+              : `${tr("bookings.priceSubtotal")} · ${b.totalDays} × ${eur(
+                  b.dailyRate,
+                  locale
+                )}`
+          }
+          value={eur(view.subtotal, locale)}
         />
-        {b.extrasTotal > 0 && (
+        {view.extrasTotal > 0 && (
           <PriceRow
             label={tr("bookings.priceExtras")}
-            value={eur(b.extrasTotal, locale)}
+            value={eur(view.extrasTotal, locale)}
           />
         )}
-        {b.insuranceCost > 0 && (
+        {view.insuranceCost > 0 && (
           <PriceRow
             label={tr("bookings.priceInsurance")}
-            value={eur(b.insuranceCost, locale)}
+            value={eur(view.insuranceCost, locale)}
           />
         )}
-        {b.discountAmount > 0 && (
+        {view.discountAmount > 0 && (
           <PriceRow
             negative
             label={
@@ -493,13 +497,7 @@ function BookingCard({
                 ? `${tr("bookings.priceDiscount")} · ${b.discountCode}`
                 : tr("bookings.priceDiscount")
             }
-            value={`−${eur(b.discountAmount, locale)}`}
-          />
-        )}
-        {rounding > 0 && (
-          <PriceRow
-            label={tr("bookings.priceRounding")}
-            value={`+${eur(rounding, locale)}`}
+            value={`−${eur(view.discountAmount, locale)}`}
           />
         )}
       </div>
@@ -639,6 +637,10 @@ function BookingModal({
     codeDiscountAmount: codeAmount,
     roundUpTotal,
   });
+
+  // Η στρογγυλοποίηση δεν εμφανίζεται ως ξεχωριστή γραμμή: απορροφάται
+  // πρώτα από την έκπτωση και, ό,τι περισσεύει, από το ενοίκιο.
+  const view = toDisplayBreakdown(preview);
 
   const toggleExtra = (id: string) => {
     resetCode();
@@ -1077,11 +1079,15 @@ function BookingModal({
           {/* ── Ζωντανή ανάλυση τιμής ── */}
           <div className="dash-breakdown">
             <PriceRow
-              label={`${tr("bookings.priceSubtotal")} · ${preview.totalDays} × ${eur(
-                preview.dailyRate,
-                locale
-              )}`}
-              value={eur(preview.subtotal, locale)}
+              label={
+                view.subtotalAdjusted
+                  ? tr("bookings.priceSubtotal")
+                  : `${tr("bookings.priceSubtotal")} · ${preview.totalDays} × ${eur(
+                      preview.dailyRate,
+                      locale
+                    )}`
+              }
+              value={eur(view.subtotal, locale)}
             />
             {preview.lines
               .filter((l) => l.type === "EXTRA")
@@ -1093,35 +1099,29 @@ function BookingModal({
                   value={eur(l.lineTotal, locale)}
                 />
               ))}
-            {preview.extrasTotal > 0 && (
+            {view.extrasTotal > 0 && (
               <PriceRow
                 label={tr("bookings.priceExtras")}
-                value={eur(preview.extrasTotal, locale)}
+                value={eur(view.extrasTotal, locale)}
               />
             )}
-            {preview.insuranceCost > 0 && (
+            {view.insuranceCost > 0 && (
               <PriceRow
                 label={tr("bookings.priceInsurance")}
-                value={eur(preview.insuranceCost, locale)}
+                value={eur(view.insuranceCost, locale)}
               />
             )}
-            {preview.discountAmount > 0 && (
+            {view.discountAmount > 0 && (
               <PriceRow
                 negative
                 label={tr("bookings.priceDiscount")}
-                value={`−${eur(preview.discountAmount, locale)}`}
-              />
-            )}
-            {preview.roundingAdjustment > 0 && (
-              <PriceRow
-                label={tr("bookings.priceRounding")}
-                value={`+${eur(preview.roundingAdjustment, locale)}`}
+                value={`−${eur(view.discountAmount, locale)}`}
               />
             )}
             <PriceRow
               strong
               label={tr("bookings.priceTotal")}
-              value={eur(preview.total, locale)}
+              value={eur(view.total, locale)}
             />
           </div>
 

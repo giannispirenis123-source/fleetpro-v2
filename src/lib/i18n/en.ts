@@ -315,7 +315,6 @@ export const en: Dictionary = {
     priceExtras: "Extras",
     priceInsurance: "Insurance",
     priceDiscount: "Discount",
-    priceRounding: "Rounding",
     priceTotal: "Total",
     errorMissing: "Select a customer and a vehicle",
     errorMissingTime: "Enter a pick-up time and a return time",

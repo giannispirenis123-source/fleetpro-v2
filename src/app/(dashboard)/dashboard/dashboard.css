@@ -1113,3 +1113,25 @@
   gap: 9px;
   cursor: pointer;
 }
+
+/* ---------- Διακόπτης ρύθμισης ---------- */
+.dash-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 15px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dash-switch:hover { border-color: var(--border-strong); background: var(--hover); }
+.dash-switch:has(input:checked) {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.07);
+}
+.dash-switch input { margin-top: 2px; flex-shrink: 0; }
+.dash-switch-text { display: flex; flex-direction: column; gap: 3px; }
+.dash-switch-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.dash-switch-desc { font-size: 12.5px; color: var(--text-3); line-height: 1.45; }

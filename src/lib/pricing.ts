@@ -47,6 +47,8 @@ export interface PriceInput {
   discountValue?: number;
   /** Το ποσό που επέστρεψε ο έλεγχος του κωδικού. Μόνο όταν CODE. */
   codeDiscountAmount?: number;
+  /** Ρύθμιση εταιρίας: στρογγυλοποίηση ΜΟΝΟ του τελικού ποσού προς τα πάνω. */
+  roundUpTotal?: boolean;
 }
 
 export interface PriceBreakdown {
@@ -58,6 +60,10 @@ export interface PriceBreakdown {
   /** subtotal + extrasTotal + insuranceCost — η βάση της έκπτωσης. */
   beforeDiscount: number;
   discountAmount: number;
+  /** Το ποσό πριν τη στρογγυλοποίηση — πάντα το ακριβές άθροισμα. */
+  exactTotal: number;
+  /** Πόσο πρόσθεσε η στρογγυλοποίηση· 0 όταν δεν εφαρμόστηκε ή δεν χρειάστηκε. */
+  roundingAdjustment: number;
   total: number;
   lines: PricedExtraLine[];
 }
@@ -115,6 +121,13 @@ export function computePrice(input: PriceInput): PriceBreakdown {
   // δεν γίνεται ποτέ αρνητικό.
   discountAmount = round2(Math.min(discountAmount, beforeDiscount));
 
+  const exactTotal = round2(beforeDiscount - discountAmount);
+
+  // Η στρογγυλοποίηση αγγίζει ΜΟΝΟ το τελικό ποσό, αφού έχουν υπολογιστεί
+  // τα πάντα. Οι γραμμές παραπάνω μένουν ακριβείς — γι' αυτό κρατάμε και
+  // το exactTotal και τη διαφορά, ώστε να μη «χάνονται» λεπτά αθόρυβα.
+  const total = input.roundUpTotal ? Math.ceil(exactTotal) : exactTotal;
+
   return {
     totalDays,
     dailyRate,
@@ -123,7 +136,9 @@ export function computePrice(input: PriceInput): PriceBreakdown {
     insuranceCost,
     beforeDiscount,
     discountAmount,
-    total: round2(beforeDiscount - discountAmount),
+    exactTotal,
+    roundingAdjustment: round2(total - exactTotal),
+    total,
     lines,
   };
 }

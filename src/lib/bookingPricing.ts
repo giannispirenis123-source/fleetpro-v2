@@ -45,11 +45,21 @@ export type PricingOutcome =
 export async function priceBooking(
   req: PricingRequest
 ): Promise<PricingOutcome> {
-  const vehicle = await db.vehicle.findFirst({
-    where: { id: req.vehicleId, tenantId: req.tenantId },
-    select: { id: true, dailyRate: true },
-  });
+  // Η ρύθμιση στρογγυλοποίησης διαβάζεται από τη βάση, ποτέ από το request:
+  // ο client δεν μπορεί να την ανάψει ή να τη σβήσει για μία κράτηση.
+  const [vehicle, tenant] = await Promise.all([
+    db.vehicle.findFirst({
+      where: { id: req.vehicleId, tenantId: req.tenantId },
+      select: { id: true, dailyRate: true },
+    }),
+    db.tenant.findUnique({
+      where: { id: req.tenantId },
+      select: { roundUpTotal: true },
+    }),
+  ]);
   if (!vehicle) return { ok: false, message: "Το όχημα δεν βρέθηκε" };
+
+  const roundUpTotal = tenant?.roundUpTotal ?? false;
 
   // Μοναδικά ids, ώστε να μη χρεωθεί δύο φορές το ίδιο πρόσθετο.
   const wanted = Array.from(new Set(req.extraIds));
@@ -121,6 +131,7 @@ export async function priceBooking(
     discountMode: req.discountMode,
     discountValue: req.discountValue,
     codeDiscountAmount,
+    roundUpTotal,
   });
 
   return {

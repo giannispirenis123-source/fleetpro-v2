@@ -15,6 +15,7 @@ const SELECT = {
   name: true,
   rentalMode: true,
   prepTimeMinutes: true,
+  roundUpTotal: true,
 } as const;
 
 // Κάθε πεδίο προαιρετικό, αλλά τουλάχιστον ένα πρέπει να δοθεί: η σελίδα
@@ -28,6 +29,7 @@ const updateSettingsSchema = z
       .min(0, "Ο χρόνος προετοιμασίας δεν μπορεί να είναι αρνητικός")
       .max(MAX_PREP_MINUTES, "Ο χρόνος προετοιμασίας δεν μπορεί να ξεπερνά τις 24 ώρες")
       .optional(),
+    roundUpTotal: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "Δεν δόθηκε καμία ρύθμιση προς αλλαγή",
@@ -71,6 +73,9 @@ export const PATCH = withAuth(
           }),
           ...(parsed.data.prepTimeMinutes !== undefined && {
             prepTimeMinutes: parsed.data.prepTimeMinutes,
+          }),
+          ...(parsed.data.roundUpTotal !== undefined && {
+            roundUpTotal: parsed.data.roundUpTotal,
           }),
         },
         select: SELECT,

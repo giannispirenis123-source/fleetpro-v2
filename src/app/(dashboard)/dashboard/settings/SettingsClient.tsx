@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarCheck, Inbox, Check, Timer } from "lucide-react";
+import { CalendarCheck, Inbox, Check, Timer, ArrowUp } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
   formatPrepTime,
@@ -23,10 +23,12 @@ export default function SettingsClient({
   companyName,
   initialRentalMode,
   initialPrepMinutes,
+  initialRoundUp,
 }: {
   companyName: string;
   initialRentalMode: string;
   initialPrepMinutes: number;
+  initialRoundUp: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -44,6 +46,44 @@ export default function SettingsClient({
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepSaved, setPrepSaved] = useState(false);
   const [prepError, setPrepError] = useState("");
+
+  const [roundUp, setRoundUp] = useState(initialRoundUp);
+  const [savingRound, setSavingRound] = useState(false);
+  const [roundSaved, setRoundSaved] = useState(false);
+  const [roundError, setRoundError] = useState("");
+
+  const toggleRoundUp = async (next: boolean) => {
+    if (savingRound || next === roundUp) return;
+
+    setSavingRound(true);
+    setRoundError("");
+    setRoundSaved(false);
+
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roundUpTotal: next }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setRoundError(data.message || tr("settings.errorSave"));
+        return;
+      }
+
+      setRoundUp(data.data.roundUpTotal);
+      setRoundSaved(true);
+
+      // Η ρύθμιση αλλάζει την προεπισκόπηση τιμής στις Κρατήσεις, που
+      // σερβίρεται από το router cache.
+      router.refresh();
+    } catch {
+      setRoundError(tr("settings.errorConnection"));
+    } finally {
+      setSavingRound(false);
+    }
+  };
 
   const draftPrep = joinPrepTime(
     Number(prepHours) || 0,
@@ -235,6 +275,41 @@ export default function SettingsClient({
 
         {prepError && <div className="dash-form-error">{prepError}</div>}
         {prepSaved && !prepError && (
+          <div className="dash-alert-ok dash-settings-saved">
+            <Check size={16} /> {tr("settings.saved")}
+          </div>
+        )}
+      </div>
+
+      <div className="dash-panel dash-settings-panel">
+        <h2 className="dash-section-title">
+          <ArrowUp size={17} /> {tr("settings.roundUp")}
+        </h2>
+        <p className="dash-form-note dash-settings-lead">
+          {tr("settings.roundUpHelp")}
+        </p>
+
+        <label className="dash-switch">
+          <input
+            type="checkbox"
+            checked={roundUp}
+            onChange={(e) => toggleRoundUp(e.target.checked)}
+            disabled={savingRound}
+          />
+          <span className="dash-switch-text">
+            <span className="dash-switch-name">
+              {roundUp ? tr("settings.roundUpOn") : tr("settings.roundUpOff")}
+            </span>
+            <span className="dash-switch-desc">
+              {roundUp
+                ? tr("settings.roundUpOnDesc")
+                : tr("settings.roundUpOffDesc")}
+            </span>
+          </span>
+        </label>
+
+        {roundError && <div className="dash-form-error">{roundError}</div>}
+        {roundSaved && !roundError && (
           <div className="dash-alert-ok dash-settings-saved">
             <Check size={16} /> {tr("settings.saved")}
           </div>

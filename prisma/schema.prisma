@@ -160,6 +160,9 @@ model Tenant {
   // Χρόνος προετοιμασίας οχήματος σε λεπτά: το κενό μετά την επιστροφή
   // (καθάρισμα, έλεγχος, μεταφορά) πριν το όχημα είναι ξανά διαθέσιμο.
   prepTimeMinutes  Int              @default(0)
+  // Στρογγυλοποίηση του ΤΕΛΙΚΟΥ ποσού κράτησης προς τα πάνω, στο
+  // πλησιέστερο ακέραιο ευρώ. Οι επιμέρους γραμμές μένουν ακριβείς.
+  roundUpTotal     Boolean          @default(false)
   trialEndsAt      DateTime?
   stripeCustomerId String?
   stripeSubId      String?

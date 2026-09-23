@@ -16,7 +16,12 @@ export default async function SettingsPage() {
 
   const tenant = await db.tenant.findUnique({
     where: { id: session.tenantId },
-    select: { name: true, rentalMode: true, prepTimeMinutes: true },
+    select: {
+      name: true,
+      rentalMode: true,
+      prepTimeMinutes: true,
+      roundUpTotal: true,
+    },
   });
   if (!tenant) redirect("/dashboard");
 
@@ -25,6 +30,7 @@ export default async function SettingsPage() {
       companyName={tenant.name}
       initialRentalMode={tenant.rentalMode}
       initialPrepMinutes={tenant.prepTimeMinutes}
+      initialRoundUp={tenant.roundUpTotal}
     />
   );
 }

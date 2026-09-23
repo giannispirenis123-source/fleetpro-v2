@@ -160,6 +160,7 @@ export default function BookingsClient({
   tenantId,
   rentalMode,
   prepMinutes,
+  roundUpTotal,
   role,
 }: {
   initialBookings: BookingDTO[];
@@ -169,6 +170,7 @@ export default function BookingsClient({
   tenantId: string;
   rentalMode: string;
   prepMinutes: number;
+  roundUpTotal: boolean;
   role: string;
 }) {
   const tr = useT();
@@ -303,6 +305,7 @@ export default function BookingsClient({
           isRequestMode={isRequestMode}
           isAdmin={isAdmin}
           prepMinutes={prepMinutes}
+          roundUpTotal={roundUpTotal}
           recordWord={recordWord}
           onClose={() => setShowCreate(false)}
           onSaved={(booking) => {
@@ -325,6 +328,7 @@ export default function BookingsClient({
           isRequestMode={isRequestMode}
           isAdmin={isAdmin}
           prepMinutes={prepMinutes}
+          roundUpTotal={roundUpTotal}
           recordWord={recordWord}
           onClose={() => setEditing(null)}
           onSaved={(booking) => {
@@ -399,6 +403,13 @@ function BookingCard({
   onCancel: () => void;
 }) {
   const closed = b.status === "CANCELLED" || b.status === "COMPLETED";
+
+  // Η διαφορά ανάμεσα στο αποθηκευμένο σύνολο και στο ακριβές άθροισμα των
+  // γραμμών είναι ό,τι πρόσθεσε η στρογγυλοποίηση τη στιγμή της κράτησης.
+  const exact = round2(
+    b.subtotal + b.extrasTotal + b.insuranceCost - b.discountAmount
+  );
+  const rounding = round2(b.total - exact);
 
   // Πότε το όχημα είναι ξανά ελεύθερο. Το δείχνουμε μόνο όταν η κράτηση
   // κρατά ακόμη το όχημα και η εταιρία έχει ορίσει χρόνο προετοιμασίας.
@@ -485,6 +496,12 @@ function BookingCard({
             value={`−${eur(b.discountAmount, locale)}`}
           />
         )}
+        {rounding > 0 && (
+          <PriceRow
+            label={tr("bookings.priceRounding")}
+            value={`+${eur(rounding, locale)}`}
+          />
+        )}
       </div>
 
       <div className="dash-vehicle-foot">
@@ -532,6 +549,7 @@ function BookingModal({
   isRequestMode,
   isAdmin,
   prepMinutes,
+  roundUpTotal,
   recordWord,
   onClose,
   onSaved,
@@ -547,6 +565,8 @@ function BookingModal({
   isRequestMode: boolean;
   isAdmin: boolean;
   prepMinutes: number;
+  /** Ρύθμιση εταιρίας — η προεπισκόπηση πρέπει να δείχνει ό,τι θα αποθηκευτεί. */
+  roundUpTotal: boolean;
   recordWord: string;
   onClose: () => void;
   onSaved: (booking: BookingDTO) => void;
@@ -617,6 +637,7 @@ function BookingModal({
     discountMode: form.discountMode,
     discountValue: Number(form.discountValue) || 0,
     codeDiscountAmount: codeAmount,
+    roundUpTotal,
   });
 
   const toggleExtra = (id: string) => {
@@ -1089,6 +1110,12 @@ function BookingModal({
                 negative
                 label={tr("bookings.priceDiscount")}
                 value={`−${eur(preview.discountAmount, locale)}`}
+              />
+            )}
+            {preview.roundingAdjustment > 0 && (
+              <PriceRow
+                label={tr("bookings.priceRounding")}
+                value={`+${eur(preview.roundingAdjustment, locale)}`}
               />
             )}
             <PriceRow

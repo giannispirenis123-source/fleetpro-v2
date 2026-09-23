@@ -801,6 +801,8 @@ function PlatformDiscountsView() {
 function PlatformSettingsView() {
   return (
     <div className="sa-settings-grid">
+      <MyPasswordCard />
+
       <div className="sa-settings-card">
         <h3>Στοιχεία Πλατφόρμας</h3>
         <div className="sa-form-grid">
@@ -849,6 +851,150 @@ function PlatformSettingsView() {
           Αποθήκευση
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Αλλαγή του δικού μου κωδικού
+   ───────────────────────────────────────────── */
+
+function MyPasswordCard() {
+  // Και τα τρία πεδία ξεκινούν κενά και καθαρίζουν μετά την αποθήκευση:
+  // κανένας κωδικός δεν μένει στη μνήμη της σελίδας περισσότερο από όσο
+  // χρειάζεται για το ένα request.
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const tooShort = next.length > 0 && next.length < 8;
+  const mismatch = confirm.length > 0 && next !== confirm;
+  const sameAsCurrent = next.length > 0 && next === current;
+  const valid =
+    current.length > 0 && next.length >= 8 && next === confirm && !sameAsCurrent;
+
+  const submit = async () => {
+    if (!valid || saving) return;
+
+    setSaving(true);
+    setError("");
+    setDone(false);
+
+    try {
+      const res = await fetch("/api/users/me/password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: current, newPassword: next }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.message || "Δεν ήταν δυνατή η αλλαγή");
+        return;
+      }
+
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      setShow(false);
+      setDone(true);
+    } catch {
+      setError("Σφάλμα σύνδεσης");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="sa-settings-card">
+      <h3>Ο κωδικός μου</h3>
+      <p className="sa-muted-note">
+        Αλλαγή του κωδικού του λογαριασμού με τον οποίο είσαι συνδεδεμένος.
+      </p>
+
+      {done && (
+        <div className="sa-ok-banner">
+          <CheckCircle size={15} /> Ο κωδικός σου άλλαξε.
+        </div>
+      )}
+
+      <label className="sa-label">
+        Τρέχων κωδικός
+        <div className="sa-password-wrap">
+          <input
+            type={show ? "text" : "password"}
+            value={current}
+            onChange={(e) => {
+              setCurrent(e.target.value);
+              setDone(false);
+            }}
+            autoComplete="current-password"
+          />
+          <button
+            type="button"
+            onClick={() => setShow(!show)}
+            aria-label={show ? "Απόκρυψη" : "Εμφάνιση"}
+          >
+            {show ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+      </label>
+
+      <label className="sa-label">
+        Νέος κωδικός
+        <input
+          type={show ? "text" : "password"}
+          value={next}
+          onChange={(e) => {
+            setNext(e.target.value);
+            setDone(false);
+          }}
+          autoComplete="new-password"
+          placeholder="Τουλάχιστον 8 χαρακτήρες"
+        />
+      </label>
+
+      <label className="sa-label">
+        Επιβεβαίωση νέου κωδικού
+        <input
+          type={show ? "text" : "password"}
+          value={confirm}
+          onChange={(e) => {
+            setConfirm(e.target.value);
+            setDone(false);
+          }}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          autoComplete="new-password"
+        />
+      </label>
+
+      {tooShort && (
+        <div className="sa-error">
+          Ο νέος κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες
+        </div>
+      )}
+      {sameAsCurrent && !tooShort && (
+        <div className="sa-error">
+          Ο νέος κωδικός είναι ίδιος με τον τρέχοντα
+        </div>
+      )}
+      {mismatch && (
+        <div className="sa-error">Οι δύο κωδικοί δεν ταιριάζουν</div>
+      )}
+      {error && <div className="sa-error">{error}</div>}
+
+      <button
+        className="sa-btn-primary"
+        style={{ marginTop: 16 }}
+        onClick={submit}
+        disabled={!valid || saving}
+      >
+        {saving ? "Αποθήκευση…" : "Αλλαγή κωδικού"}
+      </button>
     </div>
   );
 }

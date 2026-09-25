@@ -5,12 +5,12 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  withAuth,
   ok,
   created,
   badRequest,
   serverError,
 } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { CHARGE_TYPES, EXTRA_TYPES, toExtraDTO } from "@/lib/extras";
 
 const createExtraSchema = z.object({
@@ -22,7 +22,7 @@ const createExtraSchema = z.object({
 });
 
 // GET /api/extras — λίστα για τον tenant
-export const GET = withAuth(
+export const GET = withPermission(
   async (req, session) => {
     try {
       const url = new URL(req.url);
@@ -43,11 +43,11 @@ export const GET = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF", "PARTNER"]
+  "extras.view"
 );
 
 // POST /api/extras — δημιουργία (μόνο διαχειριστής εταιρίας)
-export const POST = withAuth(
+export const POST = withPermission(
   async (req, session) => {
     try {
       const body = await req.json();
@@ -76,5 +76,5 @@ export const POST = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "extras.create"
 );

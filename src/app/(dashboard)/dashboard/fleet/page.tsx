@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { toVehicleDTO } from "@/lib/vehicles";
 import FleetClient from "./FleetClient";
@@ -7,10 +7,11 @@ import FleetClient from "./FleetClient";
 export const dynamic = "force-dynamic";
 
 export default async function FleetPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role === "SUPER_ADMIN") redirect("/super-admin");
-  if (!session.tenantId) redirect("/login");
+  // Ο φύλακας διαβάζει το ΙΔΙΟ κλειδί με το API: καμία σελίδα δεν δείχνει
+  // κάτι που ο server θα αρνιόταν.
+  const guard = await pageGuard("fleet.view");
+  if (!guard) redirect("/dashboard");
+  const { session } = guard;
 
   // Αρχική λίστα από τη βάση: η σελίδα έρχεται ήδη γεμάτη, χωρίς loading state.
   // Από εκεί και πέρα τη λίστα τη συντηρεί ο client μετά από κάθε αλλαγή.

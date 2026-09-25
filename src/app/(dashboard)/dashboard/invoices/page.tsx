@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { INVOICE_RELATIONS, toInvoiceDTO } from "@/lib/invoices";
 import InvoicesClient from "./InvoicesClient";
@@ -7,16 +7,11 @@ import InvoicesClient from "./InvoicesClient";
 export const dynamic = "force-dynamic";
 
 export default async function InvoicesPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role === "SUPER_ADMIN") redirect("/super-admin");
-  if (!session.tenantId) redirect("/login");
-
-  // Τα τιμολόγια είναι οικονομικό στοιχείο της εταιρίας: ο συνεργάτης
-  // βλέπει κρατήσεις και στόλο, όχι παραστατικά.
-  if (session.role !== "COMPANY_ADMIN" && session.role !== "STAFF") {
-    redirect("/dashboard");
-  }
+  // Ο φύλακας διαβάζει το ΙΔΙΟ κλειδί με το API: καμία σελίδα δεν δείχνει
+  // κάτι που ο server θα αρνιόταν.
+  const guard = await pageGuard("invoices.view");
+  if (!guard) redirect("/dashboard");
+  const { session } = guard;
 
   const tenantId = session.tenantId;
 

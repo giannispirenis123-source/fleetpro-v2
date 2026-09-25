@@ -5,12 +5,12 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  withAuth,
   ok,
   created,
   badRequest,
   serverError,
 } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import {
   FUEL_TYPES,
   VEHICLE_CATEGORIES,
@@ -58,7 +58,7 @@ const createVehicleSchema = z.object({
 });
 
 // GET /api/vehicles — λίστα οχημάτων του tenant
-export const GET = withAuth(
+export const GET = withPermission(
   async (req, session) => {
     try {
       const url = new URL(req.url);
@@ -79,11 +79,11 @@ export const GET = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF", "PARTNER"]
+  "fleet.view"
 );
 
 // POST /api/vehicles — δημιουργία οχήματος
-export const POST = withAuth(
+export const POST = withPermission(
   async (req, session) => {
     try {
       const body = await req.json();
@@ -135,5 +135,5 @@ export const POST = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "fleet.create"
 );

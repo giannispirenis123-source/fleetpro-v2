@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { withAuth, ok, created, badRequest, serverError } from "@/lib/api";
+import { ok, created, badRequest, serverError } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { INVOICE_RELATIONS, toInvoiceDTO } from "@/lib/invoices";
 import { issueInvoiceForBooking } from "@/lib/invoiceIssue";
 
@@ -18,7 +19,7 @@ const issueSchema = z.object({
 });
 
 // GET /api/invoices
-export const GET = withAuth(
+export const GET = withPermission(
   async (_req, session) => {
     try {
       const invoices = await db.invoice.findMany({
@@ -33,11 +34,11 @@ export const GET = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "invoices.view"
 );
 
 // POST /api/invoices — χειροκίνητη έκδοση για μια κράτηση
-export const POST = withAuth(
+export const POST = withPermission(
   async (req, session) => {
     try {
       const parsed = issueSchema.safeParse(await req.json());
@@ -72,5 +73,5 @@ export const POST = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "invoices.issue"
 );

@@ -5,12 +5,12 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  withAuth,
   ok,
   created,
   badRequest,
   serverError,
 } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { toCustomerDTO } from "@/lib/customers";
 
 // "YYYY-MM-DD", κενό ή null — το UI στέλνει κενό όταν δεν έχει συμπληρωθεί.
@@ -51,7 +51,7 @@ const createCustomerSchema = z.object({
 });
 
 // GET /api/customers — λίστα πελατών του tenant
-export const GET = withAuth(
+export const GET = withPermission(
   async (req, session) => {
     try {
       const url = new URL(req.url);
@@ -81,11 +81,11 @@ export const GET = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "customers.view"
 );
 
 // POST /api/customers — δημιουργία πελάτη
-export const POST = withAuth(
+export const POST = withPermission(
   async (req, session) => {
     try {
       const body = await req.json();
@@ -127,5 +127,5 @@ export const POST = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "customers.create"
 );

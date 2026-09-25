@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { toCustomerDTO } from "@/lib/customers";
 import CustomersClient from "./CustomersClient";
@@ -7,13 +7,11 @@ import CustomersClient from "./CustomersClient";
 export const dynamic = "force-dynamic";
 
 export default async function CustomersPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role === "SUPER_ADMIN") redirect("/super-admin");
-  if (!session.tenantId) redirect("/login");
-
-  // Ο συνεργάτης δεν έχει πρόσβαση στις καρτέλες πελατών.
-  if (session.role === "PARTNER") redirect("/dashboard");
+  // Ο φύλακας διαβάζει το ΙΔΙΟ κλειδί με το API: καμία σελίδα δεν δείχνει
+  // κάτι που ο server θα αρνιόταν.
+  const guard = await pageGuard("customers.view");
+  if (!guard) redirect("/dashboard");
+  const { session } = guard;
 
   // Αρχική λίστα από τη βάση: η σελίδα έρχεται ήδη γεμάτη, χωρίς loading state.
   const customers = await db.customer.findMany({

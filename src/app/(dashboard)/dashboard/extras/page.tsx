@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { toExtraDTO } from "@/lib/extras";
 import ExtrasClient from "./ExtrasClient";
@@ -7,10 +7,11 @@ import ExtrasClient from "./ExtrasClient";
 export const dynamic = "force-dynamic";
 
 export default async function ExtrasPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role === "SUPER_ADMIN") redirect("/super-admin");
-  if (!session.tenantId) redirect("/login");
+  // Ο φύλακας διαβάζει το ΙΔΙΟ κλειδί με το API: καμία σελίδα δεν δείχνει
+  // κάτι που ο server θα αρνιόταν.
+  const guard = await pageGuard("extras.view");
+  if (!guard) redirect("/dashboard");
+  const { session } = guard;
 
   // Εδώ φέρνουμε και τα ανενεργά: ο διαχειριστής πρέπει να μπορεί να τα
   // ξαναενεργοποιήσει από το φίλτρο.

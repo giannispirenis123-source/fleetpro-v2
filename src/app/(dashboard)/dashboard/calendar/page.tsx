@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { toBookingDTO } from "@/lib/bookings";
 import { addDays, firstDay, lastDay, normalizeMonth } from "@/lib/calendar";
@@ -14,10 +14,11 @@ export default async function CalendarPage({
 }: {
   searchParams?: { m?: string; view?: string };
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role === "SUPER_ADMIN") redirect("/super-admin");
-  if (!session.tenantId) redirect("/login");
+  // Ο φύλακας διαβάζει το ΙΔΙΟ κλειδί με το API: καμία σελίδα δεν δείχνει
+  // κάτι που ο server θα αρνιόταν.
+  const guard = await pageGuard("calendar.view");
+  if (!guard) redirect("/dashboard");
+  const { session } = guard;
 
   const tenantId = session.tenantId;
   const month = normalizeMonth(searchParams?.m);

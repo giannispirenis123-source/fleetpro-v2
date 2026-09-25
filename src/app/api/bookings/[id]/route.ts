@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  withAuth,
   ok,
   badRequest,
   conflict,
@@ -14,6 +13,7 @@ import {
   notFound,
   serverError,
 } from "@/lib/api";
+import { withPermission, sessionCan } from "@/lib/authz";
 import {
   BOOKING_STATUSES,
   STATUS_TRANSITIONS,
@@ -85,7 +85,7 @@ async function syncVehicleStatus(vehicleId: string, tenantId: string) {
 }
 
 // PATCH /api/bookings/[id]
-export const PATCH = withAuth(
+export const PATCH = withPermission(
   async (req, session, params) => {
     try {
       const current = await db.booking.findFirst({
@@ -104,6 +104,13 @@ export const PATCH = withAuth(
 
       // Έλεγχος μετάβασης: επιτρέπονται μόνο οι δηλωμένες διαδρομές.
       if (data.status && data.status !== current.status) {
+        // Η αλλαγή κατάστασης είναι ξεχωριστό δικαίωμα από την απλή
+        // επεξεργασία στοιχείων: άλλο να διορθώσεις μια ώρα και άλλο να
+        // ενεργοποιήσεις ή να ολοκληρώσεις μια ενοικίαση.
+        if (!(await sessionCan(session, "bookings.status"))) {
+          return forbidden("Δεν έχετε δικαίωμα αλλαγής κατάστασης κράτησης");
+        }
+
         const allowed = STATUS_TRANSITIONS[current.status] ?? [];
         if (!allowed.includes(data.status)) {
           return badRequest(
@@ -162,7 +169,7 @@ export const PATCH = withAuth(
               conflicts
             );
           }
-          if (session.role !== "COMPANY_ADMIN") {
+          if (!(await sessionCan(session, "bookings.override"))) {
             return forbidden("Η παράκαμψη απαιτεί έγκριση διαχειριστή");
           }
         }
@@ -282,13 +289,13 @@ export const PATCH = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "bookings.edit"
 );
 
 // DELETE /api/bookings/[id] — ακύρωση, όχι σβήσιμο.
 // Η κράτηση κρατά αριθμό και ιστορικό· απλώς περνά σε CANCELLED και το όχημα
 // ελευθερώνεται αν δεν το κρατά κάποια άλλη.
-export const DELETE = withAuth(
+export const DELETE = withPermission(
   async (_req, session, params) => {
     try {
       const current = await db.booking.findFirst({
@@ -324,5 +331,5 @@ export const DELETE = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "bookings.cancel"
 );

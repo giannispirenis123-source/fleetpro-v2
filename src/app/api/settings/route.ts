@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { withAuth, ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { MAX_PREP_MINUTES } from "@/lib/prepTime";
 import { INVOICE_ISSUE_TRIGGERS, INVOICE_SEND_MODES } from "@/lib/invoices";
 
@@ -61,7 +62,7 @@ const updateSettingsSchema = z
   });
 
 // GET /api/settings
-export const GET = withAuth(
+export const GET = withPermission(
   async (_req, session) => {
     try {
       const tenant = await db.tenant.findUnique({
@@ -76,11 +77,11 @@ export const GET = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "settings.view"
 );
 
 // PATCH /api/settings — τρόπος λειτουργίας και χρόνος προετοιμασίας
-export const PATCH = withAuth(
+export const PATCH = withPermission(
   async (req, session) => {
     try {
       const body = await req.json();
@@ -121,5 +122,5 @@ export const PATCH = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "settings.edit"
 );

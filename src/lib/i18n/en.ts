@@ -433,6 +433,60 @@ export const en: Dictionary = {
       "The code will stop applying to new bookings. Existing bookings are unaffected and the usage history is kept.",
   },
 
+  users: {
+    title: "Users",
+    subtitle: "Your company's staff and partners.",
+    addUser: "New user",
+    searchPlaceholder: "Search name or email\u2026",
+    tabSTAFF: "Staff",
+    tabPARTNER: "Partners",
+    tabCOMPANY_ADMIN: "Admins",
+    empty: "There are no users in this category.",
+    emptyFiltered: "No user matches your search.",
+    noAccess:
+      "You have not been given access to any section yet. Ask your company admin to set your permissions.",
+
+    you: "you",
+    inactive: "inactive",
+    fullAccess: "Full permissions",
+    adminAllPermissions: "An admin always has every permission",
+    permissionsCount: "permissions",
+    lastLogin: "Last sign-in",
+    notYourself: "You cannot change your own permissions",
+
+    newUser: "New user",
+    editUser: "Edit user",
+    name: "Full name",
+    email: "Email",
+    phone: "Phone",
+    category: "Category",
+    password: "Password",
+    newPassword: "New password",
+    passwordKeep: "Leave empty to keep the current one",
+    defaultsNote:
+      "A new user starts with the default permissions for their category. You can change them right afterwards from the \u201cPermissions\u201d button.",
+
+    permissions: "Permissions",
+    permissionsOf: "Permissions \u2014",
+    permissionsHelp:
+      "Tick what this person may do. The check always happens on the server: even if someone finds a hidden button, the action is refused without the permission.",
+    selectAll: "Select all",
+    selectNone: "None",
+
+    edit: "Edit",
+    deactivate: "Deactivate",
+    save: "Save",
+    saving: "Saving\u2026",
+    cancel: "Cancel",
+    confirmDeactivateTitle: "Deactivate user",
+    confirmDeactivateBody:
+      "The user will no longer be able to sign in. Their history is kept and you can reactivate them later.",
+    errorMissing: "Enter a name and an email",
+    errorPassword: "The password needs at least 8 characters",
+    errorSave: "Could not save",
+    errorConnection: "Connection error",
+  },
+
   calendar: {
     title: "Calendar",
     subtitle: "Your company's bookings over time.",

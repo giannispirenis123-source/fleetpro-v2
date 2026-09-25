@@ -8,12 +8,12 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  withAuth,
   ok,
   badRequest,
   notFound,
   serverError,
 } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { toCustomerDTO } from "@/lib/customers";
 
 const dateField = z
@@ -52,7 +52,7 @@ const updateCustomerSchema = z.object({
 const text = (v?: string | null) => (v?.trim() ? v.trim() : null);
 
 // PATCH /api/customers/[id]
-export const PATCH = withAuth(
+export const PATCH = withPermission(
   async (req, session, params) => {
     try {
       const current = await db.customer.findFirst({
@@ -115,7 +115,7 @@ export const PATCH = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "customers.edit"
 );
 
 // DELETE /api/customers/[id] — πραγματική διαγραφή, αλλά μόνο όταν ο πελάτης
@@ -125,7 +125,7 @@ export const PATCH = withAuth(
 // Ελέγχουμε και τις τρεις σχέσεις (κρατήσεις, τιμολόγια, συμβόλαια): όλες είναι
 // υποχρεωτικές από την πλευρά τους, άρα η διαγραφή θα αποτύγχανε στη βάση με
 // σφάλμα ξένου κλειδιού. Προτιμούμε καθαρό μήνυμα αντί για 500.
-export const DELETE = withAuth(
+export const DELETE = withPermission(
   async (_req, session, params) => {
     try {
       const current = await db.customer.findFirst({
@@ -155,5 +155,5 @@ export const DELETE = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "customers.delete"
 );

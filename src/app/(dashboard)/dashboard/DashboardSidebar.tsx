@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
+import { can, type PermissionMap } from "@/lib/permissions";
 import { LOCALES, type Locale } from "@/lib/i18n/locale";
 import {
   LayoutDashboard,
@@ -32,27 +33,30 @@ interface NavItem {
   /** Κλειδί μετάφρασης στο namespace "sidebar". */
   labelKey: string;
   icon: React.ComponentType<{ size?: string | number }>;
-  roles: Role[];
+  /** Το δικαίωμα προβολής της ενότητας — από το μητρώο δικαιωμάτων. */
+  permission: string;
   disabled?: boolean;
 }
 
+// Η ορατότητα ΔΕΝ κρίνεται πια από τον ρόλο αλλά από το δικαίωμα προβολής.
+// Ο διαχειριστής τα έχει όλα, οπότε βλέπει τα πάντα.
 // Ενεργά: Πίνακας, Κρατήσεις, Ημερολόγιο, Στόλος, Πρόσθετα, Πελάτες,
-// Εκπτώσεις, Τιμολόγια, Ρυθμίσεις.
+// Εκπτώσεις, Τιμολόγια, Χρήστες, Ρυθμίσεις.
 const NAV: NavItem[] = [
-  { href: "/dashboard", labelKey: "overview", icon: LayoutDashboard, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
-  { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
-  { href: "/dashboard/calendar", labelKey: "calendar", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
-  { href: "/dashboard/fleet", labelKey: "fleet", icon: Car, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
-  { href: "/dashboard/extras", labelKey: "extras", icon: PackagePlus, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
-  { href: "/dashboard/customers", labelKey: "customers", icon: Users, roles: ["COMPANY_ADMIN", "STAFF"] },
-  { href: "/dashboard/discounts", labelKey: "discounts", icon: Tag, roles: ["COMPANY_ADMIN"] },
-  { href: "/dashboard/contracts", labelKey: "contracts", icon: FileText, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
-  { href: "/dashboard/invoices", labelKey: "invoices", icon: Receipt, roles: ["COMPANY_ADMIN", "STAFF"] },
-  { href: "/dashboard/service", labelKey: "service", icon: Wrench, roles: ["COMPANY_ADMIN", "STAFF"], disabled: true },
-  { href: "/dashboard/reports", labelKey: "reports", icon: BarChart3, roles: ["COMPANY_ADMIN"], disabled: true },
-  { href: "/dashboard/finance", labelKey: "finance", icon: Wallet, roles: ["COMPANY_ADMIN"], disabled: true },
-  { href: "/dashboard/users", labelKey: "users", icon: UserCog, roles: ["COMPANY_ADMIN"], disabled: true },
-  { href: "/dashboard/settings", labelKey: "settings", icon: Settings, roles: ["COMPANY_ADMIN"] },
+  { href: "/dashboard", labelKey: "overview", icon: LayoutDashboard, permission: "dashboard.view" },
+  { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, permission: "bookings.view" },
+  { href: "/dashboard/calendar", labelKey: "calendar", icon: CalendarDays, permission: "calendar.view" },
+  { href: "/dashboard/fleet", labelKey: "fleet", icon: Car, permission: "fleet.view" },
+  { href: "/dashboard/extras", labelKey: "extras", icon: PackagePlus, permission: "extras.view" },
+  { href: "/dashboard/customers", labelKey: "customers", icon: Users, permission: "customers.view" },
+  { href: "/dashboard/discounts", labelKey: "discounts", icon: Tag, permission: "discounts.view" },
+  { href: "/dashboard/contracts", labelKey: "contracts", icon: FileText, permission: "contracts.view", disabled: true },
+  { href: "/dashboard/invoices", labelKey: "invoices", icon: Receipt, permission: "invoices.view" },
+  { href: "/dashboard/service", labelKey: "service", icon: Wrench, permission: "service.view", disabled: true },
+  { href: "/dashboard/reports", labelKey: "reports", icon: BarChart3, permission: "reports.view", disabled: true },
+  { href: "/dashboard/finance", labelKey: "finance", icon: Wallet, permission: "finance.view", disabled: true },
+  { href: "/dashboard/users", labelKey: "users", icon: UserCog, permission: "users.view" },
+  { href: "/dashboard/settings", labelKey: "settings", icon: Settings, permission: "settings.view" },
 ];
 
 const ROLE_LABEL_KEY: Record<string, string> = {
@@ -66,10 +70,12 @@ const LOCALE_SHORT: Record<Locale, string> = { el: "ΕΛ", en: "EN" };
 export default function DashboardSidebar({
   name,
   role,
+  permissions,
   companyName,
 }: {
   name: string;
   role: Role;
+  permissions: PermissionMap;
   companyName: string;
 }) {
   const pathname = usePathname();
@@ -100,7 +106,11 @@ export default function DashboardSidebar({
     .join("")
     .toUpperCase();
 
-  const items = NAV.filter((it) => it.roles.includes(role));
+  // Οι ενότητες «σύντομα» μένουν ορατές σε όλους ως ένδειξη τού τι
+  // έρχεται· οι υπόλοιπες μόνο σε όποιον έχει το δικαίωμα προβολής.
+  const items = NAV.filter(
+    (it) => it.disabled || can(role, permissions, it.permission)
+  );
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });

@@ -4,7 +4,8 @@ export const dynamic = "force-dynamic";
 // Κάθε ερώτημα φιλτράρει ΚΑΙ με tenantId από το session.
 
 import { db } from "@/lib/db";
-import { withAuth, ok, created, badRequest, serverError } from "@/lib/api";
+import { ok, created, badRequest, serverError } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import {
   discountFormSchema,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/discountForm";
 
 // GET /api/discounts
-export const GET = withAuth(
+export const GET = withPermission(
   async (req, session) => {
     try {
       const includeInactive =
@@ -33,11 +34,11 @@ export const GET = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "discounts.view"
 );
 
 // POST /api/discounts
-export const POST = withAuth(
+export const POST = withPermission(
   async (req, session) => {
     try {
       const parsed = discountFormSchema.safeParse(await req.json());
@@ -79,5 +80,5 @@ export const POST = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "discounts.create"
 );

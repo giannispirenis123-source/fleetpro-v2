@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { withAuth, ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { CHARGE_TYPES, EXTRA_TYPES, toExtraDTO } from "@/lib/extras";
 
 const updateExtraSchema = z.object({
@@ -17,7 +18,7 @@ const updateExtraSchema = z.object({
 });
 
 // PATCH /api/extras/[id]
-export const PATCH = withAuth(
+export const PATCH = withPermission(
   async (req, session, params) => {
     try {
       const current = await db.extra.findFirst({
@@ -51,13 +52,13 @@ export const PATCH = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "extras.edit"
 );
 
 // DELETE /api/extras/[id] — ήπια διαγραφή.
 // Το πρόσθετο μένει στη βάση ώστε παλιές κρατήσεις που το χρησιμοποίησαν
 // (Βήμα 2) να μη χάσουν την αναφορά τους· απλώς παύει να προσφέρεται.
-export const DELETE = withAuth(
+export const DELETE = withPermission(
   async (_req, session, params) => {
     try {
       const current = await db.extra.findFirst({
@@ -76,5 +77,5 @@ export const DELETE = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "extras.delete"
 );

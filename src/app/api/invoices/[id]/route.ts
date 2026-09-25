@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { withAuth, ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { INVOICE_RELATIONS, toInvoiceDTO } from "@/lib/invoices";
 
 const patchSchema = z.object({
@@ -18,7 +19,7 @@ const patchSchema = z.object({
 });
 
 // PATCH /api/invoices/[id]
-export const PATCH = withAuth(
+export const PATCH = withPermission(
   async (req, session, params) => {
     try {
       const current = await db.invoice.findFirst({
@@ -62,5 +63,5 @@ export const PATCH = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "invoices.markpaid"
 );

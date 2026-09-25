@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  withAuth,
   ok,
   created,
   badRequest,
@@ -18,6 +17,7 @@ import {
   forbidden,
   serverError,
 } from "@/lib/api";
+import { withPermission, sessionCan } from "@/lib/authz";
 import {
   BOOKING_STATUSES,
   RESERVING_STATUSES,
@@ -77,7 +77,7 @@ async function nextBookingNumber(tenantId: string): Promise<string> {
 }
 
 // GET /api/bookings
-export const GET = withAuth(
+export const GET = withPermission(
   async (req, session) => {
     try {
       const url = new URL(req.url);
@@ -102,11 +102,11 @@ export const GET = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF", "PARTNER"]
+  "bookings.view"
 );
 
 // POST /api/bookings
-export const POST = withAuth(
+export const POST = withPermission(
   async (req, session) => {
     try {
       const body = await req.json();
@@ -165,7 +165,7 @@ export const POST = withAuth(
             conflicts
           );
         }
-        if (session.role !== "COMPANY_ADMIN") {
+        if (!(await sessionCan(session, "bookings.override"))) {
           return forbidden("Η παράκαμψη απαιτεί έγκριση διαχειριστή");
         }
       }
@@ -246,5 +246,5 @@ export const POST = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN", "STAFF"]
+  "bookings.create"
 );

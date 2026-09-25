@@ -4,7 +4,8 @@ export const dynamic = "force-dynamic";
 // Κάθε ερώτημα φιλτράρει ΚΑΙ με tenantId από το session.
 
 import { db } from "@/lib/db";
-import { withAuth, ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { withPermission } from "@/lib/authz";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import {
   discountFormSchema,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/discountForm";
 
 // PATCH /api/discounts/[id]
-export const PATCH = withAuth(
+export const PATCH = withPermission(
   async (req, session, params) => {
     try {
       const current = await db.discount.findFirst({
@@ -93,13 +94,13 @@ export const PATCH = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "discounts.edit"
 );
 
 // DELETE /api/discounts/[id] — απενεργοποίηση, όχι σβήσιμο.
 // Ο κωδικός μένει στη βάση ώστε κρατήσεις που τον χρησιμοποίησαν να
 // κρατούν νόημα, και για να διατηρηθεί το ιστορικό χρήσεων.
-export const DELETE = withAuth(
+export const DELETE = withPermission(
   async (_req, session, params) => {
     try {
       const current = await db.discount.findFirst({
@@ -122,5 +123,5 @@ export const DELETE = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "discounts.delete"
 );

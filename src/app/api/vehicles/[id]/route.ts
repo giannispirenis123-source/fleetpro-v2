@@ -8,12 +8,13 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  withAuth,
   ok,
   badRequest,
   notFound,
   serverError,
+  forbidden,
 } from "@/lib/api";
+import { withPermission, sessionCan } from "@/lib/authz";
 import {
   FUEL_TYPES,
   VEHICLE_CATEGORIES,
@@ -57,7 +58,7 @@ const updateVehicleSchema = z.object({
 });
 
 // PATCH /api/vehicles/[id]
-export const PATCH = withAuth(
+export const PATCH = withPermission(
   async (req, session, params) => {
     try {
       const current = await db.vehicle.findFirst({
@@ -73,6 +74,15 @@ export const PATCH = withAuth(
       }
 
       const data = parsed.data;
+
+      // Η αλλαγή κατάστασης οχήματος (διαθέσιμο / συντήρηση / ανενεργό)
+      // είναι ξεχωριστό δικαίωμα από την επεξεργασία των στοιχείων του.
+      if (data.status !== undefined && data.status !== current.status) {
+        if (!(await sessionCan(session, "fleet.status"))) {
+          return forbidden("Δεν έχετε δικαίωμα αλλαγής κατάστασης οχήματος");
+        }
+      }
+
       const plate = data.plate ? data.plate.trim().toUpperCase() : undefined;
 
       if (plate && plate !== current.plate) {
@@ -129,13 +139,13 @@ export const PATCH = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "fleet.edit"
 );
 
 // DELETE /api/vehicles/[id] — ήπια διαγραφή.
 // Το όχημα μένει στη βάση ώστε να μη σπάσουν κρατήσεις, συμβόλαια και τιμολόγια
 // που το αναφέρουν· απλώς βγαίνει από τον ενεργό στόλο.
-export const DELETE = withAuth(
+export const DELETE = withPermission(
   async (_req, session, params) => {
     try {
       const current = await db.vehicle.findFirst({
@@ -154,5 +164,5 @@ export const DELETE = withAuth(
       return serverError();
     }
   },
-  ["COMPANY_ADMIN"]
+  "fleet.delete"
 );

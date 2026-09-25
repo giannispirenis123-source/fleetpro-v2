@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { toBookingDTO } from "@/lib/bookings";
 import { toExtraDTO } from "@/lib/extras";
@@ -12,10 +12,11 @@ export default async function BookingsPage({
 }: {
   searchParams?: { booking?: string };
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role === "SUPER_ADMIN") redirect("/super-admin");
-  if (!session.tenantId) redirect("/login");
+  // Ο φύλακας διαβάζει το ΙΔΙΟ κλειδί με το API: καμία σελίδα δεν δείχνει
+  // κάτι που ο server θα αρνιόταν.
+  const guard = await pageGuard("bookings.view");
+  if (!guard) redirect("/dashboard");
+  const { session } = guard;
 
   const tenantId = session.tenantId;
 

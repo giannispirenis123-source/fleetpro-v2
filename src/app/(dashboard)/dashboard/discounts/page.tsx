@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import DiscountsClient from "./DiscountsClient";
@@ -7,13 +7,11 @@ import DiscountsClient from "./DiscountsClient";
 export const dynamic = "force-dynamic";
 
 export default async function DiscountsPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role === "SUPER_ADMIN") redirect("/super-admin");
-  if (!session.tenantId) redirect("/login");
-
-  // Οι εκπτώσεις είναι εμπορική απόφαση — μόνο ο διαχειριστής.
-  if (session.role !== "COMPANY_ADMIN") redirect("/dashboard");
+  // Ο φύλακας διαβάζει το ΙΔΙΟ κλειδί με το API: καμία σελίδα δεν δείχνει
+  // κάτι που ο server θα αρνιόταν.
+  const guard = await pageGuard("discounts.view");
+  if (!guard) redirect("/dashboard");
+  const { session } = guard;
 
   const tenantId = session.tenantId;
 

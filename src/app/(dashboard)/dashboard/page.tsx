@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { translator } from "@/lib/i18n";
 import {
@@ -17,6 +17,21 @@ import {
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+/** Χρήστης χωρίς καμία ενότητα: δεν τον στέλνουμε σε βρόχο. */
+async function NoAccess() {
+  const session = await getSession();
+  const tr = translator(session?.locale ?? "el");
+
+  return (
+    <>
+      <div className="dash-page-head">
+        <h1 className="dash-page-title">{tr("common.appName")}</h1>
+      </div>
+      <div className="dash-panel dash-empty">{tr("users.noAccess")}</div>
+    </>
+  );
+}
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
@@ -43,10 +58,12 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 export default async function DashboardPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role === "SUPER_ADMIN") redirect("/super-admin");
-  if (!session.tenantId) redirect("/login");
+  // Ο Πίνακας είναι ο προορισμός κάθε άλλης ανακατεύθυνσης, οπότε ΔΕΝ
+  // ανακατευθύνει στον εαυτό του: χωρίς δικαίωμα προβολής δείχνει ένα
+  // καθαρό μήνυμα αντί να κάνει τη σελίδα να γυρίζει ατέρμονα.
+  const guard = await pageGuard("dashboard.view");
+  if (!guard) return <NoAccess />;
+  const { session } = guard;
 
   const tenantId = session.tenantId;
   const locale = session.locale;

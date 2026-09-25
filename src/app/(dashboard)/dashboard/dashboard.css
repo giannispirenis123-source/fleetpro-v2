@@ -1575,3 +1575,109 @@
   .dash-cal-month { min-width: 130px; font-size: 14px; }
   .dash-tl-name { width: 112px; padding: 8px; }
 }
+
+/* ---------- Χρήστες και δικαιώματα ---------- */
+.dash-users {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dash-user-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.dash-user-card.off { opacity: 0.6; }
+.dash-user-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--primary-bg);
+  color: var(--primary-soft);
+}
+.dash-user-card-main { flex: 1; min-width: 180px; }
+.dash-user-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dash-user-card-email { font-size: 12.5px; color: var(--text-3); }
+.dash-user-card-perms { font-size: 11.5px; color: var(--text-4); margin-top: 2px; }
+.dash-user-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dash-perm-group {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.dash-perm-group:last-of-type { border-bottom: none; }
+.dash-perm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.dash-perm-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dash-perm-all {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  font-size: 11.5px;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--primary-soft);
+  cursor: pointer;
+}
+.dash-perm-all:hover { text-decoration: underline; }
+.dash-perm-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px 14px;
+}
+.dash-perm-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.dash-perm-item input { margin-top: 2px; flex-shrink: 0; }
+.dash-perm-item .dash-soon { margin-left: 6px; }
+.dash-perm-count {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--text-4);
+}
+
+@media (max-width: 640px) {
+  .dash-user-card-actions { width: 100%; }
+  .dash-perm-items { grid-template-columns: 1fr; }
+}

@@ -316,6 +316,12 @@ export const en: Dictionary = {
     notes: "Notes",
     edit: "Edit",
     cancelBooking: "Cancel",
+    partner: "Partner",
+    partnerNone: "\u2014 None \u2014",
+    partnerSelf: "The booking is filed under your name automatically.",
+    commissionRate: "Commission rate",
+    commissionMonth: "This month's commission",
+    commissionTotal: "Total commission",
     issueInvoice: "Issue invoice",
     issuingInvoice: "Issuing…",
     invoiceLabel: "Invoice",
@@ -451,6 +457,9 @@ export const en: Dictionary = {
     fullAccess: "Full permissions",
     adminAllPermissions: "An admin always has every permission",
     permissionsCount: "permissions",
+    commissionRate: "Commission rate %",
+    commissionNote:
+      "Commission is calculated on the rental amount of each booking the partner brings \u2014 without extras, insurance or discount. Changing the rate updates every total immediately; cancelled bookings do not count.",
     lastLogin: "Last sign-in",
     notYourself: "You cannot change your own permissions",
 

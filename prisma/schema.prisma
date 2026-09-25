@@ -225,10 +225,16 @@ model User {
   // Granular permissions (JSON για flexibility)
   permissions Json @default("{}")
 
+  // Ποσοστό προμήθειας συνεργάτη, σε %. Αφορά ΜΟΝΟ χρήστες PARTNER· για
+  // τους υπόλοιπους μένει 0 και δεν χρησιμοποιείται πουθενά.
+  commissionRate Decimal @default(0) @db.Decimal(5, 2)
+
   // Relations
   tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   activityLogs ActivityLog[]
   sessions     Session[]
+  // Οι κρατήσεις που έφερε ως συνεργάτης.
+  partnerBookings Booking[] @relation("PartnerBookings")
 
   @@map("users")
 }
@@ -386,6 +392,10 @@ model Booking {
   // Invoice
   invoiceId String?
 
+  // Ο συνεργάτης που έφερε την κράτηση, αν υπάρχει. Οι κρατήσεις που
+  // καταχωρεί η ίδια η εταιρία μένουν NULL — καμία προμήθεια.
+  partnerId String?
+
   // Source (web, phone, walk-in, partner)
   source String @default("manual")
 
@@ -395,10 +405,12 @@ model Booking {
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vehicle  Vehicle   @relation(fields: [vehicleId], references: [id])
   customer Customer  @relation(fields: [customerId], references: [id])
+  partner  User?     @relation("PartnerBookings", fields: [partnerId], references: [id], onDelete: SetNull)
   contract Contract?
   invoice  Invoice?
   damages  Damage[]
 
+  @@index([tenantId, partnerId])
   @@map("bookings")
 }
 

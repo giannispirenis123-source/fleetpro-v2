@@ -144,6 +144,19 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
 
+  {
+    id: "partner",
+    el: "Συνεργάτες",
+    en: "Partners",
+    items: [
+      {
+        key: "partner.commission.view",
+        el: "Προβολή της προμήθειάς του",
+        en: "View own commission",
+      },
+    ],
+  },
+
   /* ── Ενότητες που δεν έχουν φτιαχτεί ακόμα ──
      Τα κλειδιά υπάρχουν ώστε να μπορούν να δοθούν από τώρα, αλλά κανένα
      API δεν τα ελέγχει μέχρι να υπάρξει η αντίστοιχη οθόνη. */
@@ -296,6 +309,7 @@ export const PARTNER_DEFAULTS: PermissionKey[] = [
   "bookings.view",
   "fleet.view",
   "extras.view",
+  "partner.commission.view",
 ];
 
 export function defaultsForRole(role: string): PermissionMap {

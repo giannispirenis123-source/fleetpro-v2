@@ -36,6 +36,7 @@ interface FormState {
   phone: string;
   role: string;
   password: string;
+  commissionRate: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -44,6 +45,7 @@ const emptyForm = (): FormState => ({
   phone: "",
   role: "STAFF",
   password: "",
+  commissionRate: "0",
 });
 
 const formFromUser = (u: UserDTO): FormState => ({
@@ -52,6 +54,7 @@ const formFromUser = (u: UserDTO): FormState => ({
   phone: u.phone ?? "",
   role: u.role,
   password: "",
+  commissionRate: String(u.commissionRate),
 });
 
 export default function UsersClient({
@@ -260,6 +263,12 @@ function UserCard({
           {isAdmin
             ? tr("users.adminAllPermissions")
             : `${u.permissionCount} ${tr("users.permissionsCount")}`}
+          {u.role === "PARTNER" && (
+            <>
+              {" · "}
+              {tr("users.commissionRate")}: <strong>{u.commissionRate}%</strong>
+            </>
+          )}
           {u.lastLoginAt && (
             <>
               {" · "}
@@ -370,6 +379,12 @@ function UserModal({
         role: form.role,
       };
       if (form.password) payload.password = form.password;
+      if (form.role === "PARTNER") {
+        payload.commissionRate = Math.min(
+          100,
+          Math.max(0, Number(form.commissionRate) || 0)
+        );
+      }
 
       const res = await fetch(
         mode === "create"
@@ -447,6 +462,20 @@ function UserModal({
                 ))}
               </select>
             </label>
+            {form.role === "PARTNER" && (
+              <label className="dash-field">
+                {tr("users.commissionRate")}
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  inputMode="decimal"
+                  value={form.commissionRate}
+                  onChange={(e) => set({ commissionRate: e.target.value })}
+                />
+              </label>
+            )}
             <label className="dash-field dash-field--wide">
               {tr(mode === "create" ? "users.password" : "users.newPassword")}
               <input
@@ -461,7 +490,11 @@ function UserModal({
             </label>
           </div>
 
-          <p className="dash-form-note">{tr("users.defaultsNote")}</p>
+          <p className="dash-form-note">
+            {form.role === "PARTNER"
+              ? tr("users.commissionNote")
+              : tr("users.defaultsNote")}
+          </p>
           {error && <div className="dash-form-error">{error}</div>}
         </div>
 

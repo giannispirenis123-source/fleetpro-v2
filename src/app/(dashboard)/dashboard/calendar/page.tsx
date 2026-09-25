@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { pageGuard } from "@/lib/authz";
+import { pageGuard, bookingScope } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { toBookingDTO } from "@/lib/bookings";
 import { addDays, firstDay, lastDay, normalizeMonth } from "@/lib/calendar";
@@ -18,7 +18,7 @@ export default async function CalendarPage({
   // κάτι που ο server θα αρνιόταν.
   const guard = await pageGuard("calendar.view");
   if (!guard) redirect("/dashboard");
-  const { session } = guard;
+  const { session, viewer } = guard;
 
   const tenantId = session.tenantId;
   const month = normalizeMonth(searchParams?.m);
@@ -37,7 +37,9 @@ export default async function CalendarPage({
     // τελευταία μέρα του μήνα στις 09:41 θα έλειπε αθόρυβα.
     db.booking.findMany({
       where: {
-        tenantId,
+        // Ίδιος φραγμός με τη λίστα Κρατήσεων: ο συνεργάτης βλέπει στο
+        // ημερολόγιο μόνο τις δικές του.
+        ...bookingScope(viewer),
         pickupDate: { lt: toDate(addDays(to, 1)) },
         returnDate: { gte: toDate(from) },
       },

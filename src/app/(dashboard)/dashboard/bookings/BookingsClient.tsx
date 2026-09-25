@@ -17,6 +17,9 @@ import {
   ShieldCheck,
   PackagePlus,
   Receipt,
+  Percent,
+  Wallet,
+  Handshake,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -30,6 +33,7 @@ import {
 } from "@/lib/bookings";
 import { formatPrepTime } from "@/lib/prepTime";
 import type { ExtraDTO } from "@/lib/extras";
+import { commissionOf, countsForCommission } from "@/lib/commission";
 import {
   computePrice,
   round2,
@@ -73,6 +77,12 @@ const stampFromIso = (iso: string, locale: string) =>
     timeZone: "UTC",
   }).format(new Date(iso));
 
+export interface PartnerOption {
+  id: string;
+  name: string;
+  commissionRate: number;
+}
+
 interface Option {
   id: string;
   label: string;
@@ -100,6 +110,7 @@ const DEFAULT_TIME = "10:00";
 const emptyForm = (): FormState => ({
   customerId: "",
   vehicleId: "",
+  partnerId: "",
   pickupDate: today(),
   pickupTime: DEFAULT_TIME,
   returnDate: today(),
@@ -116,6 +127,7 @@ const emptyForm = (): FormState => ({
 interface FormState {
   customerId: string;
   vehicleId: string;
+  partnerId: string;
   pickupDate: string;
   pickupTime: string;
   returnDate: string;
@@ -136,6 +148,7 @@ interface FormState {
 const formFromBooking = (b: BookingDTO): FormState => ({
   customerId: b.customerId,
   vehicleId: b.vehicleId,
+  partnerId: b.partnerId ?? "",
   pickupDate: b.pickupDate,
   pickupTime: b.pickupTime ?? "",
   returnDate: b.returnDate,
@@ -164,6 +177,8 @@ export default function BookingsClient({
   prepMinutes,
   roundUpTotal,
   role,
+  partners,
+  myCommissionRate,
   focusBookingId,
 }: {
   initialBookings: BookingDTO[];
@@ -175,6 +190,10 @@ export default function BookingsClient({
   prepMinutes: number;
   roundUpTotal: boolean;
   role: string;
+  /** Οι ενεργοί συνεργάτες της εταιρίας, για το dropdown της φόρμας. */
+  partners: PartnerOption[];
+  /** Το δικό του ποσοστό, όταν ο χρήστης ΕΙΝΑΙ συνεργάτης. */
+  myCommissionRate: number;
   /** Η κράτηση που ζήτησε το Ημερολόγιο με ?booking=… */
   focusBookingId?: string | null;
 }) {
@@ -182,6 +201,7 @@ export default function BookingsClient({
   const locale = useLocale();
 
   const canManage = role === "COMPANY_ADMIN" || role === "STAFF";
+  const isPartner = role === "PARTNER";
   // Μόνο ο διαχειριστής μπορεί να εγκρίνει κράτηση που συγκρούεται.
   const isAdmin = role === "COMPANY_ADMIN";
   const isRequestMode = rentalMode === "REQUEST";
@@ -324,6 +344,15 @@ export default function BookingsClient({
         </span>
       </div>
 
+      {isPartner && (
+        <CommissionSummary
+          bookings={bookings}
+          rate={myCommissionRate}
+          tr={tr}
+          locale={locale}
+        />
+      )}
+
       {issueError && <div className="dash-form-error">{issueError}</div>}
 
       {visible.length === 0 ? (
@@ -360,6 +389,8 @@ export default function BookingsClient({
           customers={customers}
           vehicles={vehicles}
           extras={extras}
+          partners={partners}
+          isPartner={isPartner}
           tenantId={tenantId}
           isRequestMode={isRequestMode}
           isAdmin={isAdmin}
@@ -383,6 +414,8 @@ export default function BookingsClient({
           customers={customers}
           vehicles={vehicles}
           extras={extras}
+          partners={partners}
+          isPartner={isPartner}
           tenantId={tenantId}
           isRequestMode={isRequestMode}
           isAdmin={isAdmin}
@@ -420,7 +453,8 @@ function PriceRow({
   sub,
   negative,
 }: {
-  label: string;
+  /** Δέχεται και στοιχεία, για γραμμές με εικονίδιο. */
+  label: React.ReactNode;
   value: string;
   strong?: boolean;
   sub?: boolean;
@@ -434,6 +468,63 @@ function PriceRow({
     >
       <span>{label}</span>
       <span>{value}</span>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Σύνοψη προμήθειας συνεργάτη
+   ───────────────────────────────────────────── */
+
+function CommissionSummary({
+  bookings,
+  rate,
+  tr,
+  locale,
+}: {
+  bookings: BookingDTO[];
+  rate: number;
+  tr: (key: string) => string;
+  locale: string;
+}) {
+  // Οι ακυρωμένες δεν φέρνουν προμήθεια. Όλες οι υπόλοιπες μετράνε, και
+  // οι εκκρεμείς: ο συνεργάτης έφερε τη δουλειά.
+  const counted = bookings.filter((b) => countsForCommission(b.status));
+  const month = new Date().toISOString().slice(0, 7);
+  const thisMonth = counted.filter((b) => b.pickupDate.startsWith(month));
+
+  const sum = (list: BookingDTO[]) =>
+    round2(list.reduce((a, b) => a + commissionOf(b.subtotal, rate), 0));
+
+  return (
+    <div className="dash-kpis dash-commission">
+      <div className="dash-card dash-card--indigo">
+        <div className="dash-card-icon">
+          <Percent size={18} />
+        </div>
+        <div className="dash-card-value">{rate}%</div>
+        <div className="dash-card-label">{tr("bookings.commissionRate")}</div>
+      </div>
+      <div className="dash-card dash-card--emerald">
+        <div className="dash-card-icon">
+          <Wallet size={18} />
+        </div>
+        <div className="dash-card-value">{eur(sum(thisMonth), locale)}</div>
+        <div className="dash-card-label">
+          {tr("bookings.commissionMonth")} · {thisMonth.length}{" "}
+          {tr("bookings.bookingCount")}
+        </div>
+      </div>
+      <div className="dash-card dash-card--green">
+        <div className="dash-card-icon">
+          <Wallet size={18} />
+        </div>
+        <div className="dash-card-value">{eur(sum(counted), locale)}</div>
+        <div className="dash-card-label">
+          {tr("bookings.commissionTotal")} · {counted.length}{" "}
+          {tr("bookings.bookingCount")}
+        </div>
+      </div>
     </div>
   );
 }
@@ -551,6 +642,21 @@ function BookingCard({
             value={eur(view.insuranceCost, locale)}
           />
         )}
+        {b.partnerId && (
+          <PriceRow
+            label={
+              <>
+                <Handshake size={12} /> {b.partnerName ?? tr("bookings.partner")}
+                {b.partnerCommissionRate > 0 && ` · ${b.partnerCommissionRate}%`}
+              </>
+            }
+            value={
+              countsForCommission(b.status)
+                ? eur(b.partnerCommission, locale)
+                : "—"
+            }
+          />
+        )}
         {view.discountAmount > 0 && (
           <PriceRow
             negative
@@ -624,6 +730,8 @@ function BookingModal({
   customers,
   vehicles,
   extras,
+  partners,
+  isPartner,
   tenantId,
   isRequestMode,
   isAdmin,
@@ -640,6 +748,9 @@ function BookingModal({
   customers: Option[];
   vehicles: VehicleOption[];
   extras: ExtraDTO[];
+  partners: PartnerOption[];
+  /** true όταν ο ίδιος ο χρήστης είναι συνεργάτης: το πεδίο κλειδώνει. */
+  isPartner: boolean;
   tenantId: string;
   isRequestMode: boolean;
   isAdmin: boolean;
@@ -808,6 +919,8 @@ function BookingModal({
       const payload: Record<string, unknown> = {
         customerId: form.customerId,
         vehicleId: form.vehicleId,
+        // Ο server το αγνοεί όταν ο χρήστης είναι συνεργάτης.
+        ...(isPartner ? {} : { partnerId: form.partnerId || null }),
         pickupDate: form.pickupDate,
         pickupTime: form.pickupTime,
         returnDate: form.returnDate,
@@ -970,6 +1083,34 @@ function BookingModal({
                 ))}
               </select>
             </label>
+
+            {/* Ο συνεργάτης δεν επιλέγει: η κράτηση είναι πάντα δική του
+                και ο server το επιβάλλει ανεξάρτητα από τη φόρμα. */}
+            {isPartner ? (
+              <div className="dash-field dash-field--wide">
+                {tr("bookings.partner")}
+                <p className="dash-form-note dash-partner-locked">
+                  {tr("bookings.partnerSelf")}
+                </p>
+              </div>
+            ) : (
+              partners.length > 0 && (
+                <label className="dash-field dash-field--wide">
+                  {tr("bookings.partner")}
+                  <select
+                    value={form.partnerId}
+                    onChange={(e) => set("partnerId", e.target.value)}
+                  >
+                    <option value="">{tr("bookings.partnerNone")}</option>
+                    {partners.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · {p.commissionRate}%
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )
+            )}
 
             <label className="dash-field dash-field--wide">
               {tr("bookings.notes")}

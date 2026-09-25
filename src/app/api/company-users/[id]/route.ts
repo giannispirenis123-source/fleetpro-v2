@@ -33,6 +33,13 @@ const updateUserSchema = z
     permissions: z.array(z.string()).optional(),
     /** Νέος κωδικός — ίδιος μηχανισμός hash με παντού αλλού. */
     password: z.string().min(8, "Τουλάχιστον 8 χαρακτήρες").optional(),
+    /**
+     * Ποσοστό προμήθειας. Ορίζεται ΜΟΝΟ από τον διαχειριστή μέσω αυτής
+     * της διαδρομής — ο ίδιος ο συνεργάτης δεν φτάνει ποτέ εδώ, γιατί
+     * το users.permissions δεν του δίνεται και ο έλεγχος «όχι ο εαυτός
+     * σου» παρακάτω τον κόβει ούτως ή άλλως.
+     */
+    commissionRate: z.number().min(0).max(100).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "Δεν δόθηκε καμία αλλαγή",
@@ -78,7 +85,8 @@ export const PATCH = withPermission(
         isSelf &&
         (data.permissions !== undefined ||
           data.role !== undefined ||
-          data.isActive !== undefined)
+          data.isActive !== undefined ||
+          data.commissionRate !== undefined)
       ) {
         return forbidden(
           "Δεν μπορείτε να αλλάξετε τα δικά σας δικαιώματα ή τον ρόλο σας"
@@ -126,6 +134,14 @@ export const PATCH = withPermission(
           ...(data.phone !== undefined && { phone: data.phone?.trim() || null }),
           ...(data.role !== undefined && { role: data.role }),
           ...(data.isActive !== undefined && { isActive: data.isActive }),
+          ...(data.commissionRate !== undefined && {
+            commissionRate: nextRole === "PARTNER" ? data.commissionRate : 0,
+          }),
+          // Αλλαγή κατηγορίας από Συνεργάτη σε Προσωπικό μηδενίζει το
+          // ποσοστό: δεν μένει κρυφό νούμερο σε χρήστη που δεν το αφορά.
+          ...(data.role !== undefined &&
+            data.role !== "PARTNER" &&
+            data.commissionRate === undefined && { commissionRate: 0 }),
           ...(nextPermissions !== undefined && { permissions: nextPermissions }),
           ...(data.password !== undefined && {
             passwordHash: await bcrypt.hash(data.password, BCRYPT_ROUNDS),

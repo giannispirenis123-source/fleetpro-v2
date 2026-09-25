@@ -1681,3 +1681,18 @@
   .dash-user-card-actions { width: 100%; }
   .dash-perm-items { grid-template-columns: 1fr; }
 }
+
+/* ---------- Προμήθεια συνεργάτη ---------- */
+.dash-commission { margin-bottom: 16px; }
+.dash-partner-locked {
+  margin: 6px 0 0;
+  padding: 9px 11px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.dash-price-row span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}

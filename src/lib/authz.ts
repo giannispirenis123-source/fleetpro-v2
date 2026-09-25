@@ -75,7 +75,9 @@ export function withPermission(
   handler: (
     req: NextRequest,
     session: JWTPayload,
-    params?: Record<string, string>
+    params?: Record<string, string>,
+    /** Ο χρήστης όπως είναι στη βάση — τον έχει ήδη διαβάσει ο φύλακας. */
+    viewer?: Viewer
   ) => Promise<NextResponse>,
   keys: PermissionKey | PermissionKey[]
 ) {
@@ -94,7 +96,7 @@ export function withPermission(
       return forbidden("Δεν έχετε δικαίωμα για αυτή την ενέργεια");
     }
 
-    return handler(req, session, params);
+    return handler(req, session, params, viewer);
   });
 }
 
@@ -155,3 +157,26 @@ export async function pageGuard(
 
   return { session: session as JWTPayload & { tenantId: string }, viewer };
 }
+
+/* ─────────────────────────────────────────────
+   Στεγανότητα συνεργάτη
+   ───────────────────────────────────────────── */
+
+/**
+ * Το φίλτρο κρατήσεων για τον συγκεκριμένο χρήστη.
+ *
+ * Ο συνεργάτης βλέπει ΜΟΝΟ τις κρατήσεις που έφερε ο ίδιος. Το φίλτρο
+ * μπαίνει στο ερώτημα της βάσης, όχι στην εμφάνιση: μια κράτηση άλλου
+ * δεν φτάνει ποτέ μέχρι το πρόγραμμα περιήγησης, ούτε καν για να κρυφτεί.
+ */
+export function bookingScope(viewer: Viewer): {
+  tenantId: string;
+  partnerId?: string;
+} {
+  const base = { tenantId: viewer.tenantId! };
+  return viewer.role === "PARTNER"
+    ? { ...base, partnerId: viewer.userId }
+    : base;
+}
+
+export const isPartner = (viewer: Viewer): boolean => viewer.role === "PARTNER";

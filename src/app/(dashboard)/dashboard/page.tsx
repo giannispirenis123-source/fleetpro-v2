@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/auth";
-import { pageGuard } from "@/lib/authz";
+import { pageGuard, bookingScope } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { translator } from "@/lib/i18n";
 import {
@@ -63,7 +63,11 @@ export default async function DashboardPage() {
   // καθαρό μήνυμα αντί να κάνει τη σελίδα να γυρίζει ατέρμονα.
   const guard = await pageGuard("dashboard.view");
   if (!guard) return <NoAccess />;
-  const { session } = guard;
+  const { session, viewer } = guard;
+
+  // Ο Πίνακας δείχνει και κρατήσεις. Ο συνεργάτης βλέπει μόνο τις δικές
+  // του, με το ίδιο φίλτρο που χρησιμοποιούν η λίστα και το ημερολόγιο.
+  const scope = bookingScope(viewer);
 
   const tenantId = session.tenantId;
   const locale = session.locale;
@@ -106,7 +110,7 @@ export default async function DashboardPage() {
     }),
     db.booking.count({
       where: {
-        tenantId,
+        ...scope,
         status: { in: ["CONFIRMED", "ACTIVE"] },
         contractSigned: false,
       },
@@ -115,9 +119,9 @@ export default async function DashboardPage() {
     db.invoice.count({
       where: { tenantId, status: { in: ["UNPAID", "OVERDUE"] } },
     }),
-    db.booking.count({ where: { tenantId, status: "ACTIVE" } }),
+    db.booking.count({ where: { ...scope, status: "ACTIVE" } }),
     db.booking.findMany({
-      where: { tenantId },
+      where: scope,
       orderBy: { createdAt: "desc" },
       take: 6,
       include: {

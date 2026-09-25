@@ -25,12 +25,12 @@ ON CONFLICT ("email") DO NOTHING;
 
 -- STAFF: staff@prentals.gr / Staff2025!
 INSERT INTO "users" ("id","tenantId","name","email","passwordHash","role","permissions","updatedAt")
-VALUES ('seed_user_staff', 'seed_tenant_prentals', 'Μαρία Π.', 'staff@prentals.gr', '$2a$12$SueFOKt7tvwEioHVYQRGkOm0vRzOQ4l2QMPtbOA.VNzry5B8t6FEu', 'STAFF', '{"viewBookings":true,"manageBookings":true,"viewContracts":true,"manageContracts":true,"viewInvoices":true,"manageInvoices":false,"viewFleet":true,"manageFleet":false,"viewService":true,"manageService":true,"viewCustomers":true,"manageCustomers":true,"viewReports":false,"viewFinance":false,"viewCalendar":true,"manageDamages":true,"manageDiscounts":false}'::jsonb, CURRENT_TIMESTAMP)
+VALUES ('seed_user_staff', 'seed_tenant_prentals', 'Μαρία Π.', 'staff@prentals.gr', '$2a$12$SueFOKt7tvwEioHVYQRGkOm0vRzOQ4l2QMPtbOA.VNzry5B8t6FEu', 'STAFF', '{"dashboard.view":true,"calendar.view":true,"bookings.view":true,"bookings.create":true,"bookings.edit":true,"bookings.cancel":true,"bookings.status":true,"fleet.view":true,"extras.view":true,"customers.view":true,"customers.create":true,"customers.edit":true,"customers.delete":true,"invoices.view":true,"invoices.issue":true,"invoices.markpaid":true,"invoices.print":true}'::jsonb, CURRENT_TIMESTAMP)
 ON CONFLICT ("email") DO NOTHING;
 
 -- PARTNER: partner@prentals.gr / Partner2025!
 INSERT INTO "users" ("id","tenantId","name","email","passwordHash","role","permissions","updatedAt")
-VALUES ('seed_user_partner', 'seed_tenant_prentals', 'Αλέξης Σ.', 'partner@prentals.gr', '$2a$12$f67A.kO/HOct0RfQkUBGIO6tj06iWfOUimgmBuQz6OH.jZR9./9Yu', 'PARTNER', '{"viewBookings":true,"viewFleet":true,"viewCalendar":true}'::jsonb, CURRENT_TIMESTAMP)
+VALUES ('seed_user_partner', 'seed_tenant_prentals', 'Αλέξης Σ.', 'partner@prentals.gr', '$2a$12$f67A.kO/HOct0RfQkUBGIO6tj06iWfOUimgmBuQz6OH.jZR9./9Yu', 'PARTNER', '{"dashboard.view":true,"calendar.view":true,"bookings.view":true,"fleet.view":true,"extras.view":true,"partner.commission.view":true}'::jsonb, CURRENT_TIMESTAMP)
 ON CONFLICT ("email") DO NOTHING;
 
 -- ── Πρότυπο συμβολαίου ──

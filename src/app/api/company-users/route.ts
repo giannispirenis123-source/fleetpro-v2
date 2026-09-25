@@ -24,6 +24,8 @@ const createUserSchema = z.object({
   phone: z.union([z.string(), z.null()]).optional(),
   /** Κλειδιά δικαιωμάτων. Αν λείπουν, μπαίνουν οι προεπιλογές της κατηγορίας. */
   permissions: z.array(z.string()).optional(),
+  /** Ποσοστό προμήθειας· αγνοείται για Προσωπικό. */
+  commissionRate: z.number().min(0).max(100).optional(),
 });
 
 // GET /api/company-users
@@ -76,6 +78,9 @@ export const POST = withPermission(
           passwordHash: await bcrypt.hash(data.password, BCRYPT_ROUNDS),
           role: data.role,
           permissions,
+          // Το ποσοστό αφορά μόνο συνεργάτες — στο Προσωπικό μένει 0.
+          commissionRate:
+            data.role === "PARTNER" ? data.commissionRate ?? 0 : 0,
         },
         select: USER_SELECT,
       });

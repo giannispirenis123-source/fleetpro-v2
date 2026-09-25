@@ -13,7 +13,8 @@ import {
   notFound,
   serverError,
 } from "@/lib/api";
-import { withPermission, sessionCan } from "@/lib/authz";
+import { withPermission, sessionCan, bookingScope } from "@/lib/authz";
+import { resolvePartnerId } from "@/lib/partners";
 import {
   BOOKING_STATUSES,
   STATUS_TRANSITIONS,
@@ -51,6 +52,9 @@ const updateBookingSchema = z.object({
   discountMode: z.enum(DISCOUNT_MODES).optional(),
   discountValue: z.number().min(0).optional(),
   discountCode: z.union([z.string(), z.null()]).optional(),
+
+  /** Αλλαγή συνεργάτη. Ο ίδιος ο συνεργάτης δεν μπορεί να την κάνει. */
+  partnerId: z.union([z.string(), z.null()]).optional(),
 });
 
 const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
@@ -59,6 +63,7 @@ const withRelations = {
   vehicle: { select: { brand: true, model: true, plate: true } },
   customer: { select: { firstName: true, lastName: true } },
   invoice: { select: { invoiceNumber: true } },
+  partner: { select: { id: true, name: true, commissionRate: true } },
 } as const;
 
 /**
@@ -86,10 +91,12 @@ async function syncVehicleStatus(vehicleId: string, tenantId: string) {
 
 // PATCH /api/bookings/[id]
 export const PATCH = withPermission(
-  async (req, session, params) => {
+  async (req, session, params, viewer) => {
     try {
+      // Το bookingScope κόβει τον συνεργάτη από κρατήσεις άλλων: δεν
+      // παίρνει 403 «υπάρχει αλλά δεν επιτρέπεται», παίρνει «δεν βρέθηκε».
       const current = await db.booking.findFirst({
-        where: { id: params!.id, tenantId: session.tenantId! },
+        where: { id: params!.id, ...bookingScope(viewer!) },
       });
       if (!current) return notFound("Η κράτηση δεν βρέθηκε");
 
@@ -209,9 +216,17 @@ export const PATCH = withPermission(
 
       const { breakdown } = priced;
 
+      const partner = await resolvePartnerId({
+        viewer: viewer!,
+        requested: data.partnerId,
+        current: current.partnerId,
+      });
+      if (!partner.ok) return badRequest(partner.message);
+
       const booking = await db.booking.update({
         where: { id: current.id },
         data: {
+          partnerId: partner.partnerId,
           ...(data.customerId !== undefined && { customerId: data.customerId }),
           ...(data.vehicleId !== undefined && { vehicleId: data.vehicleId }),
           ...(data.pickupDate !== undefined && { pickupDate: toDate(pickup) }),
@@ -296,10 +311,10 @@ export const PATCH = withPermission(
 // Η κράτηση κρατά αριθμό και ιστορικό· απλώς περνά σε CANCELLED και το όχημα
 // ελευθερώνεται αν δεν το κρατά κάποια άλλη.
 export const DELETE = withPermission(
-  async (_req, session, params) => {
+  async (_req, session, params, viewer) => {
     try {
       const current = await db.booking.findFirst({
-        where: { id: params!.id, tenantId: session.tenantId! },
+        where: { id: params!.id, ...bookingScope(viewer!) },
       });
       if (!current) return notFound("Η κράτηση δεν βρέθηκε");
 

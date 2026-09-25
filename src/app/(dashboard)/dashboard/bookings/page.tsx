@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { pageGuard } from "@/lib/authz";
+import { pageGuard, bookingScope } from "@/lib/authz";
+import { listPartners } from "@/lib/partners";
 import { db } from "@/lib/db";
 import { toBookingDTO } from "@/lib/bookings";
 import { toExtraDTO } from "@/lib/extras";
@@ -16,18 +17,20 @@ export default async function BookingsPage({
   // κάτι που ο server θα αρνιόταν.
   const guard = await pageGuard("bookings.view");
   if (!guard) redirect("/dashboard");
-  const { session } = guard;
+  const { session, viewer } = guard;
 
   const tenantId = session.tenantId;
 
-  const [bookings, customers, vehicles, extras, tenant] = await Promise.all([
+  const [bookings, customers, vehicles, extras, tenant, partners] = await Promise.all([
     db.booking.findMany({
-      where: { tenantId },
+      // Ο συνεργάτης βλέπει ΜΟΝΟ τις δικές του — φιλτράρεται στη βάση.
+      where: bookingScope(viewer),
       orderBy: { createdAt: "desc" },
       include: {
         vehicle: { select: { brand: true, model: true, plate: true } },
         customer: { select: { firstName: true, lastName: true } },
         invoice: { select: { invoiceNumber: true } },
+        partner: { select: { id: true, name: true, commissionRate: true } },
       },
     }),
     db.customer.findMany({
@@ -59,6 +62,7 @@ export default async function BookingsPage({
         roundUpTotal: true,
       },
     }),
+    listPartners(tenantId),
   ]);
 
   return (
@@ -80,6 +84,10 @@ export default async function BookingsPage({
       prepMinutes={tenant?.prepTimeMinutes ?? 0}
       roundUpTotal={tenant?.roundUpTotal ?? false}
       role={session.role}
+      partners={partners}
+      myCommissionRate={
+        partners.find((p) => p.id === viewer.userId)?.commissionRate ?? 0
+      }
       // Από το Ημερολόγιο: ποια κράτηση να ανοίξει μόλις φορτώσει η σελίδα.
       focusBookingId={searchParams?.booking ?? null}
     />

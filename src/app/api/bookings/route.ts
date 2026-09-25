@@ -17,7 +17,8 @@ import {
   forbidden,
   serverError,
 } from "@/lib/api";
-import { withPermission, sessionCan } from "@/lib/authz";
+import { withPermission, sessionCan, bookingScope } from "@/lib/authz";
+import { resolvePartnerId } from "@/lib/partners";
 import {
   BOOKING_STATUSES,
   RESERVING_STATUSES,
@@ -52,6 +53,8 @@ const createBookingSchema = z.object({
   /* ── Τιμολόγηση: μόνο επιλογές, ποτέ ποσά ──
      Τυχόν total/subtotal στο body τα πετάει το zod — δεν διαβάζονται. */
   extraIds: z.array(z.string().min(1)).optional(),
+  /** Ο συνεργάτης που έφερε την κράτηση. Αγνοείται όταν γράφει συνεργάτης. */
+  partnerId: z.union([z.string(), z.null()]).optional(),
   discountMode: z.enum(DISCOUNT_MODES).optional(),
   discountValue: z.number().min(0).optional(),
   discountCode: z.union([z.string(), z.null()]).optional(),
@@ -78,14 +81,16 @@ async function nextBookingNumber(tenantId: string): Promise<string> {
 
 // GET /api/bookings
 export const GET = withPermission(
-  async (req, session) => {
+  async (req, session, _params, viewer) => {
     try {
       const url = new URL(req.url);
       const status = url.searchParams.get("status");
 
       const bookings = await db.booking.findMany({
         where: {
-          tenantId: session.tenantId!,
+          // Ο συνεργάτης βλέπει μόνο τις δικές του — το φίλτρο μπαίνει
+          // στο ερώτημα, όχι στην εμφάνιση.
+          ...bookingScope(viewer!),
           ...(status ? { status: status as never } : {}),
         },
         orderBy: { createdAt: "desc" },
@@ -93,6 +98,7 @@ export const GET = withPermission(
           vehicle: { select: { brand: true, model: true, plate: true } },
           customer: { select: { firstName: true, lastName: true } },
           invoice: { select: { invoiceNumber: true } },
+          partner: { select: { id: true, name: true, commissionRate: true } },
         },
       });
 
@@ -107,7 +113,7 @@ export const GET = withPermission(
 
 // POST /api/bookings
 export const POST = withPermission(
-  async (req, session) => {
+  async (req, session, _params, viewer) => {
     try {
       const body = await req.json();
       const parsed = createBookingSchema.safeParse(body);
@@ -193,11 +199,21 @@ export const POST = withPermission(
 
       const { breakdown } = priced;
 
+      // Ποιος συνεργάτης χρεώνεται την κράτηση. Αν τη γράφει ο ίδιος ο
+      // συνεργάτης, είναι ο εαυτός του και τίποτα από το body δεν το
+      // αλλάζει· αλλιώς ο διαχειριστής μπορεί να τη δέσει σε κάποιον.
+      const partner = await resolvePartnerId({
+        viewer: viewer!,
+        requested: data.partnerId,
+      });
+      if (!partner.ok) return badRequest(partner.message);
+
       const booking = await db.booking.create({
         data: {
           tenantId: session.tenantId!,
           customerId: customer.id,
           vehicleId: vehicle.id,
+          partnerId: partner.partnerId,
           bookingNumber: await nextBookingNumber(session.tenantId!),
           status,
           pickupDate: toDate(data.pickupDate),
@@ -221,6 +237,7 @@ export const POST = withPermission(
           vehicle: { select: { brand: true, model: true, plate: true } },
           customer: { select: { firstName: true, lastName: true } },
           invoice: { select: { invoiceNumber: true } },
+          partner: { select: { id: true, name: true, commissionRate: true } },
         },
       });
 

@@ -36,12 +36,12 @@ interface NavItem {
   disabled?: boolean;
 }
 
-// Ενεργά: Πίνακας, Κρατήσεις, Στόλος, Πρόσθετα, Πελάτες, Εκπτώσεις,
-// Τιμολόγια, Ρυθμίσεις.
+// Ενεργά: Πίνακας, Κρατήσεις, Ημερολόγιο, Στόλος, Πρόσθετα, Πελάτες,
+// Εκπτώσεις, Τιμολόγια, Ρυθμίσεις.
 const NAV: NavItem[] = [
   { href: "/dashboard", labelKey: "overview", icon: LayoutDashboard, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
-  { href: "/dashboard/calendar", labelKey: "calendar", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"], disabled: true },
+  { href: "/dashboard/calendar", labelKey: "calendar", icon: CalendarDays, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/fleet", labelKey: "fleet", icon: Car, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/extras", labelKey: "extras", icon: PackagePlus, roles: ["COMPANY_ADMIN", "STAFF", "PARTNER"] },
   { href: "/dashboard/customers", labelKey: "customers", icon: Users, roles: ["COMPANY_ADMIN", "STAFF"] },

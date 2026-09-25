@@ -433,6 +433,31 @@ export const en: Dictionary = {
       "The code will stop applying to new bookings. Existing bookings are unaffected and the usage history is kept.",
   },
 
+  calendar: {
+    title: "Calendar",
+    subtitle: "Your company's bookings over time.",
+    viewMonth: "Month",
+    viewTimeline: "By vehicle",
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
+    today: "Today",
+    more: "more",
+    vehicle: "Vehicle",
+    showCancelled: "Cancelled",
+    empty: "No bookings this month.",
+    noVehicles: "There are no active vehicles in the fleet.",
+    readOnlyNote:
+      "You can view the calendar; bookings are edited by an admin or staff member.",
+    close: "Close",
+    mon: "Mon",
+    tue: "Tue",
+    wed: "Wed",
+    thu: "Thu",
+    fri: "Fri",
+    sat: "Sat",
+    sun: "Sun",
+  },
+
   invoices: {
     title: "Invoices",
     subtitle: "Your company's invoices.",

@@ -1330,3 +1330,248 @@
   .dash-inv-breakdown { border-color: #000 !important; }
   .dash-price-row.total { border-top-color: #000 !important; }
 }
+
+/* ---------- Ημερολόγιο ---------- */
+.dash-cal-bar {
+  justify-content: space-between;
+  align-items: center;
+}
+.dash-cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dash-cal-month {
+  min-width: 165px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: capitalize;
+}
+.dash-cal-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.dash-cal-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dash-cal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.dash-cal-dot--warn { background: var(--warn-icon); }
+.dash-cal-dot--info { background: var(--primary); }
+.dash-cal-dot--ok { background: var(--ok-icon); }
+.dash-cal-dot--muted { background: var(--border-strong); }
+.dash-cal-dot--bad { background: var(--bad-icon); }
+.dash-cal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.dash-cal-panel { padding: 14px; overflow: hidden; }
+
+/* Μηνιαίο πλέγμα */
+.dash-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.dash-cal-head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-4);
+  text-align: center;
+  padding-bottom: 4px;
+}
+.dash-cal-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 104px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.dash-cal-cell.muted { background: var(--surface-2); }
+.dash-cal-cell.muted .dash-cal-daynum { color: var(--text-4); }
+.dash-cal-cell.today {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.dash-cal-daynum {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.dash-cal-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 5px;
+  font-size: 11px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.dash-cal-chip-who {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-cal-chip-car {
+  font-size: 10px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.dash-cal-chip.off { opacity: 0.55; text-decoration: line-through; }
+
+.dash-cal-chip--warn,
+.dash-tl-bar--warn { background: rgba(245, 158, 11, 0.16); color: var(--warn-fg); border-left-color: var(--warn-icon); }
+.dash-cal-chip--info,
+.dash-tl-bar--info { background: rgba(99, 102, 241, 0.16); color: var(--info-fg); border-left-color: var(--primary); }
+.dash-cal-chip--ok,
+.dash-tl-bar--ok { background: rgba(34, 197, 94, 0.16); color: var(--ok-fg); border-left-color: var(--ok-icon); }
+.dash-cal-chip--muted,
+.dash-tl-bar--muted { background: var(--hover); color: var(--text-3); border-left-color: var(--border-strong); }
+.dash-cal-chip--bad,
+.dash-tl-bar--bad { background: rgba(239, 68, 68, 0.14); color: var(--bad-fg); border-left-color: var(--bad-icon); }
+
+.dash-cal-more {
+  align-self: flex-start;
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  font-size: 10.5px;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--primary-soft);
+  cursor: pointer;
+}
+.dash-cal-more:hover { text-decoration: underline; }
+
+/* Λίστα ημέρας */
+.dash-cal-daylist { display: flex; flex-direction: column; gap: 6px; }
+.dash-cal-dayitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dash-cal-dayitem:hover { background: var(--hover); }
+.dash-cal-dayitem-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dash-cal-dayitem-main strong { font-size: 13px; color: var(--text); }
+.dash-cal-dayitem-main small { font-size: 11.5px; color: var(--text-4); }
+
+/* Timeline ανά όχημα */
+.dash-tl-scroll { overflow-x: auto; }
+.dash-tl { min-width: 100%; }
+.dash-tl-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
+.dash-tl-row:last-child { border-bottom: none; }
+.dash-tl-row--head { border-bottom: 1px solid var(--border-strong); }
+.dash-tl-name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 150px;
+  flex-shrink: 0;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-4);
+}
+.dash-tl-name span { display: flex; flex-direction: column; min-width: 0; }
+.dash-tl-name strong {
+  font-size: 12.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-tl-track {
+  position: relative;
+  display: flex;
+  min-height: 38px;
+}
+.dash-tl-day,
+.dash-tl-slot {
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+}
+.dash-tl-day {
+  padding: 6px 0;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-4);
+}
+.dash-tl-day.today,
+.dash-tl-slot.today { background: rgba(99, 102, 241, 0.07); }
+.dash-tl-bar {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.dash-tl-bar.off { opacity: 0.5; text-decoration: line-through; }
+.dash-tl-bar.open-start { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left-style: dashed; }
+.dash-tl-bar.open-end { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+
+@media (max-width: 760px) {
+  .dash-cal-bar { align-items: flex-start; }
+  .dash-cal-panel { padding: 8px; }
+  .dash-cal-grid { gap: 3px; }
+  .dash-cal-cell { min-height: 72px; padding: 4px; border-radius: 7px; }
+  .dash-cal-chip-car { display: none; }
+  .dash-cal-chip { padding: 2px 4px; font-size: 10px; }
+  .dash-cal-month { min-width: 130px; font-size: 14px; }
+  .dash-tl-name { width: 112px; padding: 8px; }
+}

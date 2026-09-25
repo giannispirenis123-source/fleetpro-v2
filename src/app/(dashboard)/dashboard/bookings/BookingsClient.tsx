@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Search,
@@ -164,6 +164,7 @@ export default function BookingsClient({
   prepMinutes,
   roundUpTotal,
   role,
+  focusBookingId,
 }: {
   initialBookings: BookingDTO[];
   customers: Option[];
@@ -174,6 +175,8 @@ export default function BookingsClient({
   prepMinutes: number;
   roundUpTotal: boolean;
   role: string;
+  /** Η κράτηση που ζήτησε το Ημερολόγιο με ?booking=… */
+  focusBookingId?: string | null;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -198,6 +201,20 @@ export default function BookingsClient({
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<BookingDTO | null>(null);
   const [cancelling, setCancelling] = useState<BookingDTO | null>(null);
+
+  // Ερχόμενοι από το Ημερολόγιο: ανοίγουμε την ίδια φόρμα που χρησιμοποιεί
+  // η σελίδα — καμία δεύτερη υλοποίηση. Ο συνεργάτης δεν επεξεργάζεται,
+  // οπότε γι' αυτόν απλώς φιλτράρουμε τη λίστα στη συγκεκριμένη κράτηση.
+  useEffect(() => {
+    if (!focusBookingId) return;
+    const target = initialBookings.find((b) => b.id === focusBookingId);
+    if (!target) return;
+
+    if (canManage) setEditing(target);
+    else setSearch(target.bookingNumber);
+    // Μόνο στην άφιξη: αν ο χρήστης κλείσει το παράθυρο, δεν ξανανοίγει.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusBookingId]);
 
   // Χειροκίνητη έκδοση τιμολογίου από την κάρτα της κράτησης.
   const [issuingId, setIssuingId] = useState<string | null>(null);

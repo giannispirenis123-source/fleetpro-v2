@@ -7,7 +7,11 @@ import BookingsClient from "./BookingsClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function BookingsPage() {
+export default async function BookingsPage({
+  searchParams,
+}: {
+  searchParams?: { booking?: string };
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.role === "SUPER_ADMIN") redirect("/super-admin");
@@ -75,6 +79,8 @@ export default async function BookingsPage() {
       prepMinutes={tenant?.prepTimeMinutes ?? 0}
       roundUpTotal={tenant?.roundUpTotal ?? false}
       role={session.role}
+      // Από το Ημερολόγιο: ποια κράτηση να ανοίξει μόλις φορτώσει η σελίδα.
+      focusBookingId={searchParams?.booking ?? null}
     />
   );
 }

@@ -225,16 +225,22 @@ model User {
   // Granular permissions (JSON για flexibility)
   permissions Json @default("{}")
 
-  // Ποσοστό προμήθειας συνεργάτη, σε %. Αφορά ΜΟΝΟ χρήστες PARTNER· για
-  // τους υπόλοιπους μένει 0 και δεν χρησιμοποιείται πουθενά.
-  commissionRate Decimal @default(0) @db.Decimal(5, 2)
+  // Προμήθεια: ποσοστό σε % και ΑΝΕΞΑΡΤΗΤΟΙ διακόπτες για το πάνω σε τι
+  // υπολογίζεται. Αφορά συνεργάτες και προσωπικό· με ποσοστό 0 δεν
+  // εμφανίζεται πουθενά.
+  commissionRate        Decimal @default(0) @db.Decimal(5, 2)
+  commissionOnRental    Boolean @default(true)
+  commissionOnExtras    Boolean @default(false)
+  commissionOnInsurance Boolean @default(false)
 
   // Relations
-  tenant       Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  activityLogs ActivityLog[]
-  sessions     Session[]
+  tenant          Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  activityLogs    ActivityLog[]
+  sessions        Session[]
   // Οι κρατήσεις που έφερε ως συνεργάτης.
-  partnerBookings Booking[] @relation("PartnerBookings")
+  partnerBookings Booking[]     @relation("PartnerBookings")
+  // Οι κρατήσεις που καταχώρησε ο ίδιος, όποιος ρόλος κι αν είναι.
+  createdBookings Booking[]     @relation("CreatedBookings")
 
   @@map("users")
 }
@@ -396,21 +402,28 @@ model Booking {
   // καταχωρεί η ίδια η εταιρία μένουν NULL — καμία προμήθεια.
   partnerId String?
 
+  // Ποιος χρήστης την καταχώρησε. Ξεχωριστό από το partnerId: ο υπάλληλος
+  // που γράφει μια κράτηση δεν είναι απαραίτητα ο συνεργάτης που την
+  // έφερε. Οι παλιές κρατήσεις μένουν NULL.
+  createdById String?
+
   // Source (web, phone, walk-in, partner)
   source String @default("manual")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle  Vehicle   @relation(fields: [vehicleId], references: [id])
-  customer Customer  @relation(fields: [customerId], references: [id])
-  partner  User?     @relation("PartnerBookings", fields: [partnerId], references: [id], onDelete: SetNull)
-  contract Contract?
-  invoice  Invoice?
-  damages  Damage[]
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle   @relation(fields: [vehicleId], references: [id])
+  customer  Customer  @relation(fields: [customerId], references: [id])
+  partner   User?     @relation("PartnerBookings", fields: [partnerId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("CreatedBookings", fields: [createdById], references: [id], onDelete: SetNull)
+  contract  Contract?
+  invoice   Invoice?
+  damages   Damage[]
 
   @@index([tenantId, partnerId])
+  @@index([tenantId, createdById])
   @@map("bookings")
 }
 

@@ -20,6 +20,7 @@ import {
   type PermissionMap,
 } from "@/lib/permissions";
 import { MANAGED_ROLES, type UserDTO } from "@/lib/users";
+import { baseLabels } from "@/lib/commission";
 
 const ROLE_ICON: Record<string, typeof UsersIcon> = {
   COMPANY_ADMIN: UserCog,
@@ -37,6 +38,9 @@ interface FormState {
   role: string;
   password: string;
   commissionRate: string;
+  commissionOnRental: boolean;
+  commissionOnExtras: boolean;
+  commissionOnInsurance: boolean;
 }
 
 const emptyForm = (): FormState => ({
@@ -46,6 +50,9 @@ const emptyForm = (): FormState => ({
   role: "STAFF",
   password: "",
   commissionRate: "0",
+  commissionOnRental: true,
+  commissionOnExtras: false,
+  commissionOnInsurance: false,
 });
 
 const formFromUser = (u: UserDTO): FormState => ({
@@ -55,6 +62,9 @@ const formFromUser = (u: UserDTO): FormState => ({
   role: u.role,
   password: "",
   commissionRate: String(u.commissionRate),
+  commissionOnRental: u.commissionOnRental,
+  commissionOnExtras: u.commissionOnExtras,
+  commissionOnInsurance: u.commissionOnInsurance,
 });
 
 export default function UsersClient({
@@ -263,10 +273,20 @@ function UserCard({
           {isAdmin
             ? tr("users.adminAllPermissions")
             : `${u.permissionCount} ${tr("users.permissionsCount")}`}
-          {u.role === "PARTNER" && (
+          {u.commissionRate > 0 && (
             <>
               {" · "}
-              {tr("users.commissionRate")}: <strong>{u.commissionRate}%</strong>
+              {tr("users.commissionRate")}: <strong>{u.commissionRate}%</strong>{" "}
+              (
+              {baseLabels({
+                rate: u.commissionRate,
+                onRental: u.commissionOnRental,
+                onExtras: u.commissionOnExtras,
+                onInsurance: u.commissionOnInsurance,
+              })
+                .map((k) => tr(`users.base_${k}`))
+                .join(" + ") || tr("users.baseNone")}
+              )
             </>
           )}
           {u.lastLoginAt && (
@@ -379,12 +399,13 @@ function UserModal({
         role: form.role,
       };
       if (form.password) payload.password = form.password;
-      if (form.role === "PARTNER") {
-        payload.commissionRate = Math.min(
-          100,
-          Math.max(0, Number(form.commissionRate) || 0)
-        );
-      }
+      payload.commissionRate = Math.min(
+        100,
+        Math.max(0, Number(form.commissionRate) || 0)
+      );
+      payload.commissionOnRental = form.commissionOnRental;
+      payload.commissionOnExtras = form.commissionOnExtras;
+      payload.commissionOnInsurance = form.commissionOnInsurance;
 
       const res = await fetch(
         mode === "create"
@@ -462,20 +483,18 @@ function UserModal({
                 ))}
               </select>
             </label>
-            {form.role === "PARTNER" && (
-              <label className="dash-field">
-                {tr("users.commissionRate")}
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  inputMode="decimal"
-                  value={form.commissionRate}
-                  onChange={(e) => set({ commissionRate: e.target.value })}
-                />
-              </label>
-            )}
+            <label className="dash-field">
+              {tr("users.commissionRate")}
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                inputMode="decimal"
+                value={form.commissionRate}
+                onChange={(e) => set({ commissionRate: e.target.value })}
+              />
+            </label>
             <label className="dash-field dash-field--wide">
               {tr(mode === "create" ? "users.password" : "users.newPassword")}
               <input
@@ -490,11 +509,41 @@ function UserModal({
             </label>
           </div>
 
-          <p className="dash-form-note">
-            {form.role === "PARTNER"
-              ? tr("users.commissionNote")
-              : tr("users.defaultsNote")}
-          </p>
+          {/* Οι τρεις βάσεις είναι ΑΝΕΞΑΡΤΗΤΕΣ: μπορούν να είναι όλες
+              ανοιχτές, καμία, ή ό,τι συνδυασμός. */}
+          <div className="dash-comm-bases">
+            <span className="dash-comm-bases-title">
+              {tr("users.commissionBase")}
+            </span>
+            {(
+              [
+                ["commissionOnRental", "rental"],
+                ["commissionOnExtras", "extras"],
+                ["commissionOnInsurance", "insurance"],
+              ] as const
+            ).map(([field, key]) => (
+              <label key={key} className="dash-comm-base">
+                <input
+                  type="checkbox"
+                  checked={form[field]}
+                  onChange={(e) => set({ [field]: e.target.checked })}
+                />
+                {tr(`users.base_${key}`)}
+              </label>
+            ))}
+          </div>
+
+          {Number(form.commissionRate) > 0 &&
+            !form.commissionOnRental &&
+            !form.commissionOnExtras &&
+            !form.commissionOnInsurance && (
+              <div className="dash-form-error">
+                {tr("users.commissionNoBase")}
+              </div>
+            )}
+
+          <p className="dash-form-note">{tr("users.commissionNote")}</p>
+          <p className="dash-form-note">{tr("users.defaultsNote")}</p>
           {error && <div className="dash-form-error">{error}</div>}
         </div>
 

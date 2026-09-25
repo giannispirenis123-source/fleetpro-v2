@@ -20,6 +20,7 @@ import {
   Percent,
   Wallet,
   Handshake,
+  UserRound,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -33,7 +34,13 @@ import {
 } from "@/lib/bookings";
 import { formatPrepTime } from "@/lib/prepTime";
 import type { ExtraDTO } from "@/lib/extras";
-import { commissionOf, countsForCommission } from "@/lib/commission";
+import {
+  commissionFor,
+  countsForCommission,
+  summarize,
+  baseLabels,
+  type CommissionSettings,
+} from "@/lib/commission";
 import {
   computePrice,
   round2,
@@ -178,7 +185,9 @@ export default function BookingsClient({
   roundUpTotal,
   role,
   partners,
-  myCommissionRate,
+  currentUserId,
+  myCommission,
+  canSeeCommission,
   focusBookingId,
 }: {
   initialBookings: BookingDTO[];
@@ -192,8 +201,11 @@ export default function BookingsClient({
   role: string;
   /** Οι ενεργοί συνεργάτες της εταιρίας, για το dropdown της φόρμας. */
   partners: PartnerOption[];
-  /** Το δικό του ποσοστό, όταν ο χρήστης ΕΙΝΑΙ συνεργάτης. */
-  myCommissionRate: number;
+  /** Ο τρέχων χρήστης — για το φίλτρο «οι κρατήσεις μου». */
+  currentUserId: string;
+  /** Οι δικές του ρυθμίσεις προμήθειας· ποσοστό 0 σημαίνει καμία. */
+  myCommission: CommissionSettings;
+  canSeeCommission: boolean;
   /** Η κράτηση που ζήτησε το Ημερολόγιο με ?booking=… */
   focusBookingId?: string | null;
 }) {
@@ -218,6 +230,9 @@ export default function BookingsClient({
   const [bookings, setBookings] = useState<BookingDTO[]>(initialBookings);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("ALL");
+  // Ο συνεργάτης είναι ήδη στεγανός, οπότε το φίλτρο αφορά προσωπικό και
+  // διαχειριστή: «όσες έγραψα εγώ», χωριστά από τις γενικές.
+  const [onlyMine, setOnlyMine] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<BookingDTO | null>(null);
   const [cancelling, setCancelling] = useState<BookingDTO | null>(null);
@@ -276,15 +291,16 @@ export default function BookingsClient({
     const q = search.trim().toLowerCase();
     return bookings.filter((b) => {
       const matchesStatus = filter === "ALL" || b.status === filter;
+      const matchesMine = !onlyMine || b.createdById === currentUserId;
       const matchesSearch =
         !q ||
         [b.bookingNumber, b.customerName, b.vehicleName, b.vehiclePlate]
           .join(" ")
           .toLowerCase()
           .includes(q);
-      return matchesStatus && matchesSearch;
+      return matchesStatus && matchesSearch && matchesMine;
     });
-  }, [bookings, search, filter]);
+  }, [bookings, search, filter, onlyMine, currentUserId]);
 
   const upsert = (booking: BookingDTO) =>
     setBookings((prev) => {
@@ -336,6 +352,18 @@ export default function BookingsClient({
             </button>
           ))}
         </div>
+        {/* Ο συνεργάτης βλέπει ήδη μόνο δικές του — δεν του χρειάζεται. */}
+        {!isPartner && (
+          <div className="dash-filters">
+            <button
+              className={`dash-filter ${onlyMine ? "active" : ""}`}
+              onClick={() => setOnlyMine((v) => !v)}
+              aria-pressed={onlyMine}
+            >
+              <UserRound size={15} /> {tr("bookings.onlyMine")}
+            </button>
+          </div>
+        )}
         <span className="dash-count">
           {visible.length}{" "}
           {visible.length === 1
@@ -344,10 +372,16 @@ export default function BookingsClient({
         </span>
       </div>
 
-      {isPartner && (
+      {canSeeCommission && myCommission.rate > 0 && (
         <CommissionSummary
-          bookings={bookings}
-          rate={myCommissionRate}
+          // Ο συνεργάτης αμείβεται για όσες ΕΦΕΡΕ, ο υπάλληλος για όσες
+          // ΚΑΤΑΧΩΡΗΣΕ. Η λίστα του συνεργάτη είναι ήδη μόνο δική του.
+          bookings={bookings.filter((b) =>
+            isPartner
+              ? b.partnerId === currentUserId
+              : b.createdById === currentUserId
+          )}
+          settings={myCommission}
           tr={tr}
           locale={locale}
         />
@@ -478,23 +512,25 @@ function PriceRow({
 
 function CommissionSummary({
   bookings,
-  rate,
+  settings,
   tr,
   locale,
 }: {
   bookings: BookingDTO[];
-  rate: number;
+  settings: CommissionSettings;
   tr: (key: string) => string;
   locale: string;
 }) {
   // Οι ακυρωμένες δεν φέρνουν προμήθεια. Όλες οι υπόλοιπες μετράνε, και
-  // οι εκκρεμείς: ο συνεργάτης έφερε τη δουλειά.
-  const counted = bookings.filter((b) => countsForCommission(b.status));
+  // οι εκκρεμείς: η δουλειά ήρθε, το αν θα ολοκληρωθεί δεν εξαρτάται
+  // από αυτόν που την έφερε ή την κατέγραψε.
   const month = new Date().toISOString().slice(0, 7);
-  const thisMonth = counted.filter((b) => b.pickupDate.startsWith(month));
-
-  const sum = (list: BookingDTO[]) =>
-    round2(list.reduce((a, b) => a + commissionOf(b.subtotal, rate), 0));
+  const all = summarize(bookings, settings);
+  const now = summarize(
+    bookings.filter((b) => b.pickupDate.startsWith(month)),
+    settings
+  );
+  const rate = settings.rate;
 
   return (
     <div className="dash-kpis dash-commission">
@@ -503,15 +539,20 @@ function CommissionSummary({
           <Percent size={18} />
         </div>
         <div className="dash-card-value">{rate}%</div>
-        <div className="dash-card-label">{tr("bookings.commissionRate")}</div>
+        <div className="dash-card-label">
+          {tr("bookings.commissionRate")} ·{" "}
+          {baseLabels(settings)
+            .map((k) => tr(`users.base_${k}`))
+            .join(" + ") || tr("users.baseNone")}
+        </div>
       </div>
       <div className="dash-card dash-card--emerald">
         <div className="dash-card-icon">
           <Wallet size={18} />
         </div>
-        <div className="dash-card-value">{eur(sum(thisMonth), locale)}</div>
+        <div className="dash-card-value">{eur(now.commission, locale)}</div>
         <div className="dash-card-label">
-          {tr("bookings.commissionMonth")} · {thisMonth.length}{" "}
+          {tr("bookings.commissionMonth")} · {now.bookings}{" "}
           {tr("bookings.bookingCount")}
         </div>
       </div>
@@ -519,9 +560,9 @@ function CommissionSummary({
         <div className="dash-card-icon">
           <Wallet size={18} />
         </div>
-        <div className="dash-card-value">{eur(sum(counted), locale)}</div>
+        <div className="dash-card-value">{eur(all.commission, locale)}</div>
         <div className="dash-card-label">
-          {tr("bookings.commissionTotal")} · {counted.length}{" "}
+          {tr("bookings.commissionTotal")} · {all.bookings}{" "}
           {tr("bookings.bookingCount")}
         </div>
       </div>
@@ -611,6 +652,12 @@ function BookingCard({
           <span className="dash-booking-ready">
             <Timer size={13} /> {tr("bookings.conflictReadyAt")} {readyStamp} ·{" "}
             {formatPrepTime(prepMinutes, locale)}
+          </span>
+        )}
+        {b.createdByName && (
+          <span className="dash-booking-ready dash-muted">
+            <UserRound size={13} /> {tr("bookings.createdBy")}:{" "}
+            {b.createdByName}
           </span>
         )}
       </div>

@@ -3,7 +3,7 @@
 
 import type { Booking, Customer, Vehicle } from "@prisma/client";
 import { readExtrasSnapshot, type PricedExtraLine } from "./pricing";
-import { commissionOf } from "./commission";
+import { commissionFor } from "./commission";
 
 export const BOOKING_STATUSES = [
   "PENDING",
@@ -98,8 +98,12 @@ export interface BookingDTO {
    * αλλάξει, όλα τα σύνολα ενημερώνονται μόνα τους.
    */
   partnerCommissionRate: number;
-  /** subtotal × ποσοστό / 100 — μόνο το ενοίκιο, όχι τα πρόσθετα. */
+  /** Η προμήθεια του συνεργάτη με τις ΔΙΚΕΣ ΤΟΥ ρυθμίσεις βάσης. */
   partnerCommission: number;
+
+  /** Ποιος χρήστης καταχώρησε την κράτηση· null στις παλιές. */
+  createdById: string | null;
+  createdByName: string | null;
 }
 
 type BookingWithRelations = Booking & {
@@ -108,13 +112,39 @@ type BookingWithRelations = Booking & {
   /** Προαιρετικό: μόνο τα ερωτήματα που το χρειάζονται το φέρνουν. */
   invoice?: { invoiceNumber: string } | null;
   /** Προαιρετικό, όπως και το invoice. */
-  partner?: { id: string; name: string; commissionRate: unknown } | null;
+  partner?: {
+    id: string;
+    name: string;
+    commissionRate: unknown;
+    commissionOnRental: boolean;
+    commissionOnExtras: boolean;
+    commissionOnInsurance: boolean;
+  } | null;
+  createdBy?: { id: string; name: string } | null;
 };
 
 const toDateInput = (d: Date): string => d.toISOString().slice(0, 10);
 
 export function toBookingDTO(b: BookingWithRelations): BookingDTO {
   const rate = b.partner ? Number(b.partner.commissionRate) : 0;
+
+  // Η προμήθεια του συνεργάτη υπολογίζεται με ΤΙΣ ΔΙΚΕΣ ΤΟΥ ρυθμίσεις:
+  // άλλος αμείβεται μόνο για το ενοίκιο, άλλος και για τα πρόσθετα.
+  const partnerCommission = b.partner
+    ? commissionFor(
+        {
+          subtotal: Number(b.subtotal),
+          extrasTotal: Number(b.extrasTotal),
+          insuranceCost: Number(b.insuranceCost),
+        },
+        {
+          rate,
+          onRental: b.partner.commissionOnRental,
+          onExtras: b.partner.commissionOnExtras,
+          onInsurance: b.partner.commissionOnInsurance,
+        }
+      )
+    : 0;
 
   return {
     id: b.id,
@@ -145,7 +175,10 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
     partnerId: b.partnerId,
     partnerName: b.partner?.name ?? null,
     partnerCommissionRate: rate,
-    partnerCommission: b.partner ? commissionOf(Number(b.subtotal), rate) : 0,
+    partnerCommission,
+
+    createdById: b.createdById,
+    createdByName: b.createdBy?.name ?? null,
   };
 }
 

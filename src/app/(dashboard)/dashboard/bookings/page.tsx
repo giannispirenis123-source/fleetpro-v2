@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { pageGuard, bookingScope } from "@/lib/authz";
+import { pageGuard, bookingScope, viewerCan } from "@/lib/authz";
 import { listPartners } from "@/lib/partners";
 import { db } from "@/lib/db";
 import { toBookingDTO } from "@/lib/bookings";
@@ -21,7 +21,8 @@ export default async function BookingsPage({
 
   const tenantId = session.tenantId;
 
-  const [bookings, customers, vehicles, extras, tenant, partners] = await Promise.all([
+  const [bookings, customers, vehicles, extras, tenant, partners, me] =
+    await Promise.all([
     db.booking.findMany({
       // Ο συνεργάτης βλέπει ΜΟΝΟ τις δικές του — φιλτράρεται στη βάση.
       where: bookingScope(viewer),
@@ -30,7 +31,17 @@ export default async function BookingsPage({
         vehicle: { select: { brand: true, model: true, plate: true } },
         customer: { select: { firstName: true, lastName: true } },
         invoice: { select: { invoiceNumber: true } },
-        partner: { select: { id: true, name: true, commissionRate: true } },
+        partner: {
+            select: {
+              id: true,
+              name: true,
+              commissionRate: true,
+              commissionOnRental: true,
+              commissionOnExtras: true,
+              commissionOnInsurance: true,
+            },
+          },
+          createdBy: { select: { id: true, name: true } },
       },
     }),
     db.customer.findMany({
@@ -63,6 +74,17 @@ export default async function BookingsPage({
       },
     }),
     listPartners(tenantId),
+    // Οι δικές ΜΟΥ ρυθμίσεις προμήθειας — ισχύουν για συνεργάτη και για
+    // προσωπικό. Με ποσοστό 0 δεν εμφανίζεται τίποτα.
+    db.user.findUnique({
+      where: { id: viewer.userId },
+      select: {
+        commissionRate: true,
+        commissionOnRental: true,
+        commissionOnExtras: true,
+        commissionOnInsurance: true,
+      },
+    }),
   ]);
 
   return (
@@ -85,9 +107,14 @@ export default async function BookingsPage({
       roundUpTotal={tenant?.roundUpTotal ?? false}
       role={session.role}
       partners={partners}
-      myCommissionRate={
-        partners.find((p) => p.id === viewer.userId)?.commissionRate ?? 0
-      }
+      currentUserId={viewer.userId}
+      myCommission={{
+        rate: Number(me?.commissionRate ?? 0),
+        onRental: me?.commissionOnRental ?? true,
+        onExtras: me?.commissionOnExtras ?? false,
+        onInsurance: me?.commissionOnInsurance ?? false,
+      }}
+      canSeeCommission={viewerCan(viewer, "commission.view")}
       // Από το Ημερολόγιο: ποια κράτηση να ανοίξει μόλις φορτώσει η σελίδα.
       focusBookingId={searchParams?.booking ?? null}
     />

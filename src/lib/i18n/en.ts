@@ -319,6 +319,8 @@ export const en: Dictionary = {
     partner: "Partner",
     partnerNone: "\u2014 None \u2014",
     partnerSelf: "The booking is filed under your name automatically.",
+    onlyMine: "My bookings",
+    createdBy: "Entered by",
     commissionRate: "Commission rate",
     commissionMonth: "This month's commission",
     commissionTotal: "Total commission",
@@ -458,8 +460,15 @@ export const en: Dictionary = {
     adminAllPermissions: "An admin always has every permission",
     permissionsCount: "permissions",
     commissionRate: "Commission rate %",
+    commissionBase: "Commission is calculated on:",
+    base_rental: "Rental",
+    base_extras: "Extras",
+    base_insurance: "Insurance",
+    baseNone: "nothing",
+    commissionNoBase:
+      "You set a rate but no base \u2014 the commission would always come out as 0. Pick at least one of the three.",
     commissionNote:
-      "Commission is calculated on the rental amount of each booking the partner brings \u2014 without extras, insurance or discount. Changing the rate updates every total immediately; cancelled bookings do not count.",
+      "A partner earns on the bookings they bring in, staff on the ones they enter. Amounts are measured before discount and rounding. Changing the rate updates every total immediately; cancelled bookings do not count. At 0% no commission is shown anywhere.",
     lastLogin: "Last sign-in",
     notYourself: "You cannot change your own permissions",
 

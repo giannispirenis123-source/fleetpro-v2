@@ -98,7 +98,17 @@ export const GET = withPermission(
           vehicle: { select: { brand: true, model: true, plate: true } },
           customer: { select: { firstName: true, lastName: true } },
           invoice: { select: { invoiceNumber: true } },
-          partner: { select: { id: true, name: true, commissionRate: true } },
+          partner: {
+            select: {
+              id: true,
+              name: true,
+              commissionRate: true,
+              commissionOnRental: true,
+              commissionOnExtras: true,
+              commissionOnInsurance: true,
+            },
+          },
+          createdBy: { select: { id: true, name: true } },
         },
       });
 
@@ -214,6 +224,8 @@ export const POST = withPermission(
           customerId: customer.id,
           vehicleId: vehicle.id,
           partnerId: partner.partnerId,
+          // Ποιος την έγραψε — πάντα από το session, ποτέ από το body.
+          createdById: session.userId,
           bookingNumber: await nextBookingNumber(session.tenantId!),
           status,
           pickupDate: toDate(data.pickupDate),
@@ -237,7 +249,17 @@ export const POST = withPermission(
           vehicle: { select: { brand: true, model: true, plate: true } },
           customer: { select: { firstName: true, lastName: true } },
           invoice: { select: { invoiceNumber: true } },
-          partner: { select: { id: true, name: true, commissionRate: true } },
+          partner: {
+            select: {
+              id: true,
+              name: true,
+              commissionRate: true,
+              commissionOnRental: true,
+              commissionOnExtras: true,
+              commissionOnInsurance: true,
+            },
+          },
+          createdBy: { select: { id: true, name: true } },
         },
       });
 

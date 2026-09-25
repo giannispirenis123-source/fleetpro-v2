@@ -40,6 +40,9 @@ const updateUserSchema = z
      * σου» παρακάτω τον κόβει ούτως ή άλλως.
      */
     commissionRate: z.number().min(0).max(100).optional(),
+    commissionOnRental: z.boolean().optional(),
+    commissionOnExtras: z.boolean().optional(),
+    commissionOnInsurance: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "Δεν δόθηκε καμία αλλαγή",
@@ -86,7 +89,10 @@ export const PATCH = withPermission(
         (data.permissions !== undefined ||
           data.role !== undefined ||
           data.isActive !== undefined ||
-          data.commissionRate !== undefined)
+          data.commissionRate !== undefined ||
+          data.commissionOnRental !== undefined ||
+          data.commissionOnExtras !== undefined ||
+          data.commissionOnInsurance !== undefined)
       ) {
         return forbidden(
           "Δεν μπορείτε να αλλάξετε τα δικά σας δικαιώματα ή τον ρόλο σας"
@@ -135,13 +141,17 @@ export const PATCH = withPermission(
           ...(data.role !== undefined && { role: data.role }),
           ...(data.isActive !== undefined && { isActive: data.isActive }),
           ...(data.commissionRate !== undefined && {
-            commissionRate: nextRole === "PARTNER" ? data.commissionRate : 0,
+            commissionRate: data.commissionRate,
           }),
-          // Αλλαγή κατηγορίας από Συνεργάτη σε Προσωπικό μηδενίζει το
-          // ποσοστό: δεν μένει κρυφό νούμερο σε χρήστη που δεν το αφορά.
-          ...(data.role !== undefined &&
-            data.role !== "PARTNER" &&
-            data.commissionRate === undefined && { commissionRate: 0 }),
+          ...(data.commissionOnRental !== undefined && {
+            commissionOnRental: data.commissionOnRental,
+          }),
+          ...(data.commissionOnExtras !== undefined && {
+            commissionOnExtras: data.commissionOnExtras,
+          }),
+          ...(data.commissionOnInsurance !== undefined && {
+            commissionOnInsurance: data.commissionOnInsurance,
+          }),
           ...(nextPermissions !== undefined && { permissions: nextPermissions }),
           ...(data.password !== undefined && {
             passwordHash: await bcrypt.hash(data.password, BCRYPT_ROUNDS),

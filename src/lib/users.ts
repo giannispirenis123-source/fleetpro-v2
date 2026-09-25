@@ -22,8 +22,12 @@ export interface UserDTO {
   permissions: PermissionMap;
   /** Πόσα δικαιώματα έχει — για τη σύνοψη στην κάρτα. */
   permissionCount: number;
-  /** Ποσοστό προμήθειας· έχει νόημα μόνο για PARTNER. */
+  /** Ποσοστό προμήθειας. Αφορά συνεργάτες ΚΑΙ προσωπικό. */
   commissionRate: number;
+  /** Πάνω σε τι υπολογίζεται — τρεις ανεξάρτητοι διακόπτες. */
+  commissionOnRental: boolean;
+  commissionOnExtras: boolean;
+  commissionOnInsurance: boolean;
   lastLoginAt: string | null;
   createdAt: string;
 }
@@ -38,6 +42,9 @@ type UserRow = Pick<
   | "isActive"
   | "permissions"
   | "commissionRate"
+  | "commissionOnRental"
+  | "commissionOnExtras"
+  | "commissionOnInsurance"
   | "lastLoginAt"
   | "createdAt"
 >;
@@ -56,6 +63,9 @@ export function toUserDTO(u: UserRow): UserDTO {
     permissions,
     permissionCount: Object.keys(permissions).length,
     commissionRate: Number(u.commissionRate),
+    commissionOnRental: u.commissionOnRental,
+    commissionOnExtras: u.commissionOnExtras,
+    commissionOnInsurance: u.commissionOnInsurance,
     lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
     createdAt: u.createdAt.toISOString(),
   };
@@ -70,6 +80,9 @@ export const USER_SELECT = {
   isActive: true,
   permissions: true,
   commissionRate: true,
+  commissionOnRental: true,
+  commissionOnExtras: true,
+  commissionOnInsurance: true,
   lastLoginAt: true,
   createdAt: true,
 } as const;

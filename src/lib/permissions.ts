@@ -145,13 +145,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
 
   {
-    id: "partner",
-    el: "Συνεργάτες",
-    en: "Partners",
+    id: "commission",
+    el: "Προμήθεια",
+    en: "Commission",
     items: [
       {
-        key: "partner.commission.view",
-        el: "Προβολή της προμήθειάς του",
+        key: "commission.view",
+        el: "Προβολή της δικής του προμήθειας",
         en: "View own commission",
       },
     ],
@@ -295,6 +295,7 @@ export const STAFF_DEFAULTS: PermissionKey[] = [
   "invoices.issue",
   "invoices.markpaid",
   "invoices.print",
+  "commission.view",
 ];
 
 // Σημείωση: Εκπτώσεις και Ρυθμίσεις ΔΕΝ μπαίνουν στις προεπιλογές. Μέχρι
@@ -309,7 +310,7 @@ export const PARTNER_DEFAULTS: PermissionKey[] = [
   "bookings.view",
   "fleet.view",
   "extras.view",
-  "partner.commission.view",
+  "commission.view",
 ];
 
 export function defaultsForRole(role: string): PermissionMap {

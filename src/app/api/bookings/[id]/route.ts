@@ -63,7 +63,17 @@ const withRelations = {
   vehicle: { select: { brand: true, model: true, plate: true } },
   customer: { select: { firstName: true, lastName: true } },
   invoice: { select: { invoiceNumber: true } },
-  partner: { select: { id: true, name: true, commissionRate: true } },
+  partner: {
+            select: {
+              id: true,
+              name: true,
+              commissionRate: true,
+              commissionOnRental: true,
+              commissionOnExtras: true,
+              commissionOnInsurance: true,
+            },
+          },
+          createdBy: { select: { id: true, name: true } },
 } as const;
 
 /**

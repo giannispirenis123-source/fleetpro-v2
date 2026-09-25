@@ -10,15 +10,72 @@
 import { round2 } from "./pricing";
 
 /**
- * Βάση της προμήθειας είναι ΜΟΝΟ το ενοίκιο (subtotal).
- *
- * Δεν μπαίνουν πρόσθετα, ασφάλεια, έκπτωση ή στρογγυλοποίηση: ο
- * συνεργάτης αμείβεται για την ενοικίαση που έφερε, όχι για ό,τι
- * πουλήθηκε γύρω από αυτήν.
+ * Οι ρυθμίσεις προμήθειας ενός χρήστη: το ποσοστό και οι τρεις
+ * ΑΝΕΞΑΡΤΗΤΟΙ διακόπτες για το πάνω σε τι υπολογίζεται.
  */
-export function commissionOf(subtotal: number, ratePercent: number): number {
+export interface CommissionSettings {
+  rate: number;
+  onRental: boolean;
+  onExtras: boolean;
+  onInsurance: boolean;
+}
+
+export const NO_COMMISSION: CommissionSettings = {
+  rate: 0,
+  onRental: true,
+  onExtras: false,
+  onInsurance: false,
+};
+
+/** Τα καθαρά συστατικά μιας κράτησης, πριν από έκπτωση και στρογγυλοποίηση. */
+export interface CommissionParts {
+  subtotal: number;
+  extrasTotal: number;
+  insuranceCost: number;
+}
+
+/**
+ * Πάνω σε τι υπολογίζεται η προμήθεια.
+ *
+ * Μπαίνουν ΜΟΝΟ όσα συστατικά έχουν ανοιχτό διακόπτη, και πάντα στην
+ * καθαρή τους μορφή: χωρίς έκπτωση και χωρίς στρογγυλοποίηση. Δύο
+ * υπάλληλοι με το ίδιο ποσοστό πρέπει να αμείβονται το ίδιο για την ίδια
+ * ενοικίαση, ανεξάρτητα από το τι έκπτωση δόθηκε στον πελάτη.
+ */
+export function commissionBase(
+  parts: CommissionParts,
+  s: CommissionSettings
+): number {
+  const sum =
+    (s.onRental ? Math.max(0, parts.subtotal) : 0) +
+    (s.onExtras ? Math.max(0, parts.extrasTotal) : 0) +
+    (s.onInsurance ? Math.max(0, parts.insuranceCost) : 0);
+
+  return round2(sum);
+}
+
+/** Η προμήθεια μιας κράτησης για τις συγκεκριμένες ρυθμίσεις. */
+export function commissionFor(
+  parts: CommissionParts,
+  s: CommissionSettings
+): number {
+  if (s.rate <= 0) return 0;
+  return round2(commissionBase(parts, s) * (Math.max(0, s.rate) / 100));
+}
+
+/** Απλή εκδοχή, όταν η βάση είναι ήδη υπολογισμένη. */
+export function commissionOf(base: number, ratePercent: number): number {
   const rate = Math.max(0, ratePercent);
-  return round2(Math.max(0, subtotal) * (rate / 100));
+  return round2(Math.max(0, base) * (rate / 100));
+}
+
+/** Σύντομη περιγραφή της βάσης, για το UI: «Ενοίκιο + Πρόσθετα». */
+export function baseLabels(s: CommissionSettings): ("rental" | "extras" | "insurance")[] {
+  const out: ("rental" | "extras" | "insurance")[] = [];
+  if (s.onRental) out.push("rental");
+  if (s.onExtras) out.push("extras");
+  if (s.onInsurance) out.push("insurance");
+  return out;
 }
 
 /**
@@ -32,39 +89,23 @@ export function commissionOf(subtotal: number, ratePercent: number): number {
 export const countsForCommission = (status: string): boolean =>
   status !== "CANCELLED";
 
-export interface CommissionLine {
-  bookingId: string;
-  bookingNumber: string;
-  status: string;
-  /** "YYYY-MM-DD" */
-  pickupDate: string;
-  subtotal: number;
-  commission: number;
-  counts: boolean;
-}
-
 export interface CommissionSummary {
-  ratePercent: number;
   /** Πλήθος κρατήσεων που μετράνε. */
   bookings: number;
-  subtotal: number;
+  base: number;
   commission: number;
 }
 
+/** Άθροισμα προμήθειας για μια λίστα κρατήσεων. */
 export function summarize(
-  lines: CommissionLine[],
-  ratePercent: number
+  bookings: (CommissionParts & { status: string })[],
+  s: CommissionSettings
 ): CommissionSummary {
-  const counted = lines.filter((l) => l.counts);
+  const counted = bookings.filter((b) => countsForCommission(b.status));
 
   return {
-    ratePercent,
     bookings: counted.length,
-    subtotal: round2(counted.reduce((a, l) => a + l.subtotal, 0)),
-    commission: round2(counted.reduce((a, l) => a + l.commission, 0)),
+    base: round2(counted.reduce((a, b) => a + commissionBase(b, s), 0)),
+    commission: round2(counted.reduce((a, b) => a + commissionFor(b, s), 0)),
   };
 }
-
-/** Οι γραμμές ενός συγκεκριμένου μήνα ("YYYY-MM"). */
-export const inMonth = (lines: CommissionLine[], month: string) =>
-  lines.filter((l) => l.pickupDate.startsWith(month));

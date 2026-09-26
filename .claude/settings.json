@@ -1,13 +1,4 @@
 {
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          { "type": "command", "command": "pip install -q graphifyy" }
-        ]
-      }
-    ]
-  },
   "extraKnownMarketplaces": {
     "openai-codex": {
       "source": { "source": "github", "repo": "openai/codex-plugin-cc" }

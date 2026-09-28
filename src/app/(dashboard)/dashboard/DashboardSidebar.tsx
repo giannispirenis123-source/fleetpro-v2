@@ -41,7 +41,7 @@ interface NavItem {
 // Η ορατότητα ΔΕΝ κρίνεται πια από τον ρόλο αλλά από το δικαίωμα προβολής.
 // Ο διαχειριστής τα έχει όλα, οπότε βλέπει τα πάντα.
 // Ενεργά: Πίνακας, Κρατήσεις, Ημερολόγιο, Στόλος, Πρόσθετα, Πελάτες,
-// Εκπτώσεις, Τιμολόγια, Χρήστες, Ρυθμίσεις.
+// Εκπτώσεις, Τιμολόγια, Service & Ζημιές, Χρήστες, Ρυθμίσεις.
 const NAV: NavItem[] = [
   { href: "/dashboard", labelKey: "overview", icon: LayoutDashboard, permission: "dashboard.view" },
   { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, permission: "bookings.view" },
@@ -52,7 +52,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/discounts", labelKey: "discounts", icon: Tag, permission: "discounts.view" },
   { href: "/dashboard/contracts", labelKey: "contracts", icon: FileText, permission: "contracts.view", disabled: true },
   { href: "/dashboard/invoices", labelKey: "invoices", icon: Receipt, permission: "invoices.view" },
-  { href: "/dashboard/service", labelKey: "service", icon: Wrench, permission: "service.view", disabled: true },
+  { href: "/dashboard/service", labelKey: "service", icon: Wrench, permission: "service.view" },
   { href: "/dashboard/reports", labelKey: "reports", icon: BarChart3, permission: "reports.view", disabled: true },
   { href: "/dashboard/finance", labelKey: "finance", icon: Wallet, permission: "finance.view", disabled: true },
   { href: "/dashboard/users", labelKey: "users", icon: UserCog, permission: "users.view" },

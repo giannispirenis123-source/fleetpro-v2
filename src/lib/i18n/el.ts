@@ -442,6 +442,81 @@ export const el = {
       "Ο κωδικός θα πάψει να ισχύει σε νέες κρατήσεις. Οι υπάρχουσες κρατήσεις δεν επηρεάζονται και το ιστορικό χρήσεων διατηρείται.",
   },
 
+  service: {
+    title: "Service & Ζημιές",
+    subtitle: "Συντήρηση, ΚΤΕΟ και ζημιές του στόλου σου.",
+    tabService: "Service & ΚΤΕΟ",
+    tabDamages: "Ζημιές",
+    addRecord: "Νέα εγγραφή",
+    addDamage: "Νέα ζημιά",
+    records: "εγγραφές",
+
+    vehicle: "Όχημα",
+    allVehicles: "Όλα τα οχήματα",
+    type: "Τύπος",
+    allTypes: "Όλοι οι τύποι",
+    allStatuses: "Όλες",
+    date: "Ημερομηνία",
+    cost: "Κόστος (€)",
+    km: "Χιλιόμετρα",
+    shop: "Συνεργείο",
+    notes: "Σημειώσεις",
+    nextDate: "Επόμενο service",
+    nextKm: "Επόμενο service (χλμ)",
+    next: "Επόμενο",
+    nextNote:
+      "Το επόμενο service είναι προαιρετικό. Αν το συμπληρώσεις, το όχημα θα εμφανιστεί στις ειδοποιήσεις του Πίνακα όταν πλησιάσει.",
+    dueSoon: "Πλησιάζει",
+    overdue: "Πέρασε",
+
+    booking: "Κράτηση",
+    noBooking: "χωρίς κράτηση",
+    noBookingOption: "— Καμία (σκέτη ζημιά) —",
+    fromBooking: "από κράτηση",
+    description: "Περιγραφή",
+    repairCost: "Κόστος επισκευής (€)",
+    status: "Κατάσταση",
+    markResolved: "Επιλύθηκε",
+    resolvedOn: "Επιλύθηκε",
+    damageNote:
+      "Η κράτηση είναι προαιρετική: μια ζημιά μπορεί να εντοπιστεί και χωρίς ενοικίαση. Προσφέρονται μόνο κρατήσεις του συγκεκριμένου οχήματος.",
+
+    newRecord: "Νέα εγγραφή service",
+    editRecord: "Επεξεργασία εγγραφής",
+    newDamage: "Νέα ζημιά",
+    editDamage: "Επεξεργασία ζημιάς",
+
+    emptyService: "Δεν υπάρχουν εγγραφές service με αυτά τα φίλτρα.",
+    emptyDamages: "Δεν υπάρχουν ζημιές με αυτά τα φίλτρα.",
+
+    edit: "Επεξεργασία",
+    delete: "Διαγραφή",
+    save: "Αποθήκευση",
+    saving: "Αποθήκευση…",
+    cancel: "Άκυρο",
+    confirmDeleteTitle: "Διαγραφή εγγραφής",
+    confirmDeleteBody: "Η εγγραφή θα διαγραφεί οριστικά.",
+    errorVehicle: "Επίλεξε όχημα",
+    errorDescription: "Γράψε μια περιγραφή της ζημιάς",
+    errorSave: "Δεν ήταν δυνατή η αποθήκευση",
+    errorConnection: "Σφάλμα σύνδεσης",
+  },
+
+  serviceType: {
+    REGULAR: "Τακτικό service",
+    KTEO: "ΚΤΕΟ",
+    TYRES: "Ελαστικά",
+    BRAKES: "Φρένα",
+    BATTERY: "Μπαταρία",
+    REPAIR: "Επισκευή",
+    OTHER: "Άλλο",
+  },
+
+  damageStatus: {
+    PENDING: "Εκκρεμεί",
+    RESOLVED: "Επιλύθηκε",
+  },
+
   users: {
     title: "Χρήστες",
     subtitle: "Το προσωπικό και οι συνεργάτες της εταιρίας σου.",

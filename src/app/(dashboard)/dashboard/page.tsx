@@ -81,7 +81,8 @@ export default async function DashboardPage() {
   const [
     vehicleGroups,
     revenueAgg,
-    serviceSoon,
+    serviceDueVehicles,
+    serviceDueRecords,
     insuranceSoon,
     kteoSoon,
     unsignedContracts,
@@ -99,8 +100,18 @@ export default async function DashboardPage() {
       where: { tenantId, status: "PAID", paidAt: { gte: monthStart } },
       _sum: { total: true },
     }),
-    db.vehicle.count({
+    // Επικείμενο service — από το ίδιο το όχημα…
+    db.vehicle.findMany({
       where: { tenantId, isActive: true, nextServiceDate: { lte: in30 } },
+      select: { id: true },
+    }),
+    // …και από τις εγγραφές service, που ορίζουν το επόμενο ραντεβού.
+    // Ενώνονται παρακάτω ώστε ένα όχημα να μετρηθεί ΜΙΑ φορά, όποιο από
+    // τα δύο κι αν το σημαίνει.
+    db.serviceRecord.findMany({
+      where: { tenantId, nextServiceDate: { lte: in30 } },
+      select: { vehicleId: true },
+      distinct: ["vehicleId"],
     }),
     db.vehicle.count({
       where: { tenantId, isActive: true, insuranceExpiry: { lte: in60 } },
@@ -130,6 +141,13 @@ export default async function DashboardPage() {
       },
     }),
   ]);
+
+  // Ένα όχημα μετράει ΜΙΑ φορά, είτε το σημαίνει το δικό του πεδίο είτε
+  // μια εγγραφή service είτε και τα δύο.
+  const serviceSoon = new Set([
+    ...serviceDueVehicles.map((v) => v.id),
+    ...serviceDueRecords.map((r) => r.vehicleId),
+  ]).size;
 
   const vc: Record<string, number> = {};
   for (const g of vehicleGroups) vc[g.status] = g._count as unknown as number;

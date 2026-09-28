@@ -1722,3 +1722,19 @@
   color: var(--text-2);
   cursor: pointer;
 }
+
+/* ---------- Service & Ζημιές ---------- */
+.dash-service-tabs { margin-bottom: 14px; }
+.dash-field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.dash-field--inline select { width: auto; min-width: 150px; }
+.dash-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}

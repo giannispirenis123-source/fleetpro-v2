@@ -441,6 +441,81 @@ export const en: Dictionary = {
       "The code will stop applying to new bookings. Existing bookings are unaffected and the usage history is kept.",
   },
 
+  service: {
+    title: "Service & damages",
+    subtitle: "Maintenance, MOT and damage for your fleet.",
+    tabService: "Service & MOT",
+    tabDamages: "Damages",
+    addRecord: "New record",
+    addDamage: "New damage",
+    records: "records",
+
+    vehicle: "Vehicle",
+    allVehicles: "All vehicles",
+    type: "Type",
+    allTypes: "All types",
+    allStatuses: "All",
+    date: "Date",
+    cost: "Cost (\u20ac)",
+    km: "Mileage",
+    shop: "Garage",
+    notes: "Notes",
+    nextDate: "Next service",
+    nextKm: "Next service (km)",
+    next: "Next",
+    nextNote:
+      "The next service is optional. If you fill it in, the vehicle appears in the dashboard alerts as it approaches.",
+    dueSoon: "Due soon",
+    overdue: "Overdue",
+
+    booking: "Booking",
+    noBooking: "no booking",
+    noBookingOption: "\u2014 None (standalone damage) \u2014",
+    fromBooking: "from booking",
+    description: "Description",
+    repairCost: "Repair cost (\u20ac)",
+    status: "Status",
+    markResolved: "Resolved",
+    resolvedOn: "Resolved",
+    damageNote:
+      "The booking is optional: damage can be found without a rental. Only bookings for this particular vehicle are offered.",
+
+    newRecord: "New service record",
+    editRecord: "Edit record",
+    newDamage: "New damage",
+    editDamage: "Edit damage",
+
+    emptyService: "No service records match these filters.",
+    emptyDamages: "No damage matches these filters.",
+
+    edit: "Edit",
+    delete: "Delete",
+    save: "Save",
+    saving: "Saving\u2026",
+    cancel: "Cancel",
+    confirmDeleteTitle: "Delete record",
+    confirmDeleteBody: "The record will be permanently deleted.",
+    errorVehicle: "Select a vehicle",
+    errorDescription: "Describe the damage",
+    errorSave: "Could not save",
+    errorConnection: "Connection error",
+  },
+
+  serviceType: {
+    REGULAR: "Regular service",
+    KTEO: "MOT",
+    TYRES: "Tyres",
+    BRAKES: "Brakes",
+    BATTERY: "Battery",
+    REPAIR: "Repair",
+    OTHER: "Other",
+  },
+
+  damageStatus: {
+    PENDING: "Pending",
+    RESOLVED: "Resolved",
+  },
+
   users: {
     title: "Users",
     subtitle: "Your company's staff and partners.",

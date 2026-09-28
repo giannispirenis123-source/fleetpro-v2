@@ -543,6 +543,8 @@ model ServiceRecord {
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
+  @@index([tenantId, vehicleId])
+  @@index([tenantId, nextServiceDate])
   @@map("service_records")
 }
 
@@ -556,6 +558,9 @@ model Damage {
   vehicleId   String
   bookingId   String?
   description String
+  // Πότε έγινε η ζημιά. Ξεχωριστό από το createdAt: μια ζημιά μπορεί να
+  // καταχωρηθεί μέρες αφότου συνέβη.
+  date        DateTime     @default(now())
   repairCost  Decimal?     @db.Decimal(10, 2)
   status      DamageStatus @default(PENDING)
   photos      String[] // Cloudinary URLs
@@ -567,8 +572,10 @@ model Damage {
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vehicle Vehicle  @relation(fields: [vehicleId], references: [id])
-  booking Booking? @relation(fields: [bookingId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
+  @@index([tenantId, vehicleId])
+  @@index([tenantId, status])
   @@map("damages")
 }
 

@@ -145,6 +145,28 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
 
   {
+    id: "service",
+    el: "Service & ΚΤΕΟ",
+    en: "Service & MOT",
+    items: [
+      { key: "service.view", el: "Προβολή εγγραφών service", en: "View service records" },
+      { key: "service.create", el: "Νέα εγγραφή service", en: "Add service records" },
+      { key: "service.edit", el: "Επεξεργασία εγγραφής", en: "Edit service records" },
+      { key: "service.delete", el: "Διαγραφή εγγραφής", en: "Delete service records" },
+    ],
+  },
+  {
+    id: "damages",
+    el: "Ζημιές",
+    en: "Damages",
+    items: [
+      { key: "damages.view", el: "Προβολή ζημιών", en: "View damages" },
+      { key: "damages.create", el: "Καταχώρηση ζημιάς", en: "Record damages" },
+      { key: "damages.edit", el: "Επεξεργασία / επίλυση ζημιάς", en: "Edit or resolve damages" },
+      { key: "damages.delete", el: "Διαγραφή ζημιάς", en: "Delete damages" },
+    ],
+  },
+  {
     id: "commission",
     el: "Προμήθεια",
     en: "Commission",
@@ -169,17 +191,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: "contracts.view", el: "Προβολή συμβολαίων", en: "View contracts", future: true },
       { key: "contracts.create", el: "Νέο συμβόλαιο", en: "Create contracts", future: true },
       { key: "contracts.sign", el: "Υπογραφή συμβολαίου", en: "Sign contracts", future: true },
-    ],
-  },
-  {
-    id: "service",
-    el: "Service & Ζημιές",
-    en: "Service & damages",
-    future: true,
-    items: [
-      { key: "service.view", el: "Προβολή service", en: "View service", future: true },
-      { key: "service.create", el: "Νέα εγγραφή service", en: "Add service records", future: true },
-      { key: "service.edit", el: "Επεξεργασία service", en: "Edit service records", future: true },
     ],
   },
   {
@@ -296,6 +307,14 @@ export const STAFF_DEFAULTS: PermissionKey[] = [
   "invoices.markpaid",
   "invoices.print",
   "commission.view",
+  "service.view",
+  "service.create",
+  "service.edit",
+  "service.delete",
+  "damages.view",
+  "damages.create",
+  "damages.edit",
+  "damages.delete",
 ];
 
 // Σημείωση: Εκπτώσεις και Ρυθμίσεις ΔΕΝ μπαίνουν στις προεπιλογές. Μέχρι

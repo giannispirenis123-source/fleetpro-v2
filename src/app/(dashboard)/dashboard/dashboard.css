@@ -1738,3 +1738,36 @@
   align-items: center;
   gap: 5px;
 }
+
+/* ---------- Οικονομικά ---------- */
+.dash-field--inline input { width: auto; }
+.dash-fin-loss .dash-card-icon { background: rgba(239, 68, 68, 0.12); color: var(--bad-fg); }
+.dash-fin-loss .dash-card-value { color: var(--bad-fg); }
+.dash-fin-panel { margin-bottom: 26px; }
+.dash-fin-bars { display: flex; flex-direction: column; gap: 12px; }
+.dash-fin-bar-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.dash-fin-bar-label { color: var(--text-2); }
+.dash-fin-bar-track {
+  height: 10px;
+  border-radius: 100px;
+  background: var(--border);
+  overflow: hidden;
+}
+.dash-fin-bar-fill {
+  height: 100%;
+  border-radius: 100px;
+  background: var(--primary-soft);
+  transition: width 0.25s ease;
+}
+.dash-fin-bar-amount { font-weight: 600; white-space: nowrap; }
+.dash-fin-bar-amount small { font-weight: 400; color: var(--text-3); }
+@media (max-width: 640px) {
+  .dash-fin-bar-row { grid-template-columns: 90px 1fr; }
+  .dash-fin-bar-amount { grid-column: 2; }
+}

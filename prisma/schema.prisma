@@ -523,6 +523,8 @@ model Invoice {
   // Ο αριθμός τιμολογίου είναι μοναδικός ΜΕΣΑ στην εταιρία: το constraint
   // είναι αυτό που κάνει ασφαλή την ταυτόχρονη έκδοση.
   @@unique([tenantId, invoiceNumber])
+  // Έσοδα διαστήματος στα Οικονομικά και στον Πίνακα.
+  @@index([tenantId, status, paidAt])
   @@map("invoices")
 }
 
@@ -606,6 +608,9 @@ model Expense {
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
 
+  // Φίλτρα της σελίδας Οικονομικά: διάστημα, και διάστημα ανά όχημα.
+  @@index([tenantId, date])
+  @@index([tenantId, vehicleId])
   @@map("expenses")
 }
 

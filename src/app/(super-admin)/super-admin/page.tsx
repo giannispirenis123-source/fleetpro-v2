@@ -4,6 +4,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   Users,
@@ -30,7 +31,18 @@ import {
   ChevronDown,
   Activity,
   Zap,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
+import { useT } from "@/lib/i18n/I18nProvider";
+import {
+  PLAN_PRICES,
+  discountedPrice,
+  platformDiscountStatus,
+  todayISO,
+  type PlatformDiscountDTO,
+  type PlatformDiscountStatus,
+} from "@/lib/platformDiscounts";
 
 // ─── Types ───────────────────────────────
 
@@ -83,12 +95,6 @@ const PLAN_LABELS: Record<SubscriptionPlan, string> = {
   STARTER: "Starter",
   PRO: "Pro",
   ENTERPRISE: "Enterprise",
-};
-
-const PLAN_PRICES: Record<SubscriptionPlan, number> = {
-  STARTER: 49,
-  PRO: 129,
-  ENTERPRISE: 299,
 };
 
 /** Κατά προσέγγιση ύψος του μενού ενεργειών, για να κρίνουμε αν χωράει. */
@@ -455,14 +461,7 @@ export default function SuperAdminDashboard() {
         {/* Discounts Tab */}
         {activeTab === "discounts" && (
           <div className="sa-content">
-            <div className="sa-toolbar">
-              <h1 className="sa-page-title">Εκπτώσεις Πλατφόρμας</h1>
-              <button className="sa-btn-primary">
-                <Plus size={14} />
-                Νέος Κωδικός
-              </button>
-            </div>
-            <PlatformDiscountsView />
+            <PlatformDiscountsView tenants={tenants} />
           </div>
         )}
 
@@ -737,84 +736,443 @@ function PlatformStatsView({
 
 // ─── Platform Discounts View ──────────────
 
-function PlatformDiscountsView() {
-  const mockCoupons = [
-    {
-      id: "1",
-      code: "LAUNCH50",
-      description: "Έκπτωση εγκαινίων 50%",
-      type: "PERCENTAGE",
-      value: 50,
-      planTarget: "ALL",
-      usageCount: 3,
-      usageLimit: 10,
-      isActive: true,
-    },
-    {
-      id: "2",
-      code: "PRO3MONTHS",
-      description: "3 μήνες Pro δωρεάν",
-      type: "FIXED_AMOUNT",
-      value: 387,
-      planTarget: "PRO",
-      usageCount: 1,
-      usageLimit: null,
-      isActive: true,
-    },
-  ];
+/**
+ * Εκπτώσεις στη ΣΥΝΔΡΟΜΗ εταιριών. Μόνο αποθήκευση/εμφάνιση — δεν
+ * χρεώνονται ακόμα μέσω Stripe. Άσχετο με τις εκπτώσεις κρατήσεων.
+ */
+function PlatformDiscountsView({ tenants }: { tenants: Tenant[] }) {
+  const tr = useT();
+  const router = useRouter();
+  const [discounts, setDiscounts] = useState<PlatformDiscountDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState<PlatformDiscountDTO | "new" | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const res = await fetch("/api/super-admin/platform-discounts", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || tr("platformDiscounts.errNetwork"));
+        return;
+      }
+      setDiscounts(data.data.discounts);
+    } catch {
+      setError(tr("platformDiscounts.errNetwork"));
+    } finally {
+      setLoading(false);
+    }
+  }, [tr]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const afterChange = async () => {
+    await load();
+    router.refresh();
+  };
+
+  const toggleActive = async (d: PlatformDiscountDTO) => {
+    setBusyId(d.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/super-admin/platform-discounts/${d.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !d.active }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(platformDiscountError(res.status, data.message, tr));
+        return;
+      }
+      await afterChange();
+    } catch {
+      setError(tr("platformDiscounts.errNetwork"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (d: PlatformDiscountDTO) => {
+    if (!window.confirm(tr("platformDiscounts.confirmDelete"))) return;
+    setBusyId(d.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/super-admin/platform-discounts/${d.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(platformDiscountError(res.status, data.message, tr));
+        return;
+      }
+      await afterChange();
+    } catch {
+      setError(tr("platformDiscounts.errNetwork"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const today = todayISO();
 
   return (
-    <div className="sa-table-wrap">
-      <table className="sa-table">
-        <thead>
-          <tr>
-            <th>Κωδικός</th>
-            <th>Περιγραφή</th>
-            <th>Τύπος</th>
-            <th>Αξία</th>
-            <th>Πλάνο</th>
-            <th>Χρήσεις</th>
-            <th>Κατάσταση</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {mockCoupons.map((c) => (
-            <tr key={c.id} className="sa-table-row">
-              <td>
-                <code className="sa-code">{c.code}</code>
-              </td>
-              <td>{c.description}</td>
-              <td>{c.type === "PERCENTAGE" ? "Ποσοστό" : "Σταθερό"}</td>
-              <td>
-                {c.value}
-                {c.type === "PERCENTAGE" ? "%" : "€"}
-              </td>
-              <td>{c.planTarget}</td>
-              <td>
-                {c.usageCount}/{c.usageLimit ?? "∞"}
-              </td>
-              <td>
-                <span
-                  className={`sa-status ${
-                    c.isActive
-                      ? "text-emerald-400 bg-emerald-400/10"
-                      : "text-slate-400 bg-slate-400/10"
-                  }`}
-                >
-                  {c.isActive ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                  {c.isActive ? "Ενεργός" : "Ανενεργός"}
-                </span>
-              </td>
-              <td>
-                <button className="sa-icon-btn">
-                  <Edit size={14} />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <>
+      <div className="sa-toolbar">
+        <div className="sa-toolbar-left">
+          <h1 className="sa-page-title">{tr("platformDiscounts.title")}</h1>
+          <span className="sa-count">{discounts.length}</span>
+        </div>
+        <button className="sa-btn-primary" onClick={() => setEditing("new")}>
+          <Plus size={14} />
+          {tr("platformDiscounts.newDiscount")}
+        </button>
+      </div>
+      <p className="sa-muted-note">{tr("platformDiscounts.subtitle")}</p>
+
+      {error && <div className="sa-error sa-pd-error">{error}</div>}
+
+      {loading ? (
+        <div className="sa-skeleton" />
+      ) : discounts.length === 0 ? (
+        <p className="sa-muted-note">{tr("platformDiscounts.empty")}</p>
+      ) : (
+        <div className="sa-table-wrap">
+          <table className="sa-table">
+            <thead>
+              <tr>
+                <th>{tr("platformDiscounts.colCompany")}</th>
+                <th>{tr("platformDiscounts.colNote")}</th>
+                <th>{tr("platformDiscounts.colType")}</th>
+                <th>{tr("platformDiscounts.colValue")}</th>
+                <th>{tr("platformDiscounts.colPlan")}</th>
+                <th>{tr("platformDiscounts.colPeriod")}</th>
+                <th>{tr("platformDiscounts.colStatus")}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {discounts.map((d) => {
+                const status = platformDiscountStatus(d, today);
+                const base = PLAN_PRICES[d.tenantPlan];
+                const final = discountedPrice(base, d);
+                return (
+                  <tr key={d.id} className="sa-table-row">
+                    <td>
+                      <strong>{d.tenantName}</strong>
+                    </td>
+                    <td className="sa-pd-note">{d.note || "—"}</td>
+                    <td>{tr(`platformDiscounts.type${d.type}`)}</td>
+                    <td>
+                      <code className="sa-code">
+                        {d.type === "PERCENTAGE"
+                          ? `${d.value}%`
+                          : `${formatEur(d.value)}${tr("platformDiscounts.perMonth")}`}
+                      </code>
+                    </td>
+                    <td>
+                      <span
+                        className={`sa-plan-badge ${d.tenantPlan.toLowerCase()}`}
+                      >
+                        {PLAN_LABELS[d.tenantPlan]}
+                      </span>{" "}
+                      <span className="sa-pd-price">
+                        <s>{formatEur(base)}</s> → <strong>{formatEur(final)}</strong>
+                      </span>
+                    </td>
+                    <td className="sa-date">
+                      {formatDay(d.validFrom)} →{" "}
+                      {d.validUntil
+                        ? formatDay(d.validUntil)
+                        : tr("platformDiscounts.untilStopped")}
+                    </td>
+                    <td>
+                      <span className={`sa-status sa-pd-${status.toLowerCase()}`}>
+                        {PD_STATUS_ICON[status]}
+                        {tr(`platformDiscounts.status${status}`)}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="sa-actions">
+                        <button
+                          className="sa-icon-btn"
+                          title={tr("platformDiscounts.edit")}
+                          onClick={() => setEditing(d)}
+                          disabled={busyId === d.id}
+                        >
+                          <Edit size={14} />
+                        </button>
+                        <button
+                          className="sa-icon-btn"
+                          title={
+                            d.active
+                              ? tr("platformDiscounts.stop")
+                              : tr("platformDiscounts.resume")
+                          }
+                          onClick={() => toggleActive(d)}
+                          disabled={busyId === d.id}
+                        >
+                          {d.active ? <PauseCircle size={14} /> : <PlayCircle size={14} />}
+                        </button>
+                        <button
+                          className="sa-icon-btn sa-pd-danger"
+                          title={tr("platformDiscounts.delete")}
+                          onClick={() => remove(d)}
+                          disabled={busyId === d.id}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <PlatformDiscountModal
+          tenants={tenants}
+          discount={editing === "new" ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null);
+            await afterChange();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+const PD_STATUS_ICON: Record<PlatformDiscountStatus, React.ReactNode> = {
+  ACTIVE: <CheckCircle size={12} />,
+  SCHEDULED: <Clock size={12} />,
+  EXPIRED: <XCircle size={12} />,
+  INACTIVE: <PauseCircle size={12} />,
+};
+
+function formatEur(n: number): string {
+  return `${Number.isInteger(n) ? n : n.toFixed(2)}€`;
+}
+
+/** "YYYY-MM-DD" → "DD/MM/YYYY" χωρίς μετατροπή ζώνης ώρας. */
+function formatDay(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+/** Μετάφραση των γνωστών σφαλμάτων του API· αλλιώς το μήνυμα του server. */
+function platformDiscountError(
+  status: number,
+  message: string | undefined,
+  tr: (key: string) => string
+): string {
+  if (status === 409) return tr("platformDiscounts.errOverlap");
+  if (status === 404) return tr("platformDiscounts.errNotFound");
+  return message || tr("platformDiscounts.errNetwork");
+}
+
+function PlatformDiscountModal({
+  tenants,
+  discount,
+  onClose,
+  onSaved,
+}: {
+  tenants: Tenant[];
+  discount: PlatformDiscountDTO | null;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const tr = useT();
+  const [form, setForm] = useState({
+    tenantId: discount?.tenantId ?? "",
+    type: discount?.type ?? ("PERCENTAGE" as PlatformDiscountDTO["type"]),
+    value: discount ? String(discount.value) : "",
+    validFrom: discount?.validFrom ?? todayISO(),
+    validUntil: discount?.validUntil ?? "",
+    active: discount?.active ?? true,
+    note: discount?.note ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const value = Number(form.value.replace(",", "."));
+  const tenant = tenants.find((t) => t.id === form.tenantId);
+  const plan = tenant?.plan ?? discount?.tenantPlan;
+  const base = plan ? PLAN_PRICES[plan] : null;
+
+  const validate = (): string => {
+    if (!form.tenantId) return tr("platformDiscounts.errCompany");
+    if (!Number.isFinite(value) || value <= 0) return tr("platformDiscounts.errValue");
+    if (form.type === "PERCENTAGE" && value > 100) return tr("platformDiscounts.errPercent");
+    if (!form.validFrom) return tr("platformDiscounts.errFrom");
+    if (form.validUntil && form.validUntil < form.validFrom)
+      return tr("platformDiscounts.errDates");
+    return "";
+  };
+
+  const handleSubmit = async () => {
+    const msg = validate();
+    if (msg) {
+      setError(msg);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(
+        discount
+          ? `/api/super-admin/platform-discounts/${discount.id}`
+          : "/api/super-admin/platform-discounts",
+        {
+          method: discount ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId: form.tenantId,
+            type: form.type,
+            value,
+            validFrom: form.validFrom,
+            validUntil: form.validUntil || null,
+            active: form.active,
+            note: form.note.trim() || null,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(platformDiscountError(res.status, data.message, tr));
+        return;
+      }
+      await onSaved();
+    } catch {
+      setError(tr("platformDiscounts.errNetwork"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="sa-modal-overlay" onClick={onClose}>
+      <div className="sa-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="sa-modal-header">
+          <h2>
+            {discount
+              ? tr("platformDiscounts.editTitle")
+              : tr("platformDiscounts.newTitle")}
+          </h2>
+          <button className="sa-modal-close" onClick={onClose}>
+            <XCircle size={18} />
+          </button>
+        </div>
+        <div className="sa-modal-body">
+          <div className="sa-form-grid">
+            <label className="sa-pd-full">
+              {tr("platformDiscounts.fieldCompany")}
+              <select
+                value={form.tenantId}
+                onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))}
+              >
+                <option value="">{tr("platformDiscounts.selectCompany")}</option>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} · {PLAN_LABELS[t.plan]} ({PLAN_PRICES[t.plan]}€)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {tr("platformDiscounts.fieldType")}
+              <select
+                value={form.type}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    type: e.target.value as PlatformDiscountDTO["type"],
+                  }))
+                }
+              >
+                <option value="PERCENTAGE">{tr("platformDiscounts.typePERCENTAGE")}</option>
+                <option value="FIXED_AMOUNT">{tr("platformDiscounts.typeFIXED_AMOUNT")}</option>
+              </select>
+            </label>
+            <label>
+              {form.type === "PERCENTAGE"
+                ? tr("platformDiscounts.fieldValuePct")
+                : tr("platformDiscounts.fieldValueEur")}
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max={form.type === "PERCENTAGE" ? 100 : undefined}
+                step="0.01"
+                value={form.value}
+                onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
+              />
+            </label>
+            <label>
+              {tr("platformDiscounts.fieldFrom")}
+              <input
+                type="date"
+                value={form.validFrom}
+                onChange={(e) => setForm((f) => ({ ...f, validFrom: e.target.value }))}
+              />
+            </label>
+            <label>
+              {tr("platformDiscounts.fieldUntil")}
+              <input
+                type="date"
+                value={form.validUntil}
+                min={form.validFrom || undefined}
+                onChange={(e) => setForm((f) => ({ ...f, validUntil: e.target.value }))}
+              />
+            </label>
+            <label className="sa-pd-full">
+              {tr("platformDiscounts.fieldNote")}
+              <input
+                value={form.note}
+                maxLength={500}
+                placeholder={tr("platformDiscounts.notePlaceholder")}
+                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+              />
+            </label>
+            <label className="sa-pd-check">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+              />
+              {tr("platformDiscounts.fieldActive")}
+            </label>
+          </div>
+
+          {base !== null && Number.isFinite(value) && value > 0 && (
+            <div className="sa-pd-preview">
+              {tr("platformDiscounts.preview")}: <s>{formatEur(base)}</s> →{" "}
+              <strong>{formatEur(discountedPrice(base, { type: form.type, value }))}</strong>
+              {tr("platformDiscounts.perMonth")}
+            </div>
+          )}
+
+          {error && <div className="sa-error">{error}</div>}
+        </div>
+        <div className="sa-modal-footer">
+          <button className="sa-btn-ghost" onClick={onClose}>
+            {tr("platformDiscounts.cancel")}
+          </button>
+          <button className="sa-btn-primary" onClick={handleSubmit} disabled={saving}>
+            {saving ? tr("platformDiscounts.saving") : tr("platformDiscounts.save")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2128,6 +2486,28 @@ const superAdminStyles = `
   }
 
   .sa-muted-note { color: var(--text-4); font-size: 12px; margin-bottom: 14px; }
+
+  /* ── Εκπτώσεις συνδρομών ── */
+  .sa-pd-error { margin: 0 0 14px; }
+  .sa-pd-note { color: var(--text-3); font-size: 12px; max-width: 220px; }
+  .sa-pd-price { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+  .sa-pd-price s { color: var(--text-4); }
+  .sa-pd-active { color: var(--ok-fg); background: rgba(34, 197, 94, 0.1); }
+  .sa-pd-scheduled { color: var(--warn-fg); background: rgba(245, 158, 11, 0.12); }
+  .sa-pd-expired { color: var(--text-4); background: var(--hover); }
+  .sa-pd-inactive { color: var(--bad-fg); background: var(--bad-bg); }
+  .sa-pd-danger:hover { color: var(--bad-fg); }
+  .sa-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .sa-form-grid .sa-pd-full { grid-column: 1 / -1; }
+  .sa-form-grid .sa-pd-check { flex-direction: row; align-items: center; gap: 8px; font-size: 12px; color: var(--text); }
+  .sa-pd-preview {
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: var(--blue-bg);
+    color: var(--blue-fg);
+    border-radius: 8px;
+    font-size: 12px;
+  }
 
   .sa-user-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
   .sa-user-row {

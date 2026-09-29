@@ -132,6 +132,12 @@ enum DiscountType {
   FIXED_AMOUNT
 }
 
+// Έκπτωση ΣΥΝΔΡΟΜΗΣ εταιρίας (Super Admin) — άσχετη με τις εκπτώσεις κρατήσεων.
+enum PlatformDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
 enum DiscountTarget {
   ALL
   CATEGORY
@@ -203,6 +209,7 @@ model Tenant {
   activityLogs      ActivityLog[]
   contractTemplates ContractTemplate[]
   extras            Extra[]
+  platformDiscounts PlatformDiscount[]
 
   @@map("tenants")
 }
@@ -728,4 +735,29 @@ model PlatformCoupon {
   updatedAt DateTime @updatedAt
 
   @@map("platform_coupons")
+}
+
+// ─────────────────────────────────────────
+// PLATFORM DISCOUNTS — έκπτωση στη συνδρομή μιας εταιρίας (Super Admin)
+// ─────────────────────────────────────────
+// Μόνο αποθήκευση/εμφάνιση· δεν συνδέεται ακόμα με Stripe/billing.
+// Κανόνας: το πολύ ΜΙΑ ενεργή έκπτωση ανά εταιρία σε κάθε διάστημα
+// (ελέγχεται στο API). validUntil = null → ισχύει μέχρι να διακοπεί.
+
+model PlatformDiscount {
+  id         String               @id @default(cuid())
+  tenantId   String
+  type       PlatformDiscountType
+  // Ποσοστό (0–100] ή σταθερό ποσό € ανά μήνα.
+  value      Decimal              @db.Decimal(10, 2)
+  validFrom  DateTime             @db.Date
+  validUntil DateTime?            @db.Date
+  active     Boolean              @default(true)
+  note       String?
+  createdAt  DateTime             @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("platform_discounts")
 }

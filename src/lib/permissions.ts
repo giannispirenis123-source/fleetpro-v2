@@ -178,6 +178,17 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       },
     ],
   },
+  {
+    id: "finance",
+    el: "Οικονομικά",
+    en: "Finance",
+    items: [
+      { key: "finance.view", el: "Προβολή οικονομικών", en: "View finance" },
+      { key: "finance.create", el: "Καταχώρηση εξόδου", en: "Record expenses" },
+      { key: "finance.edit", el: "Επεξεργασία εξόδου", en: "Edit expenses" },
+      { key: "finance.delete", el: "Διαγραφή εξόδου", en: "Delete expenses" },
+    ],
+  },
 
   /* ── Ενότητες που δεν έχουν φτιαχτεί ακόμα ──
      Τα κλειδιά υπάρχουν ώστε να μπορούν να δοθούν από τώρα, αλλά κανένα
@@ -200,16 +211,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     future: true,
     items: [
       { key: "reports.view", el: "Προβολή αναφορών", en: "View reports", future: true },
-    ],
-  },
-  {
-    id: "finance",
-    el: "Οικονομικά",
-    en: "Finance",
-    future: true,
-    items: [
-      { key: "finance.view", el: "Προβολή οικονομικών", en: "View finance", future: true },
-      { key: "finance.expense", el: "Καταχώρηση εξόδου", en: "Record expenses", future: true },
     ],
   },
 ];
@@ -317,7 +318,7 @@ export const STAFF_DEFAULTS: PermissionKey[] = [
   "damages.delete",
 ];
 
-// Σημείωση: Εκπτώσεις και Ρυθμίσεις ΔΕΝ μπαίνουν στις προεπιλογές. Μέχρι
+// Σημείωση: Εκπτώσεις, Ρυθμίσεις και Οικονομικά ΔΕΝ μπαίνουν στις προεπιλογές. Μέχρι
 // σήμερα οι σελίδες τους ανακατεύθυναν το Προσωπικό στον Πίνακα, οπότε
 // «ό,τι έκανε ως τώρα» σημαίνει χωρίς αυτές. Ο διαχειριστής μπορεί να
 // τους τα δώσει με ένα κλικ.

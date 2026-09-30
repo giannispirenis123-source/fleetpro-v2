@@ -11,10 +11,11 @@ const PUBLIC_ROUTES = ["/login", "/api/auth/login"];
 const SUPER_ADMIN_ROUTES = ["/super-admin"];
 
 // Routes για Company Admin+
+// (Τα Οικονομικά ΔΕΝ είναι εδώ: τα φυλάει το δικαίωμα finance.view μέσω
+// pageGuard/withPermission, όχι ο ρόλος.)
 const ADMIN_ROUTES = [
   "/dashboard/settings",
   "/dashboard/users",
-  "/dashboard/finance",
 ];
 
 export async function middleware(req: NextRequest) {

@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 29/09/2026 · **Commit:** βλ. §9 (εκπτώσεις συνδρομών) · **Κατάσταση:** commit τοπικά, **όχι pushed** — περιμένει να τρέξει το `09` στο Supabase
+**Ημερομηνία:** 29/09/2026 · **Commit:** βλ. §9 (Οικονομικά) · **Κατάσταση:** commit τοπικά, **όχι pushed** — περιμένει να τρέξει το `10` στο Supabase
 
-> **Επόμενο βήμα:** ο Giannis τρέχει το `prisma/sql/09-platform-discounts.sql` στο Supabase (verification `1 | 1 | 9 | 1 | 3`) και μετά λέει «push». Έπειτα, επόμενη σελίδα από το roadmap (§8).
+> **Επόμενο βήμα:** ο Giannis τρέχει το `prisma/sql/10-finance.sql` στο Supabase (verification `3 | 0`) και μετά λέει «push». Έπειτα: σελίδα **Αναφορές** (`reports.*`, §8.3).
 
 ---
 
@@ -83,6 +83,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Service & Ζημιές | ✅ |
 | Super Admin: εταιρίες, στατιστικά, reset κωδικού | ✅ |
 | Super Admin: εκπτώσεις συνδρομών (`PlatformDiscount`, `/api/super-admin/platform-discounts`) | ✅ (χωρίς Stripe) |
+| Οικονομικά (`/dashboard/finance`): έξοδα CRUD + σύνοψη έσοδα/έξοδα/κέρδος | ✅ |
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
@@ -90,14 +91,16 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - Προμήθεια: **δυναμική** (δεν παγώνει), πάνω σε ενοίκιο/πρόσθετα/ασφάλεια κατ' επιλογή, **πριν** την έκπτωση. Οι ακυρωμένες δεν μετράνε.
 - `partnerId` = ποιος **έφερε** την κράτηση · `createdById` = ποιος την **κατέγραψε**.
 - Εκπτώσεις συνδρομών (Super Admin): ποσοστό ή σταθερό €/μήνα σε **μία** εταιρία, `validFrom` → `validUntil` (κενό = μέχρι διακοπής) + `active`. **Μία ενεργή ανά εταιρία** σε επικαλυπτόμενο διάστημα (409). Οι τιμές πλάνων (`PLAN_PRICES`) ζουν πλέον στο `src/lib/platformDiscounts.ts` — το Tenant αποθηκεύει μόνο το πλάνο. **Μόνο αποθήκευση/εμφάνιση**, καμία χρέωση· το Stripe θα τις διαβάσει αργότερα. Το παλιό `PlatformCoupon` (κουπόνια με κωδικό) μένει αχρησιμοποίητο.
+- Οικονομικά: **έσοδα = τιμολόγια `PAID` με `paidAt` στο διάστημα, σε `subtotal` (καθαρό, χωρίς ΦΠΑ)** — όχι `total`, ώστε το κέρδος να μη φουσκώνει από το ΦΠΑ. Κέρδος = έσοδα χωρίς ΦΠΑ − έξοδα. Το `Expense.type` μένει **ελεύθερο κείμενο** στη βάση· οι 7 τύποι (`insurance, service, fuel, salary, rent, marketing, other`, πεζά) ελέγχονται στο zod (`src/lib/finance.ts`), και άγνωστη τιμή μετρά ως «other». Δικαιώματα `finance.view/create/edit/delete` — **όχι** στα defaults STAFF/PARTNER. Το `/dashboard/finance` βγήκε από τα `ADMIN_ROUTES` του middleware (ήταν φύλακας ρόλου)· το φυλάει μόνο το `finance.view`.
 
 ## 6. Migrations
 
-Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
-- **09-platform-discounts: ΔΕΝ έχει τρέξει ακόμα.** Πρέπει να τρέξει **πριν** το push (αναμενόμενο verification `1 | 1 | 9 | 1 | 3`). Αν δεν τρέξει, σκάει μόνο το tab «Εκπτώσεις» του `/super-admin`.
+- **09-platform-discounts:** το commit έγινε merge στο `main` (`90d2d70`) κατόπιν ρητού αιτήματος· **αξίζει επιβεβαίωση** ότι έτρεξε (αναμενόμενο verification `1 | 1 | 9 | 1 | 3`). Αν δεν έχει τρέξει, σκάει μόνο το tab «Εκπτώσεις» του `/super-admin`.
+- **10-finance: ΔΕΝ έχει τρέξει ακόμα.** Μόνο indexes + μετονομασία `finance.expense` → `finance.create` (αναμενόμενο verification `3 | 0`). Πρέπει να τρέξει **πριν** το push.
 
 Έλεγχος συμφωνίας schema ↔ βάση:
 `npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script` → πρέπει να λέει «This is an empty migration.»
@@ -109,15 +112,16 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🔴 Υψηλή | **Κωδικός Super Admin σε 3 αρχεία** (`SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`) σε καθαρή μορφή. Πρέπει να αφαιρεθεί από το repo. |
 | 🔴 Υψηλή | **Rotate** κωδικού Supabase DB και `JWT_SECRET` — παλιές τιμές υπάρχουν στο git history. |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
-| 🟠 Μεσαία | Το `09-platform-discounts` να τρέξει στο Supabase πριν το push (§6). |
+| 🟠 Μεσαία | Το `10-finance` να τρέξει στο Supabase πριν το push (§6). |
+| 🟡 Χαμηλή | Το `09-platform-discounts` να επιβεβαιωθεί ότι έτρεξε (§6). |
 | 🟡 Χαμηλή | Το `08` να επιβεβαιωθεί ότι έτρεξε (§6). |
 
 ## 8. Roadmap
 
-Ανενεργά στο sidebar (τα permission keys υπάρχουν ήδη στο registry, χωρίς enforcement):
+Ανενεργά στο sidebar (τα permission keys υπάρχουν ήδη στο registry, χωρίς enforcement). **Επόμενο: Αναφορές.**
 
 1. **Συμβόλαια** — `contracts.*`. Υπάρχουν ήδη `Contract`/`ContractTemplate` στο schema και `invoiceIssueTrigger = ON_CONTRACT` περιμένει.
-2. **Οικονομικά** — `finance.*`. Υπάρχει μοντέλο `Expense`.
+2. ~~**Οικονομικά**~~ — ✅ ολοκληρώθηκε (§5).
 3. **Αναφορές** — `reports.*`.
 4. **Τιμολόγια: email** — το `invoiceSendMode = AUTO` και το πεδίο `Invoice.sentAt` υπάρχουν, η αποστολή όχι.
 5. **Τιμολόγια: PDF** — σήμερα μόνο εκτύπωση από browser.
@@ -129,7 +133,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Εκπτώσεις συνδρομών Super Admin: `PlatformDiscount`, API `/api/super-admin/platform-discounts`, αντικατάσταση mock, migration `09` |
+| _(αυτό το commit)_ | Σελίδα Οικονομικά: έξοδα CRUD, σύνοψη έσοδα (χωρίς ΦΠΑ) / έξοδα / κέρδος, `finance.*` δικαιώματα, migration `10` |
+| `90d2d70` | Εκπτώσεις συνδρομών Super Admin: `PlatformDiscount`, API `/api/super-admin/platform-discounts`, αντικατάσταση mock, migration `09` |
 | `46fda54` | Σελίδα Service & Ζημιές (οι πίνακες υπήρχαν· προστέθηκε `damages.date` + indexes) |
 | `d3557ed` | Βάση προμήθειας με 3 ανεξάρτητους διακόπτες + `createdById` + «Οι κρατήσεις μου» |
 | `0bf7928` | Κρατήσεις συνεργατών, `partnerId`, αυτόματη προμήθεια, στεγανότητα PARTNER |

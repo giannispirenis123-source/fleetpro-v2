@@ -1,0 +1,161 @@
+/* Αντίγραφο συμβολαίου — δίγλωσσο, Α4.
+   Ανεξάρτητο από το θέμα του dashboard: πάντα μαύρο σε λευκό. */
+
+.cdoc-page {
+  min-height: 100vh;
+  background: #e2e8f0;
+  padding: 16px;
+}
+
+.cdoc-toolbar {
+  max-width: 210mm;
+  margin: 0 auto 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cdoc-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 9px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.cdoc-toolbar-btn--primary { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+
+.cdoc {
+  max-width: 210mm;
+  margin: 0 auto;
+  background: #fff;
+  color: #0f172a;
+  padding: 12mm;
+  font-size: 10.5px;
+  line-height: 1.4;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.12);
+}
+
+.cdoc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 8px;
+}
+.cdoc-company { display: flex; flex-direction: column; gap: 1px; }
+.cdoc-company-name { font-size: 15px; }
+.cdoc-logo {
+  width: 42mm;
+  height: 18mm;
+  border: 1px dashed #94a3b8;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  font-size: 9px;
+  flex-shrink: 0;
+}
+.cdoc-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.cdoc-logo:has(img) { border: none; }
+
+.cdoc-title { margin: 8px 0 4px; }
+.cdoc-title h1 { font-size: 15px; margin: 0 0 3px; }
+.cdoc-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 10px; }
+
+.cdoc-section {
+  border-top: 1px solid #cbd5e1;
+  padding-top: 5px;
+  margin-top: 6px;
+  break-inside: avoid;
+}
+.cdoc-section h2 {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 4px;
+  color: #334155;
+}
+
+.cdoc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 16px;
+}
+.cdoc-row { display: flex; gap: 6px; justify-content: space-between; }
+.cdoc-row--wide { grid-column: 1 / -1; }
+.cdoc-label { color: #64748b; font-size: 9.5px; flex-shrink: 0; }
+.cdoc-value { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+
+.cdoc-cols2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cdoc-cols3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cdoc-section.cdoc-cols2,
+.cdoc-section.cdoc-cols3 { align-items: start; }
+
+.cdoc-table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+.cdoc-table th,
+.cdoc-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 2px 4px;
+  text-align: left;
+  vertical-align: top;
+}
+.cdoc-table th { color: #64748b; font-weight: 500; font-size: 8.5px; }
+.cdoc-table small { display: block; color: #64748b; font-size: 8px; }
+.cdoc-money td:last-child { text-align: right; white-space: nowrap; }
+.cdoc-total td { font-weight: 700; border-top: 1.5px solid #0f172a; border-bottom: none; }
+
+.cdoc-damages { display: grid; grid-template-columns: 30mm 1fr; gap: 12px; align-items: start; }
+.cdoc-sketch { width: 30mm; height: auto; }
+.cdoc-marks { margin: 0; padding-left: 16px; }
+
+.cdoc-pre { white-space: pre-wrap; margin: 0; }
+.cdoc-terms { font-size: 8.5px; }
+.cdoc-terms p { margin: 0 0 3px; }
+.cdoc-check { font-size: 11px; }
+.cdoc-muted { color: #94a3b8; }
+
+.cdoc-signs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+.cdoc-sign { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.cdoc-sign-img {
+  width: 100%;
+  height: 20mm;
+  border-bottom: 1px solid #0f172a;
+  display: grid;
+  place-items: center;
+  margin-bottom: 2px;
+}
+.cdoc-sign-img { overflow: hidden; }
+.cdoc-sign-img img { display: block; max-width: 100%; max-height: 20mm; object-fit: contain; }
+.cdoc-sign small { color: #64748b; font-size: 8px; }
+
+@media (max-width: 640px) {
+  .cdoc-page { padding: 8px; }
+  .cdoc { padding: 14px; font-size: 11px; }
+  .cdoc-cols2, .cdoc-cols3, .cdoc-grid { grid-template-columns: 1fr; }
+  .cdoc-signs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cdoc-drivers { display: block; overflow-x: auto; }
+}
+
+@media print {
+  @page { size: A4; margin: 10mm; }
+  .cdoc-page { background: #fff; padding: 0; min-height: 0; }
+  .cdoc-toolbar { display: none !important; }
+  .cdoc { box-shadow: none; padding: 0; max-width: none; }
+  .cdoc-cols2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .cdoc-cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  .cdoc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .cdoc-signs { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

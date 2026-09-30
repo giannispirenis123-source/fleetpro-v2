@@ -21,6 +21,8 @@ export interface ExtraDTO {
   price: number;
   chargeType: string;
   type: string;
+  /** Απαλλαγή σε € — μόνο για ασφάλειες· null όταν δεν ορίστηκε. */
+  excess: number | null;
   isActive: boolean;
 }
 
@@ -31,6 +33,7 @@ export function toExtraDTO(e: Extra): ExtraDTO {
     price: Number(e.price),
     chargeType: e.chargeType,
     type: e.type,
+    excess: e.excess === null ? null : Number(e.excess),
     isActive: e.isActive,
   };
 }

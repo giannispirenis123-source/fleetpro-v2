@@ -36,6 +36,7 @@ const emptyForm = () => ({
   price: "",
   chargeType: "PER_DAY",
   type: "EXTRA",
+  excess: "",
   isActive: true,
 });
 
@@ -46,6 +47,7 @@ const formFromExtra = (e: ExtraDTO): FormState => ({
   price: String(e.price),
   chargeType: e.chargeType,
   type: e.type,
+  excess: e.excess === null ? "" : String(e.excess),
   isActive: e.isActive,
 });
 
@@ -54,6 +56,7 @@ const formToPayload = (f: FormState) => ({
   price: Number(f.price),
   chargeType: f.chargeType,
   type: f.type,
+  excess: f.type === "INSURANCE" && f.excess.trim() !== "" ? Number(f.excess) : null,
   isActive: f.isActive,
 });
 
@@ -258,6 +261,11 @@ function ExtraCard({
               ? tr("extras.perDay")
               : tr("extras.oneOff")}
           </small>
+          {e.type === "INSURANCE" && e.excess !== null && (
+            <small>
+              {" "}· {tr("extras.excessShort")} {eur(e.excess, locale)}
+            </small>
+          )}
         </span>
         {canManage && (
           <div className="dash-vehicle-actions">
@@ -407,6 +415,19 @@ function ExtraModal({
                 onChange={(e) => set("price", e.target.value)}
               />
             </label>
+
+            {form.type === "INSURANCE" && (
+              <label className="dash-field">
+                {tr("extras.excess")}
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.excess}
+                  onChange={(e) => set("excess", e.target.value)}
+                />
+              </label>
+            )}
 
             <label className="dash-field dash-field--check">
               <input

@@ -18,6 +18,7 @@ const createExtraSchema = z.object({
   price: z.number().min(0, "Μη αρνητική τιμή"),
   chargeType: z.enum(CHARGE_TYPES).default("PER_DAY"),
   type: z.enum(EXTRA_TYPES).default("EXTRA"),
+  excess: z.union([z.number().min(0, "Μη αρνητική απαλλαγή"), z.null()]).optional(),
   isActive: z.boolean().default(true),
 });
 
@@ -66,6 +67,8 @@ export const POST = withPermission(
           price: data.price,
           chargeType: data.chargeType,
           type: data.type,
+          // Η απαλλαγή έχει νόημα μόνο στις ασφάλειες.
+          excess: data.type === "INSURANCE" ? (data.excess ?? null) : null,
           isActive: data.isActive,
         },
       });

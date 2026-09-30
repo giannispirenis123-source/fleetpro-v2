@@ -115,6 +115,7 @@ export default async function BookingsPage({
         onInsurance: me?.commissionOnInsurance ?? false,
       }}
       canSeeCommission={viewerCan(viewer, "commission.view")}
+      canContract={viewerCan(viewer, "contracts.view")}
       // Από το Ημερολόγιο: ποια κράτηση να ανοίξει μόλις φορτώσει η σελίδα.
       focusBookingId={searchParams?.booking ?? null}
     />

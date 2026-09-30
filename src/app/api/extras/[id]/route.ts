@@ -14,6 +14,7 @@ const updateExtraSchema = z.object({
   price: z.number().min(0).optional(),
   chargeType: z.enum(CHARGE_TYPES).optional(),
   type: z.enum(EXTRA_TYPES).optional(),
+  excess: z.union([z.number().min(0), z.null()]).optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -42,6 +43,9 @@ export const PATCH = withPermission(
           ...(data.price !== undefined && { price: data.price }),
           ...(data.chargeType !== undefined && { chargeType: data.chargeType }),
           ...(data.type !== undefined && { type: data.type }),
+          ...(data.excess !== undefined && { excess: data.excess }),
+          // Πρόσθετο που δεν είναι (πια) ασφάλεια δεν κρατά απαλλαγή.
+          ...((data.type ?? current.type) !== "INSURANCE" && { excess: null }),
           ...(data.isActive !== undefined && { isActive: data.isActive }),
         },
       });

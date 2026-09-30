@@ -191,6 +191,21 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
 
   {
+    id: "contracts",
+    el: "Συμβόλαια",
+    en: "Contracts",
+    items: [
+      { key: "contracts.view", el: "Προβολή / εκτύπωση συμβολαίων", en: "View / print contracts" },
+      { key: "contracts.create", el: "Νέο συμβόλαιο", en: "Create contracts" },
+      {
+        key: "contracts.edit",
+        el: "Επεξεργασία και υπογραφή συμβολαίου",
+        en: "Edit and sign contracts",
+      },
+      { key: "contracts.delete", el: "Διαγραφή πρόχειρου συμβολαίου", en: "Delete draft contracts" },
+    ],
+  },
+  {
     id: "reports",
     el: "Αναφορές",
     en: "Reports",
@@ -200,21 +215,6 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         el: "Προβολή αναφορών (όχι για συνεργάτες)",
         en: "View reports (not for partners)",
       },
-    ],
-  },
-
-  /* ── Ενότητες που δεν έχουν φτιαχτεί ακόμα ──
-     Τα κλειδιά υπάρχουν ώστε να μπορούν να δοθούν από τώρα, αλλά κανένα
-     API δεν τα ελέγχει μέχρι να υπάρξει η αντίστοιχη οθόνη. */
-  {
-    id: "contracts",
-    el: "Συμβόλαια",
-    en: "Contracts",
-    future: true,
-    items: [
-      { key: "contracts.view", el: "Προβολή συμβολαίων", en: "View contracts", future: true },
-      { key: "contracts.create", el: "Νέο συμβόλαιο", en: "Create contracts", future: true },
-      { key: "contracts.sign", el: "Υπογραφή συμβολαίου", en: "Sign contracts", future: true },
     ],
   },
 ];
@@ -320,6 +320,9 @@ export const STAFF_DEFAULTS: PermissionKey[] = [
   "damages.create",
   "damages.edit",
   "damages.delete",
+  "contracts.view",
+  "contracts.create",
+  "contracts.edit",
 ];
 
 // Σημείωση: Εκπτώσεις, Ρυθμίσεις, Οικονομικά και Αναφορές ΔΕΝ μπαίνουν στις προεπιλογές. Μέχρι

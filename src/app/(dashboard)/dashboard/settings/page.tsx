@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import SettingsClient from "./SettingsClient";
+import CompanyContractSettings from "./CompanyContractSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -22,19 +23,42 @@ export default async function SettingsPage() {
       vatRate: true,
       invoiceIssueTrigger: true,
       invoiceSendMode: true,
+      email: true,
+      phone: true,
+      address: true,
+      region: true,
+      vat: true,
+      taxOffice: true,
+      contractTermsEl: true,
+      contractTermsEn: true,
     },
   });
   if (!tenant) redirect("/dashboard");
 
   return (
-    <SettingsClient
-      companyName={tenant.name}
-      initialRentalMode={tenant.rentalMode}
-      initialPrepMinutes={tenant.prepTimeMinutes}
-      initialRoundUp={tenant.roundUpTotal}
-      initialVatRate={Number(tenant.vatRate)}
-      initialIssueTrigger={tenant.invoiceIssueTrigger}
-      initialSendMode={tenant.invoiceSendMode}
-    />
+    <>
+      <SettingsClient
+        companyName={tenant.name}
+        initialRentalMode={tenant.rentalMode}
+        initialPrepMinutes={tenant.prepTimeMinutes}
+        initialRoundUp={tenant.roundUpTotal}
+        initialVatRate={Number(tenant.vatRate)}
+        initialIssueTrigger={tenant.invoiceIssueTrigger}
+        initialSendMode={tenant.invoiceSendMode}
+      />
+      <CompanyContractSettings
+        companyName={tenant.name}
+        companyEmail={tenant.email}
+        initial={{
+          phone: tenant.phone ?? "",
+          address: tenant.address ?? "",
+          region: tenant.region ?? "",
+          vat: tenant.vat ?? "",
+          taxOffice: tenant.taxOffice ?? "",
+          contractTermsEl: tenant.contractTermsEl ?? "",
+          contractTermsEn: tenant.contractTermsEn ?? "",
+        }}
+      />
+    </>
   );
 }

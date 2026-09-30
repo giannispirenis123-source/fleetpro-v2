@@ -33,7 +33,16 @@ import {
   type ContractDTO,
   type ContractDriver,
   type DamageMark,
+  CARD_BRANDS,
+  CARD_EXPIRY_RE,
+  LAST4_RE,
+  depositUsesCard,
+  paymentUsesCard,
+  type CardInfo,
 } from "@/lib/contracts";
+import { computePrice, toDisplayBreakdown, type PricedExtraInput } from "@/lib/pricing";
+import { splitVatInclusive } from "@/lib/invoices";
+import type { ExtraDTO } from "@/lib/extras";
 import DamageSketch from "@/components/contracts/DamageSketch";
 import FuelGauge from "@/components/contracts/FuelGauge";
 import SignaturePad from "@/components/contracts/SignaturePad";
@@ -87,8 +96,37 @@ interface FormState {
   paymentMethod: string;
   depositAmount: string;
   depositMethod: string;
+  paymentCard: CardForm;
+  depositCard: CardForm;
   gdprConsent: boolean;
+  extraIds: string[];
 }
+
+/** Κάρτα στη φόρμα — ΜΟΝΟ τα 4 επιτρεπτά πεδία, ποτέ πλήρης αριθμός/CVV. */
+interface CardForm {
+  brand: string;
+  last4: string;
+  holder: string;
+  expiry: string;
+}
+
+const emptyCard = (): CardForm => ({ brand: "VISA", last4: "", holder: "", expiry: "" });
+const cardFromDTO = (c: CardInfo | null): CardForm => (c ? { ...c } : emptyCard());
+
+/** Κενή κάρτα → null. Μερικώς συμπληρωμένη → στέλνεται και την ελέγχει ο server. */
+const cardPayload = (c: CardForm): CardInfo | null =>
+  c.last4.trim() || c.holder.trim() || c.expiry.trim()
+    ? {
+        brand: c.brand as CardInfo["brand"],
+        last4: c.last4.trim(),
+        holder: c.holder.trim(),
+        expiry: c.expiry.trim(),
+      }
+    : null;
+
+/** Η κάρτα είναι έγκυρη για αποθήκευση (κενή = εντάξει). */
+const cardValid = (c: CardForm) =>
+  cardPayload(c) === null || (LAST4_RE.test(c.last4) && CARD_EXPIRY_RE.test(c.expiry));
 
 const fromContract = (c: ContractDTO): FormState => ({
   drivers: c.drivers,
@@ -102,7 +140,10 @@ const fromContract = (c: ContractDTO): FormState => ({
   paymentMethod: c.paymentMethod ?? "",
   depositAmount: c.depositAmount === null ? "" : String(c.depositAmount),
   depositMethod: c.depositMethod ?? "",
+  paymentCard: cardFromDTO(c.paymentCard),
+  depositCard: cardFromDTO(c.depositCard),
   gdprConsent: c.gdprConsent,
+  extraIds: [...c.bookingExtraIds].sort(),
 });
 
 /** Τα στοιχεία παραλαβής — ό,τι κλειδώνει με την υπογραφή όλων. */
@@ -116,14 +157,18 @@ const pickupPart = (f: FormState) =>
     paymentMethod: f.paymentMethod,
     depositAmount: f.depositAmount,
     depositMethod: f.depositMethod,
+    paymentCard: paymentUsesCard(f.paymentMethod) ? cardPayload(f.paymentCard) : null,
+    depositCard: depositUsesCard(f.depositMethod) ? cardPayload(f.depositCard) : null,
     gdprConsent: f.gdprConsent,
   });
+
+const extrasPart = (f: FormState) => f.extraIds.join(",");
 
 const afterPart = (f: FormState) =>
   JSON.stringify({ fuelReturn: f.fuelReturn, vehicleChanges: f.vehicleChanges, notes: f.notes });
 
 /** Το σώμα του PATCH. Σε υπογεγραμμένο στέλνουμε μόνο ό,τι επιτρέπεται. */
-function toPayload(f: FormState, locked: boolean) {
+function toPayload(f: FormState, locked: boolean, sendExtras: boolean) {
   const after = {
     fuelReturn: f.fuelReturn,
     vehicleChanges: f.vehicleChanges,
@@ -140,7 +185,10 @@ function toPayload(f: FormState, locked: boolean) {
     paymentMethod: f.paymentMethod || null,
     depositAmount: f.depositAmount.trim() === "" ? null : Number(f.depositAmount),
     depositMethod: f.depositMethod || null,
+    paymentCard: paymentUsesCard(f.paymentMethod) ? cardPayload(f.paymentCard) : null,
+    depositCard: depositUsesCard(f.depositMethod) ? cardPayload(f.depositCard) : null,
     gdprConsent: f.gdprConsent,
+    ...(sendExtras && { extraIds: f.extraIds }),
   };
 }
 
@@ -151,10 +199,17 @@ function toPayload(f: FormState, locked: boolean) {
 export default function ContractEditor({
   initialContract,
   vehicles,
+  extras,
+  vatRate,
+  roundUpTotal,
   can,
 }: {
   initialContract: ContractDTO;
   vehicles: VehicleOption[];
+  /** Τα πρόσθετα της εταιρίας (και ανενεργά, για όσα έχει ήδη η κράτηση). */
+  extras: ExtraDTO[];
+  vatRate: number;
+  roundUpTotal: boolean;
   can: { edit: boolean; delete: boolean };
 }) {
   const tr = useT();
@@ -185,8 +240,54 @@ export default function ContractEditor({
   const fuelWord = electric ? tr("contracts.battery") : tr("contracts.fuel");
 
   const pickupDirty = pickupPart(form) !== pickupPart(saved);
-  const dirty = pickupDirty || afterPart(form) !== afterPart(saved);
+  const extrasDirty = extrasPart(form) !== extrasPart(saved);
+  const dirty = pickupDirty || extrasDirty || afterPart(form) !== afterPart(saved);
   const hasSignatures = anySigned(contract.drivers);
+  const extrasEditable = !readOnly && !locked && contract.extrasLock === null;
+
+  /* ── Χρεώσεις: αποθηκευμένες ή ζωντανή προεπισκόπηση ── */
+  const money = useMemo(() => {
+    if (!s) return null;
+    const extraById = new Map(extras.map((e) => [e.id, e]));
+    if (!extrasDirty) {
+      return {
+        preview: false,
+        extras: s.extras,
+        insurance: s.insurance,
+        display: toDisplayBreakdown(s.booking),
+      };
+    }
+    // Ο ΙΔΙΟΣ υπολογισμός με την κράτηση. Ο server ξαναϋπολογίζει στην
+    // αποθήκευση — εδώ είναι μόνο προεπισκόπηση.
+    const chosen: PricedExtraInput[] = form.extraIds.flatMap((id) => {
+      const e = extraById.get(id);
+      return e ? [{ id, name: e.name, price: e.price, chargeType: e.chargeType, type: e.type }] : [];
+    });
+    const b = computePrice({
+      totalDays: s.booking.totalDays,
+      dailyRate: s.booking.dailyRate,
+      extras: chosen,
+      discountMode: s.booking.discountCode ? "CODE" : s.booking.discountAmount > 0 ? "AMOUNT" : "NONE",
+      discountValue: s.booking.discountAmount,
+      codeDiscountAmount: s.booking.discountAmount,
+      roundUpTotal,
+    });
+    return {
+      preview: true,
+      extras: b.lines.filter((l) => l.type !== "INSURANCE").map((l) => ({ name: l.name, lineTotal: l.lineTotal })),
+      insurance: b.lines
+        .filter((l) => l.type === "INSURANCE")
+        .map((l) => ({ name: l.name, lineTotal: l.lineTotal, excess: extraById.get(l.id)?.excess ?? null })),
+      display: toDisplayBreakdown(b),
+    };
+  }, [s, extras, extrasDirty, form.extraIds, roundUpTotal]);
+
+  const vat = money ? splitVatInclusive(money.display.total, s?.vatRate ?? vatRate) : null;
+  const totalChangedAfterSign =
+    hasSignatures && s !== null && Math.abs(s.booking.total - contract.bookingTotalNow) > 0.004;
+  const cardsInvalid =
+    (paymentUsesCard(form.paymentMethod) && !cardValid(form.paymentCard)) ||
+    (depositUsesCard(form.depositMethod) && !cardValid(form.depositCard));
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -214,7 +315,7 @@ export default function ContractEditor({
       const res = await fetch(`/api/contracts/${contract.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toPayload(form, locked)),
+        body: JSON.stringify(toPayload(form, locked, extrasDirty && extrasEditable)),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -627,21 +728,27 @@ export default function ContractEditor({
       {/* ── Οικονομικά ── */}
       <section className="dash-panel dash-contract-section">
         <h2 className="dash-section-title">{tr("contracts.charges")}</h2>
-        {s ? (
+        {totalChangedAfterSign && (
+          <div className="dash-contract-warn">
+            <AlertTriangle size={15} /> {tr("contracts.totalChangedAfterSign")} (
+            {eur(contract.bookingTotalNow, locale)})
+          </div>
+        )}
+        {s && money ? (
           <div className="dash-contract-money">
             <div className="dash-contract-line">
               <span>
                 {tr("contracts.rental")} · {s.booking.totalDays} × {eur(s.booking.dailyRate, locale)}
               </span>
-              <span>{eur(s.booking.subtotal, locale)}</span>
+              <span>{eur(money.display.subtotal, locale)}</span>
             </div>
-            {s.extras.map((x, i) => (
+            {money.extras.map((x, i) => (
               <div key={`x${i}`} className="dash-contract-line">
                 <span>{x.name}</span>
                 <span>{eur(x.lineTotal, locale)}</span>
               </div>
             ))}
-            {s.insurance.map((x, i) => (
+            {money.insurance.map((x, i) => (
               <div key={`i${i}`} className="dash-contract-line">
                 <span>
                   {x.name}
@@ -654,17 +761,25 @@ export default function ContractEditor({
                 <span>{eur(x.lineTotal, locale)}</span>
               </div>
             ))}
-            {s.booking.discountAmount > 0 && (
+            {money.display.discountAmount > 0 && (
               <div className="dash-contract-line">
                 <span>{tr("contracts.discount")}</span>
-                <span>−{eur(s.booking.discountAmount, locale)}</span>
+                <span>−{eur(money.display.discountAmount, locale)}</span>
               </div>
             )}
             <div className="dash-contract-line dash-contract-total">
               <span>{tr("contracts.total")}</span>
-              <span>{eur(s.booking.total, locale)}</span>
+              <span>{eur(money.display.total, locale)}</span>
             </div>
-            <p className="dash-form-note">{tr("contracts.snapshotNote")}</p>
+            {vat && (
+              <p className="dash-contract-vat">
+                {tr("contracts.ofWhich")}: {tr("contracts.net")} {eur(vat.net, locale)} +{" "}
+                {tr("contracts.vat")} {vat.vatRate}% {eur(vat.vatAmount, locale)}
+              </p>
+            )}
+            <p className="dash-form-note">
+              {money.preview ? tr("contracts.previewNote") : tr("contracts.snapshotNote")}
+            </p>
           </div>
         ) : (
           <p className="dash-form-note">—</p>
@@ -713,6 +828,77 @@ export default function ContractEditor({
             </select>
           </label>
         </div>
+
+        {paymentUsesCard(form.paymentMethod) && (
+          <CardFields
+            title={tr("contracts.paymentCard")}
+            value={form.paymentCard}
+            disabled={pickupReadOnly}
+            onChange={(v) => set("paymentCard", v)}
+          />
+        )}
+        {depositUsesCard(form.depositMethod) && (
+          <CardFields
+            title={tr("contracts.depositCard")}
+            value={form.depositCard}
+            disabled={pickupReadOnly}
+            onChange={(v) => set("depositCard", v)}
+          />
+        )}
+      </section>
+
+      {/* ── Πρόσθετα / Extras ── */}
+      <section className="dash-panel dash-contract-section">
+        <h2 className="dash-section-title">{tr("contracts.extras")}</h2>
+        {!extrasEditable && contract.extrasLock && (
+          <p className="dash-form-note">
+            <Lock size={13} /> {tr(`contracts.extrasLock_${contract.extrasLock}`)}
+          </p>
+        )}
+        {extras.length === 0 ? (
+          <p className="dash-form-note">{tr("contracts.noExtras")}</p>
+        ) : (
+          <div className="dash-extras-pick">
+            {extras
+              // Ανενεργά μόνο όσα έχει ήδη η κράτηση.
+              .filter((e) => e.isActive || form.extraIds.includes(e.id))
+              .map((e) => {
+                const checked = form.extraIds.includes(e.id);
+                return (
+                  <label key={e.id} className={`dash-extra-pick ${checked ? "on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!extrasEditable}
+                      onChange={(ev) =>
+                        set(
+                          "extraIds",
+                          (ev.target.checked
+                            ? [...form.extraIds, e.id]
+                            : form.extraIds.filter((x) => x !== e.id)
+                          ).sort()
+                        )
+                      }
+                    />
+                    <span className="dash-extra-pick-name">
+                      {e.name}
+                      {e.type === "INSURANCE" && (
+                        <small> · {tr("contracts.insuranceTag")}</small>
+                      )}
+                    </span>
+                    <span className="dash-extra-pick-price">
+                      {eur(e.price, locale)}
+                      <small>
+                        {" "}
+                        {e.chargeType === "PER_DAY" ? tr("contracts.perDay") : tr("contracts.oneOff")}
+                      </small>
+                    </span>
+                  </label>
+                );
+              })}
+          </div>
+        )}
+        {extrasEditable && <p className="dash-form-note">{tr("contracts.extrasHelp")}</p>}
       </section>
 
       {/* ── Αλλαγή οχήματος (κλειστή) ── */}
@@ -907,7 +1093,7 @@ export default function ContractEditor({
           </button>
           <button
             className="dash-btn dash-btn--primary"
-            disabled={busy || changesIncomplete}
+            disabled={busy || changesIncomplete || cardsInvalid}
             onClick={() => save()}
           >
             <Save size={16} /> {busy ? tr("contracts.saving") : tr("contracts.save")}
@@ -986,6 +1172,86 @@ export default function ContractEditor({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Κάρτα: ΜΟΝΟ τύπος, 4 τελευταία ψηφία, κάτοχος, λήξη
+   ───────────────────────────────────────────── */
+
+function CardFields({
+  title,
+  value,
+  disabled,
+  onChange,
+}: {
+  title: string;
+  value: CardForm;
+  disabled: boolean;
+  onChange: (v: CardForm) => void;
+}) {
+  const tr = useT();
+  const set = (k: keyof CardForm, v: string) => onChange({ ...value, [k]: v });
+  const last4Bad = value.last4 !== "" && !LAST4_RE.test(value.last4);
+  const expiryBad = value.expiry !== "" && !CARD_EXPIRY_RE.test(value.expiry);
+
+  return (
+    <div className="dash-card-box">
+      <h3 className="dash-contract-sub">{title}</h3>
+      <div className="dash-form-grid">
+        <label className="dash-field">
+          {tr("contracts.cardBrand")}
+          <select value={value.brand} disabled={disabled} onChange={(e) => set("brand", e.target.value)}>
+            {CARD_BRANDS.map((b) => (
+              <option key={b} value={b}>
+                {tr(`contracts.cardBrand_${b}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="dash-field">
+          {tr("contracts.cardLast4")}
+          <input
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={4}
+            placeholder="1234"
+            value={value.last4}
+            disabled={disabled}
+            // Μόνο ψηφία, το πολύ 4: ο πλήρης αριθμός δεν χωρά ποτέ εδώ.
+            onChange={(e) => set("last4", e.target.value.replace(/\D/g, "").slice(0, 4))}
+          />
+          {last4Bad && <span className="dash-field-error">{tr("contracts.cardLast4Error")}</span>}
+        </label>
+        <label className="dash-field">
+          {tr("contracts.cardHolder")}
+          <input
+            autoComplete="off"
+            maxLength={100}
+            value={value.holder}
+            disabled={disabled}
+            onChange={(e) => set("holder", e.target.value)}
+          />
+        </label>
+        <label className="dash-field">
+          {tr("contracts.cardExpiry")}
+          <input
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={5}
+            placeholder="MM/YY"
+            value={value.expiry}
+            disabled={disabled}
+            onChange={(e) => {
+              const d = e.target.value.replace(/\D/g, "").slice(0, 4);
+              set("expiry", d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d);
+            }}
+          />
+          {expiryBad && <span className="dash-field-error">{tr("contracts.cardExpiryError")}</span>}
+        </label>
+      </div>
+      <p className="dash-form-note">{tr("contracts.cardPciNote")}</p>
     </div>
   );
 }

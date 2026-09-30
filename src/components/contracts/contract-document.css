@@ -111,6 +111,7 @@
 .cdoc-table small { display: block; color: #64748b; font-size: 8px; }
 .cdoc-money td:last-child { text-align: right; white-space: nowrap; }
 .cdoc-total td { font-weight: 700; border-top: 1.5px solid #0f172a; border-bottom: none; }
+.cdoc-vat td { color: #64748b; font-size: 8.5px; border-bottom: none; padding-top: 0; }
 
 .cdoc-damages { display: grid; grid-template-columns: 30mm 1fr; gap: 12px; align-items: start; }
 .cdoc-sketch { width: 30mm; height: auto; }

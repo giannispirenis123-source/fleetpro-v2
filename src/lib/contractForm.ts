@@ -11,7 +11,21 @@ import { Prisma, type Contract } from "@prisma/client";
 import { db } from "./db";
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
+import { discountOfBooking, priceBooking } from "./bookingPricing";
+import { countDays } from "./bookings";
+import { bookingScope } from "./authz";
 import {
+  CARD_BRANDS,
+  CARD_EXPIRY_RE,
+  LAST4_RE,
+  anySigned,
+  buildSearchText,
+  dateSearchForms,
+  depositUsesCard,
+  paymentUsesCard,
+  phoneSearchForms,
+  readCard,
+  searchTokens,
   DEPOSIT_METHODS,
   DRIVER_FIELDS,
   ID_TYPES,
@@ -30,8 +44,12 @@ import {
   type ContractSnapshot,
   type ContractStatusValue,
   type DepositMethod,
+  type ExtrasLock,
   type PaymentMethod,
 } from "./contracts";
+
+/** Ο client της βάσης: το κοινό `db` ή μια transaction. */
+type Client = Prisma.TransactionClient | typeof db;
 
 /* ─────────────────────────────────────────────
    Στεγανότητα
@@ -93,6 +111,20 @@ const changeSchema = z.object({
 const eighths = z.number().int().min(0).max(FUEL_STEPS);
 
 /**
+ * Κάρτα: ΜΟΝΟ τύπος, 4 τελευταία ψηφία, κάτοχος, λήξη. Το schema είναι
+ * `strict`: ένα πεδίο όπως πλήρης αριθμός ή CVV απορρίπτει όλο το αίτημα
+ * αντί να αγνοηθεί σιωπηλά.
+ */
+const cardSchema = z
+  .object({
+    brand: z.enum(CARD_BRANDS),
+    last4: z.string().regex(LAST4_RE, "Δώσε ακριβώς τα 4 τελευταία ψηφία της κάρτας"),
+    holder: text(100),
+    expiry: z.string().regex(CARD_EXPIRY_RE, "Λήξη κάρτας σε μορφή ΜΜ/ΕΕ (μήνας 01–12)"),
+  })
+  .strict();
+
+/**
  * Όλα προαιρετικά: η φόρμα στέλνει ολόκληρη την κατάσταση της, αλλά ο
  * server κρίνει τι επιτρέπεται να αλλάξει ανάλογα με την κατάσταση.
  * Κανένα ποσό κράτησης δεν έρχεται από τον client.
@@ -107,7 +139,12 @@ export const contractPatchSchema = z.object({
   paymentMethod: z.union([z.enum(PAYMENT_METHODS), z.null()]).optional(),
   depositAmount: z.union([z.number().min(0).max(1_000_000), z.null()]).optional(),
   depositMethod: z.union([z.enum(DEPOSIT_METHODS), z.null()]).optional(),
+  paymentCard: z.union([cardSchema, z.null()]).optional(),
+  depositCard: z.union([cardSchema, z.null()]).optional(),
   gdprConsent: z.boolean().optional(),
+
+  /* ── Πρόσθετα: αλλάζουν ΚΑΙ την κράτηση (ίδιο σύνολο παντού) ── */
+  extraIds: z.array(z.string().min(1)).max(50).optional(),
 
   /* ── Επιτρέπονται και μετά την υπογραφή ── */
   fuelReturn: z.union([eighths, z.null()]).optional(),
@@ -144,10 +181,11 @@ const dateOnly = (d: Date) => d.toISOString().slice(0, 10);
  */
 export async function buildSnapshot(
   tenantId: string,
-  bookingId: string
+  bookingId: string,
+  client: Client = db
 ): Promise<ContractSnapshot | null> {
   const [tenant, booking] = await Promise.all([
-    db.tenant.findUnique({
+    client.tenant.findUnique({
       where: { id: tenantId },
       select: {
         name: true,
@@ -160,9 +198,10 @@ export async function buildSnapshot(
         logoUrl: true,
         contractTermsEl: true,
         contractTermsEn: true,
+        vatRate: true,
       },
     }),
-    db.booking.findFirst({
+    client.booking.findFirst({
       where: { id: bookingId, tenantId },
       include: {
         vehicle: { select: { id: true, brand: true, model: true, plate: true, fuel: true } },
@@ -177,7 +216,7 @@ export async function buildSnapshot(
   // Η απαλλαγή δεν υπάρχει στο snapshot της κράτησης: τη διαβάζουμε από
   // την ασφάλεια (Πρόσθετα) και την παγώνουμε εδώ, στο συμβόλαιο.
   const excessRows = insuranceLines.length
-    ? await db.extra.findMany({
+    ? await client.extra.findMany({
         where: { tenantId, id: { in: insuranceLines.map((l) => l.id) } },
         select: { id: true, excess: true },
       })
@@ -231,6 +270,7 @@ export async function buildSnapshot(
       el: tenant.contractTermsEl ?? "",
       en: tenant.contractTermsEn ?? "",
     },
+    vatRate: Number(tenant.vatRate),
     takenAt: new Date().toISOString(),
   };
 }
@@ -288,7 +328,7 @@ export async function createContract(
 
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      return await db.contract.create({
+      const created = await db.contract.create({
         data: {
           tenantId,
           bookingId: booking.id,
@@ -303,6 +343,8 @@ export async function createContract(
           depositAmount: deposit > 0 ? deposit : null,
         },
       });
+      await refreshSearchText(created.id);
+      return created;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -351,6 +393,8 @@ export function pickupChanged(current: Contract, patch: ContractPatch): boolean 
     patch.paymentMethod !== undefined && patch.paymentMethod !== current.paymentMethod,
     patch.depositAmount !== undefined && patch.depositAmount !== deposit,
     patch.depositMethod !== undefined && patch.depositMethod !== current.depositMethod,
+    patch.paymentCard !== undefined && !sameJson(readCard(current.paymentCard), patch.paymentCard),
+    patch.depositCard !== undefined && !sameJson(readCard(current.depositCard), patch.depositCard),
     patch.gdprConsent !== undefined && patch.gdprConsent !== current.gdprConsent,
   ];
   return checks.some(Boolean);
@@ -409,14 +453,44 @@ export async function resolveVehicleChanges(
    ───────────────────────────────────────────── */
 
 export const CONTRACT_INCLUDE = {
-  booking: { select: { bookingNumber: true, status: true } },
+  booking: {
+    select: {
+      bookingNumber: true,
+      status: true,
+      total: true,
+      extras: true,
+      invoice: { select: { id: true } },
+    },
+  },
 } as const;
 
 type ContractWithBooking = Contract & {
-  booking: { bookingNumber: string; status: string };
+  booking: {
+    bookingNumber: string;
+    status: string;
+    total: Prisma.Decimal;
+    extras: Prisma.JsonValue;
+    invoice: { id: string } | null;
+  };
 };
 
+/**
+ * Γιατί δεν αλλάζουν τα πρόσθετα — ο ΙΔΙΟΣ κανόνας για UI και server.
+ * Αλλάζουν μόνο πριν την πρώτη υπογραφή, όσο η κράτηση δεν έχει
+ * τιμολόγιο και δεν είναι ολοκληρωμένη/ακυρωμένη.
+ */
+export function extrasLockOf(
+  drivers: ContractDriver[],
+  booking: { status: string; invoice: { id: string } | null }
+): ExtrasLock | null {
+  if (anySigned(drivers)) return "signed";
+  if (booking.invoice) return "invoiced";
+  if (booking.status === "COMPLETED" || booking.status === "CANCELLED") return "closed";
+  return null;
+}
+
 export function toContractDTO(c: ContractWithBooking): ContractDTO {
+  const drivers = readDrivers(c.drivers);
   return {
     id: c.id,
     contractNumber: c.contractNumber,
@@ -426,7 +500,7 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     bookingStatus: c.booking.status,
     createdByName: c.createdByName,
     snapshot: readSnapshot(c.snapshot),
-    drivers: readDrivers(c.drivers),
+    drivers,
     pickupLocation: c.pickupLocation ?? "",
     returnLocation: c.returnLocation ?? "",
     fuelPickup: c.fuelPickup,
@@ -437,11 +511,17 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     paymentMethod: (c.paymentMethod as PaymentMethod | null) ?? null,
     depositAmount: c.depositAmount === null ? null : Number(c.depositAmount),
     depositMethod: (c.depositMethod as DepositMethod | null) ?? null,
+    // readCard κρατά ΜΟΝΟ τα 4 επιτρεπτά πεδία.
+    paymentCard: readCard(c.paymentCard),
+    depositCard: readCard(c.depositCard),
     gdprConsent: c.gdprConsent,
     signedAt: c.signedAt?.toISOString() ?? null,
     completedAt: c.completedAt?.toISOString() ?? null,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
+    bookingExtraIds: readExtrasSnapshot(c.booking.extras).map((l) => l.id),
+    bookingTotalNow: Number(c.booking.total),
+    extrasLock: extrasLockOf(drivers, c.booking),
   };
 }
 
@@ -456,44 +536,48 @@ export async function loadContract(
   return c ? toContractDTO(c) : null;
 }
 
-/** Λίστα — χωρίς το snapshot· οι οδηγοί μόνο για να μετρηθούν. */
-export async function loadContractList(
-  viewer: Viewer,
-  filters: { status?: string | null; q?: string | null }
-): Promise<ContractListItem[]> {
-  const status =
-    filters.status && ["DRAFT", "SIGNED", "COMPLETED"].includes(filters.status)
-      ? (filters.status as ContractStatusValue)
-      : null;
-  const q = filters.q?.trim();
+/**
+ * Πρόχειρο χωρίς υπογραφές: το snapshot ακολουθεί την κράτηση. Αν κάποιος
+ * άλλαξε την κράτηση από τη σελίδα Κρατήσεις, η φόρμα το βλέπει αμέσως.
+ * Υπογεγραμμένο συμβόλαιο δεν αγγίζεται ποτέ (νομικό έγγραφο).
+ */
+export async function refreshDraftSnapshot(viewer: Viewer, id: string) {
+  const c = await db.contract.findFirst({
+    where: { ...contractScope(viewer), id, status: "DRAFT" },
+    select: { id: true, bookingId: true, drivers: true, updatedAt: true },
+  });
+  if (!c || anySigned(readDrivers(c.drivers))) return;
+  const snapshot = await buildSnapshot(viewer.tenantId!, c.bookingId);
+  if (!snapshot) return;
+  await db.contract.updateMany({
+    where: { id: c.id, updatedAt: c.updatedAt },
+    data: { snapshot: snapshot as unknown as Prisma.InputJsonValue },
+  });
+}
 
-  const rows = await db.contract.findMany({
-    where: {
-      ...contractScope(viewer),
-      ...(status ? { status } : {}),
-      ...(q
-        ? {
-            OR: [
-              { contractNumber: { contains: q, mode: "insensitive" } },
-              { booking: { bookingNumber: { contains: q, mode: "insensitive" } } },
-              { customer: { firstName: { contains: q, mode: "insensitive" } } },
-              { customer: { lastName: { contains: q, mode: "insensitive" } } },
-              { booking: { vehicle: { plate: { contains: q, mode: "insensitive" } } } },
-            ],
-          }
-        : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    take: 500,
+/* ─────────────────────────────────────────────
+   Κείμενο αναζήτησης
+   ───────────────────────────────────────────── */
+
+const isoDay = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : "");
+
+/**
+ * Ξαναϋπολογίζει και αποθηκεύει το searchText ενός συμβολαίου. Καλείται
+ * μετά από κάθε δημιουργία, αποθήκευση, υπογραφή, ολοκλήρωση.
+ */
+export async function refreshSearchText(contractId: string, client: Client = db) {
+  const c = await client.contract.findUnique({
+    where: { id: contractId },
     select: {
-      id: true,
       contractNumber: true,
-      status: true,
-      bookingId: true,
       drivers: true,
+      vehicleChanges: true,
+      pickupLocation: true,
+      returnLocation: true,
+      notes: true,
       createdByName: true,
       createdAt: true,
-      customer: { select: { firstName: true, lastName: true } },
+      customer: { select: { firstName: true, lastName: true, phone: true, email: true } },
       booking: {
         select: {
           bookingNumber: true,
@@ -504,25 +588,283 @@ export async function loadContractList(
       },
     },
   });
+  if (!c) return;
 
-  return rows.map((r) => {
-    const drivers = readDrivers(r.drivers);
-    return {
-      id: r.id,
-      contractNumber: r.contractNumber,
-      status: r.status as ContractStatusValue,
-      bookingId: r.bookingId,
-      bookingNumber: r.booking.bookingNumber,
-      customerName: `${r.customer.firstName} ${r.customer.lastName}`,
-      vehicleLabel: `${r.booking.vehicle.brand} ${r.booking.vehicle.model} · ${r.booking.vehicle.plate}`,
-      pickupDate: dateOnly(r.booking.pickupDate),
-      returnDate: dateOnly(r.booking.returnDate),
-      drivers: drivers.length,
-      signedDrivers: drivers.filter((d) => d.signature).length,
-      createdByName: r.createdByName,
-      createdAt: r.createdAt.toISOString(),
-    };
+  const changes = readChanges(c.vehicleChanges);
+  const values: string[] = [
+    c.contractNumber,
+    c.booking.bookingNumber,
+    c.booking.vehicle.plate,
+    `${c.booking.vehicle.brand} ${c.booking.vehicle.model}`,
+    ...changes.flatMap((v) => [v.plate, v.label, ...dateSearchForms(v.date)]),
+    `${c.customer.firstName} ${c.customer.lastName}`,
+    c.customer.email ?? "",
+    ...phoneSearchForms(c.customer.phone ?? ""),
+    ...readDrivers(c.drivers).flatMap((d) => [
+      d.fullName,
+      d.email,
+      ...phoneSearchForms(d.phone),
+      d.licenseNumber,
+      d.idNumber,
+      d.country,
+      d.address,
+    ]),
+    c.pickupLocation ?? "",
+    c.returnLocation ?? "",
+    c.notes ?? "",
+    c.createdByName ?? "",
+    ...dateSearchForms(isoDay(c.booking.pickupDate)),
+    ...dateSearchForms(isoDay(c.booking.returnDate)),
+    ...dateSearchForms(isoDay(c.createdAt)),
+  ];
+
+  // Καλείται ΜΕΤΑ την εγγραφή κάθε ενέργειας (και μετά τον έλεγχο
+  // αισιόδοξου κλειδώματος): αγγίζει μόνο αυτή τη στήλη.
+  await client.contract.update({
+    where: { id: contractId },
+    data: { searchText: buildSearchText(values) },
+    select: { id: true },
   });
+}
+
+/**
+ * Lazy backfill: συμβόλαια χωρίς searchText (παλιά, πριν τη στήλη)
+ * αποκτούν ένα πριν την αναζήτηση. Μέχρι 200 ανά φορά, μέσα στην εταιρία.
+ */
+async function backfillSearchText(viewer: Viewer) {
+  const missing = await db.contract.findMany({
+    where: { ...contractScope(viewer), searchText: null },
+    select: { id: true },
+    take: 200,
+  });
+  for (const m of missing) await refreshSearchText(m.id);
+}
+
+/* ─────────────────────────────────────────────
+   Λίστα με αναζήτηση και σελίδες
+   ───────────────────────────────────────────── */
+
+export const CONTRACTS_PAGE_SIZE = 25;
+
+export interface ContractListPage {
+  contracts: ContractListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** Λίστα — χωρίς snapshot· οι οδηγοί μόνο για να μετρηθούν. */
+export async function loadContractList(
+  viewer: Viewer,
+  filters: { status?: string | null; q?: string | null; page?: number }
+): Promise<ContractListPage> {
+  const status =
+    filters.status && ["DRAFT", "SIGNED", "COMPLETED"].includes(filters.status)
+      ? (filters.status as ContractStatusValue)
+      : null;
+  const tokens = searchTokens(filters.q ?? "");
+  if (tokens.length) await backfillSearchText(viewer);
+
+  const where: Prisma.ContractWhereInput = {
+    // Στεγανότητα ΠΑΝΤΑ, και μέσα στην αναζήτηση.
+    ...contractScope(viewer),
+    ...(status ? { status } : {}),
+    // Κάθε λέξη πρέπει να ταιριάζει (AND). LIKE στο κανονικοποιημένο
+    // κείμενο — το GIN trigram index το εξυπηρετεί.
+    ...(tokens.length
+      ? { AND: tokens.map((t) => ({ searchText: { contains: t } })) }
+      : {}),
+  };
+
+  const page = Math.max(1, Math.floor(filters.page ?? 1));
+  const [total, rows] = await Promise.all([
+    db.contract.count({ where }),
+    db.contract.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * CONTRACTS_PAGE_SIZE,
+      take: CONTRACTS_PAGE_SIZE,
+      select: {
+        id: true,
+        contractNumber: true,
+        status: true,
+        bookingId: true,
+        drivers: true,
+        createdByName: true,
+        createdAt: true,
+        customer: { select: { firstName: true, lastName: true } },
+        booking: {
+          select: {
+            bookingNumber: true,
+            pickupDate: true,
+            returnDate: true,
+            vehicle: { select: { brand: true, model: true, plate: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    total,
+    page,
+    pageSize: CONTRACTS_PAGE_SIZE,
+    contracts: rows.map((r) => {
+      const drivers = readDrivers(r.drivers);
+      return {
+        id: r.id,
+        contractNumber: r.contractNumber,
+        status: r.status as ContractStatusValue,
+        bookingId: r.bookingId,
+        bookingNumber: r.booking.bookingNumber,
+        customerName: `${r.customer.firstName} ${r.customer.lastName}`,
+        vehicleLabel: `${r.booking.vehicle.brand} ${r.booking.vehicle.model} · ${r.booking.vehicle.plate}`,
+        pickupDate: dateOnly(r.booking.pickupDate),
+        returnDate: dateOnly(r.booking.returnDate),
+        drivers: drivers.length,
+        signedDrivers: drivers.filter((d) => d.signature).length,
+        createdByName: r.createdByName,
+        createdAt: r.createdAt.toISOString(),
+      };
+    }),
+  };
+}
+
+/* ─────────────────────────────────────────────
+   Κρατήσεις χωρίς συμβόλαιο («+ Νέο συμβόλαιο»)
+   ───────────────────────────────────────────── */
+
+export interface BookingWithoutContract {
+  id: string;
+  bookingNumber: string;
+  status: string;
+  customerName: string;
+  vehicleLabel: string;
+  pickupDate: string;
+  returnDate: string;
+}
+
+export async function loadBookingsWithoutContract(
+  viewer: Viewer,
+  q: string | null
+): Promise<BookingWithoutContract[]> {
+  const term = q?.trim();
+  const rows = await db.booking.findMany({
+    where: {
+      // Στεγανότητα συνεργάτη, όπως σε κάθε ερώτημα κρατήσεων.
+      ...bookingScope(viewer),
+      status: { not: "CANCELLED" },
+      contract: { is: null },
+      ...(term
+        ? {
+            OR: [
+              { bookingNumber: { contains: term, mode: "insensitive" } },
+              { customer: { firstName: { contains: term, mode: "insensitive" } } },
+              { customer: { lastName: { contains: term, mode: "insensitive" } } },
+              { customer: { phone: { contains: term, mode: "insensitive" } } },
+              { vehicle: { plate: { contains: term, mode: "insensitive" } } },
+              { vehicle: { model: { contains: term, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: { pickupDate: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      bookingNumber: true,
+      status: true,
+      pickupDate: true,
+      returnDate: true,
+      customer: { select: { firstName: true, lastName: true } },
+      vehicle: { select: { brand: true, model: true, plate: true } },
+    },
+  });
+
+  return rows.map((b) => ({
+    id: b.id,
+    bookingNumber: b.bookingNumber,
+    status: b.status,
+    customerName: `${b.customer.firstName} ${b.customer.lastName}`,
+    vehicleLabel: `${b.vehicle.brand} ${b.vehicle.model} · ${b.vehicle.plate}`,
+    pickupDate: dateOnly(b.pickupDate),
+    returnDate: dateOnly(b.returnDate),
+  }));
+}
+
+/* ─────────────────────────────────────────────
+   Πρόσθετα: ΕΝΑ σύνολο για κράτηση και συμβόλαιο
+   ───────────────────────────────────────────── */
+
+/**
+ * Ξαναϋπολογίζει την κράτηση με τα νέα πρόσθετα — με τον ΙΔΙΟ κώδικα που
+ * χρησιμοποιεί το PATCH κράτησης (priceBooking + ίδια έκπτωση). Επιστρέφει
+ * τα δεδομένα ενημέρωσης· η εγγραφή γίνεται από τον καλούντα μέσα σε
+ * transaction μαζί με το snapshot του συμβολαίου.
+ */
+export async function priceBookingExtras(
+  tenantId: string,
+  bookingId: string,
+  extraIds: string[]
+): Promise<
+  | { ok: true; data: Prisma.BookingUpdateInput }
+  | { ok: false; message: string }
+> {
+  const booking = await db.booking.findFirst({
+    where: { id: bookingId, tenantId },
+    select: {
+      vehicleId: true,
+      customerId: true,
+      pickupDate: true,
+      returnDate: true,
+      discountCode: true,
+      discountAmount: true,
+    },
+  });
+  if (!booking) return { ok: false, message: "Η κράτηση δεν βρέθηκε" };
+
+  const priced = await priceBooking({
+    tenantId,
+    vehicleId: booking.vehicleId,
+    customerId: booking.customerId,
+    totalDays: countDays(dateOnly(booking.pickupDate), dateOnly(booking.returnDate)),
+    extraIds,
+    ...discountOfBooking(booking),
+  });
+  if (!priced.ok) return priced;
+
+  const b = priced.breakdown;
+  return {
+    ok: true,
+    data: {
+      dailyRate: priced.dailyRate,
+      totalDays: b.totalDays,
+      subtotal: b.subtotal,
+      extrasTotal: b.extrasTotal,
+      insuranceCost: b.insuranceCost,
+      discountAmount: b.discountAmount,
+      discountCode: priced.discountCode,
+      total: b.total,
+      extras: priced.snapshot as unknown as Prisma.InputJsonValue,
+    },
+  };
+}
+
+/** Οι κάρτες ισχύουν μόνο με τον αντίστοιχο τρόπο — αλλιώς σβήνονται. */
+export function cardsFor(
+  paymentMethod: string | null,
+  depositMethod: string | null,
+  patch: ContractPatch,
+  current: Contract
+) {
+  const payment =
+    patch.paymentCard !== undefined ? patch.paymentCard : readCard(current.paymentCard);
+  const deposit =
+    patch.depositCard !== undefined ? patch.depositCard : readCard(current.depositCard);
+  return {
+    paymentCard: paymentUsesCard(paymentMethod) && payment ? payment : null,
+    depositCard: depositUsesCard(depositMethod) && deposit ? deposit : null,
+  };
 }
 
 /** Η IP του αιτήματος, όπως τη δίνει ο proxy του Vercel. */

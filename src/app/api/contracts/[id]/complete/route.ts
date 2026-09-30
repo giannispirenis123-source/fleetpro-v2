@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { ok, badRequest, conflict, notFound, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { CONTRACT_INCLUDE, contractScope, toContractDTO } from "@/lib/contractForm";
+import { CONTRACT_INCLUDE, contractScope, refreshSearchText, toContractDTO } from "@/lib/contractForm";
 
 // POST /api/contracts/[id]/complete
 export const POST = withPermission(
@@ -29,6 +29,8 @@ export const POST = withPermission(
         data: { status: "COMPLETED", completedAt: new Date() },
       });
       if (result.count === 0) return conflict("Το συμβόλαιο άλλαξε στο μεταξύ");
+
+      await refreshSearchText(current.id);
 
       const fresh = await db.contract.findUniqueOrThrow({
         where: { id: current.id },

@@ -29,6 +29,66 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export type DepositMethod = (typeof DEPOSIT_METHODS)[number];
 export type IdType = (typeof ID_TYPES)[number];
 
+/* ─────────────────────────────────────────────
+   Κάρτα — ΜΟΝΟ στοιχεία αναγνώρισης (PCI DSS)
+   ───────────────────────────────────────────── */
+
+export const CARD_BRANDS = ["VISA", "MASTERCARD", "OTHER"] as const;
+export type CardBrand = (typeof CARD_BRANDS)[number];
+
+/**
+ * Ό,τι αποθηκεύεται για μια κάρτα. ΠΟΤΕ πλήρης αριθμός ή CVV: αυτά
+ * περνούν μόνο στο POS.
+ */
+export interface CardInfo {
+  brand: CardBrand;
+  /** Ακριβώς 4 ψηφία. */
+  last4: string;
+  holder: string;
+  /** "MM/YY", μήνας 01–12. */
+  expiry: string;
+}
+
+export const LAST4_RE = /^\d{4}$/;
+export const CARD_EXPIRY_RE = /^(0[1-9]|1[0-2])\/\d{2}$/;
+
+export const CARD_BRAND_LABEL: Record<string, string> = {
+  VISA: "Visa",
+  MASTERCARD: "Mastercard",
+  OTHER: "Άλλη / Other",
+};
+
+/** Χρειάζεται στοιχεία κάρτας αυτός ο τρόπος; */
+export const paymentUsesCard = (m: string | null | undefined) => m === "CARD";
+export const depositUsesCard = (m: string | null | undefined) =>
+  m === "CARD" || m === "CARD_HOLD";
+
+/** «Visa •••• 1234, λήξη 08/27» — η ΜΟΝΗ μορφή εμφάνισης κάρτας. */
+export function cardLine(c: CardInfo | null): string {
+  if (!c) return "";
+  const brand = c.brand === "OTHER" ? "Κάρτα / Card" : CARD_BRAND_LABEL[c.brand];
+  return `${brand} •••• ${c.last4}, λήξη / exp. ${c.expiry}`;
+}
+
+/**
+ * Αμυντική ανάγνωση από τη βάση: ό,τι δεν ταιριάζει στο σχήμα πετιέται, και
+ * κρατάμε ΜΟΝΟ τα 4 γνωστά πεδία — τίποτε άλλο δεν φτάνει ποτέ στον client.
+ */
+export function readCard(value: unknown): CardInfo | null {
+  if (!value || typeof value !== "object") return null;
+  const o = value as Record<string, unknown>;
+  const last4 = typeof o.last4 === "string" && LAST4_RE.test(o.last4) ? o.last4 : null;
+  if (!last4) return null;
+  return {
+    brand: (CARD_BRANDS as readonly string[]).includes(String(o.brand))
+      ? (o.brand as CardBrand)
+      : "OTHER",
+    last4,
+    holder: typeof o.holder === "string" ? o.holder : "",
+    expiry: typeof o.expiry === "string" && CARD_EXPIRY_RE.test(o.expiry) ? o.expiry : "",
+  };
+}
+
 /** Δίγλωσσες ετικέτες του αντιγράφου: «Ελληνικά / English». */
 export const BI = {
   contract: "Συμβόλαιο ενοικίασης / Rental agreement",
@@ -74,7 +134,10 @@ export const BI = {
   insurance: "Ασφάλεια / Insurance",
   excess: "Απαλλαγή / Excess",
   discount: "Έκπτωση / Discount",
-  total: "Σύνολο (με ΦΠΑ) / Total (VAT incl.)",
+  total: "Τελικό σύνολο (με ΦΠΑ) / Total (VAT incl.)",
+  ofWhich: "εκ των οποίων / of which",
+  net: "καθαρό / net",
+  vatShort: "ΦΠΑ / VAT",
   payment: "Τρόπος πληρωμής / Payment method",
   deposit: "Εγγύηση / Deposit",
   terms: "Όροι ενοικίασης / Terms and conditions",
@@ -256,6 +319,8 @@ export interface ContractSnapshot {
   extras: { name: string; lineTotal: number }[];
   insurance: { name: string; lineTotal: number; excess: number | null }[];
   terms: { el: string; en: string };
+  /** ΦΠΑ % της εταιρίας τη στιγμή του snapshot (οι τιμές το ΠΕΡΙΕΧΟΥΝ). */
+  vatRate?: number;
   /** ISO — πότε πάρθηκε. */
   takenAt: string;
 }
@@ -272,6 +337,7 @@ export function readSnapshot(value: unknown): ContractSnapshot | null {
     extras: Array.isArray(s.extras) ? s.extras : [],
     insurance: Array.isArray(s.insurance) ? s.insurance : [],
     terms: s.terms ?? { el: "", en: "" },
+    vatRate: typeof s.vatRate === "number" ? s.vatRate : undefined,
     takenAt: s.takenAt ?? "",
   };
 }
@@ -363,12 +429,29 @@ export interface ContractDTO {
   paymentMethod: PaymentMethod | null;
   depositAmount: number | null;
   depositMethod: DepositMethod | null;
+  paymentCard: CardInfo | null;
+  depositCard: CardInfo | null;
   gdprConsent: boolean;
   signedAt: string | null;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+
+  /* ── Η κράτηση ΤΩΡΑ (όχι το snapshot) ── */
+  /** Τα πρόσθετα που έχει η κράτηση αυτή τη στιγμή. */
+  bookingExtraIds: string[];
+  /** Το σημερινό σύνολο της κράτησης — για την προειδοποίηση αλλαγής. */
+  bookingTotalNow: number;
+  /** Γιατί δεν αλλάζουν τα πρόσθετα· null όταν αλλάζουν. */
+  extrasLock: ExtrasLock | null;
 }
+
+/**
+ * signed    — έχει ήδη υπογράψει κάποιος (το σύνολο είναι μέρος του εγγράφου)
+ * invoiced  — η κράτηση έχει εκδομένο τιμολόγιο (δεν αλλάζει ποτέ)
+ * closed    — η κράτηση είναι ολοκληρωμένη ή ακυρωμένη
+ */
+export type ExtrasLock = "signed" | "invoiced" | "closed";
 
 /** Γραμμή λίστας — χωρίς υπογραφές και snapshot (βαριά πεδία). */
 export interface ContractListItem {
@@ -415,4 +498,109 @@ export function randomId(): string {
   const bytes = new Uint8Array(8);
   globalThis.crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ─────────────────────────────────────────────
+   Αναζήτηση — ΜΙΑ κανονικοποίηση για αποθήκευση ΚΑΙ ερώτημα
+   ───────────────────────────────────────────── */
+
+/**
+ * Ελληνικά γράμματα που μοιάζουν με λατινικά (όπως στις πινακίδες)
+ * γίνονται λατινικά, ώστε «ΙΚΑ 1234» = «ika1234». Εφαρμόζεται ΙΔΙΑ στο
+ * κείμενο και στο ερώτημα, άρα δεν χαλά καμία άλλη αναζήτηση.
+ */
+const LOOKALIKE: Record<string, string> = {
+  α: "a", β: "b", ε: "e", ζ: "z", η: "h", ι: "i", κ: "k", μ: "m",
+  ν: "n", ο: "o", ρ: "p", τ: "t", υ: "y", χ: "x", ς: "σ",
+};
+
+/**
+ * Πεζά, χωρίς τόνους/διαλυτικά, χωρίς κενά, παύλες, τελείες ή άλλα σύμβολα.
+ * Κρατά μόνο γράμματα (κάθε αλφαβήτου) και ψηφία.
+ */
+export function normalizeSearch(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .replace(/./g, (ch) => LOOKALIKE[ch] ?? ch);
+}
+
+const MONTHS_EL = [
+  "Ιανουάριος", "Φεβρουάριος", "Μάρτιος", "Απρίλιος", "Μάιος", "Ιούνιος",
+  "Ιούλιος", "Αύγουστος", "Σεπτέμβριος", "Οκτώβριος", "Νοέμβριος", "Δεκέμβριος",
+];
+/** Γενική πτώση: «25 Δεκεμβρίου 2026». */
+const MONTHS_EL_GEN = [
+  "Ιανουαρίου", "Φεβρουαρίου", "Μαρτίου", "Απριλίου", "Μαΐου", "Ιουνίου",
+  "Ιουλίου", "Αυγούστου", "Σεπτεμβρίου", "Οκτωβρίου", "Νοεμβρίου", "Δεκεμβρίου",
+];
+const MONTHS_EN = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/**
+ * Όλες οι μορφές μιας ημερομηνίας "YYYY-MM-DD" για το κείμενο αναζήτησης:
+ * ISO, ημέρα/μήνας/έτος και όνομα μήνα ΕΛ/EN (ονομαστική και γενική).
+ */
+export function dateSearchForms(iso: string): string[] {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return [];
+  const [, y, mm, dd] = m;
+  const mi = Number(mm) - 1;
+  if (mi < 0 || mi > 11) return [];
+  return [
+    `${y}-${mm}-${dd}`,
+    `${dd}/${mm}/${y}`,
+    `${MONTHS_EL[mi]} ${y}`,
+    `${Number(dd)} ${MONTHS_EL_GEN[mi]} ${y}`,
+    `${MONTHS_EN[mi]} ${y}`,
+  ];
+}
+
+/** Τηλέφωνο και χωρίς κωδικό χώρας (+30 / 0030), ώστε να βρίσκεται με όλους τους τρόπους. */
+export function phoneSearchForms(phone: string): string[] {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return [];
+  const local = digits.replace(/^(00)?30(?=\d{10}$)/, "");
+  return local !== digits ? [digits, local] : [digits];
+}
+
+/** Το κείμενο αναζήτησης: κάθε τιμή κανονικοποιείται χωριστά, ενώνονται με κενό. */
+export function buildSearchText(values: (string | null | undefined)[]): string {
+  const seen = new Set<string>();
+  for (const v of values) {
+    if (!v) continue;
+    const n = normalizeSearch(v);
+    if (n) seen.add(n);
+  }
+  return Array.from(seen).join(" ");
+}
+
+/**
+ * Το ερώτημα του χρήστη → λέξεις-κλειδιά (όλες πρέπει να ταιριάζουν).
+ * Ημερομηνίες γίνονται στη μορφή που είναι αποθηκευμένες· τηλέφωνα με
+ * +30 χάνουν τον κωδικό χώρας.
+ */
+export function searchTokens(query: string): string[] {
+  const out: string[] = [];
+  for (const raw of query.trim().split(/\s+/).filter(Boolean).slice(0, 8)) {
+    // 25/12/2026 · 5-1-2026 · 25.12.2026
+    const dmy = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})$/.exec(raw);
+    // 2026-12-25 · 2026/12/25
+    const ymd = /^(\d{4})[/.\-](\d{1,2})[/.\-](\d{1,2})$/.exec(raw);
+    let token: string;
+    if (dmy) {
+      token = `${dmy[1].padStart(2, "0")}${dmy[2].padStart(2, "0")}${dmy[3]}`;
+    } else if (ymd) {
+      token = `${ymd[1]}${ymd[2].padStart(2, "0")}${ymd[3].padStart(2, "0")}`;
+    } else {
+      token = normalizeSearch(raw);
+      if (/^\d+$/.test(token)) token = token.replace(/^(00)?30(?=\d{10}$)/, "");
+    }
+    if (token) out.push(token);
+  }
+  return Array.from(new Set(out));
 }

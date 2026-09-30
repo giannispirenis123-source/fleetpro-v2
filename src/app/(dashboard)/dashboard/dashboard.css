@@ -2087,3 +2087,51 @@
   .dash-savebar { left: 16px; right: 16px; transform: none; justify-content: flex-end; }
   .dash-savebar span { margin-right: auto; }
 }
+
+/* ---------- Συμβόλαια Φάση Α+ ---------- */
+.dash-contract-vat { font-size: 12.5px; color: var(--text-3); margin: 6px 0 0; text-align: right; }
+.dash-card-box {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-top: 14px;
+}
+.dash-field-error { color: var(--bad-fg); font-size: 12px; font-weight: 500; }
+.dash-extras-pick { display: flex; flex-direction: column; gap: 8px; }
+.dash-extra-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.dash-extra-pick.on { border-color: var(--primary-soft); background: rgba(99, 102, 241, 0.06); }
+.dash-extra-pick input { width: 20px; height: 20px; accent-color: var(--primary); flex-shrink: 0; }
+.dash-extra-pick-name { flex: 1; min-width: 0; }
+.dash-extra-pick-name small,
+.dash-extra-pick-price small { color: var(--text-3); }
+.dash-extra-pick-price { white-space: nowrap; font-weight: 600; }
+.dash-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; }
+.dash-pick-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; max-height: 55vh; overflow-y: auto; }
+.dash-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  text-align: left;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.dash-pick:hover { border-color: var(--primary-soft); }
+.dash-pick:disabled { opacity: 0.6; cursor: wait; }
+.dash-pick-main { font-size: 14px; }
+.dash-pick-sub { font-size: 12.5px; color: var(--text-3); display: inline-flex; align-items: center; gap: 4px; }
+.dash-contract-search input { flex: 1; }

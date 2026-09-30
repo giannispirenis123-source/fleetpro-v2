@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { FileSignature, Car, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FileSignature, Car, Search, Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
   CONTRACT_STATUSES,
@@ -23,19 +24,40 @@ const shortDate = (iso: string, locale: string) =>
 type Filter = "ALL" | (typeof CONTRACT_STATUSES)[number];
 const FILTERS: Filter[] = ["ALL", ...CONTRACT_STATUSES];
 
+interface ListPage {
+  contracts: ContractListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+interface BookingOption {
+  id: string;
+  bookingNumber: string;
+  status: string;
+  customerName: string;
+  vehicleLabel: string;
+  pickupDate: string;
+  returnDate: string;
+}
+
 export default function ContractsClient({
-  initialContracts,
+  initialPage,
+  canCreate,
 }: {
-  initialContracts: ContractListItem[];
+  initialPage: ListPage;
+  canCreate: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
 
   const [filter, setFilter] = useState<Filter>("ALL");
   const [q, setQ] = useState("");
-  const [contracts, setContracts] = useState(initialContracts);
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<ListPage>(initialPage);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const seq = useRef(0);
   const first = useRef(true);
@@ -46,7 +68,7 @@ export default function ContractsClient({
       return;
     }
     const mine = ++seq.current;
-    // Μικρή καθυστέρηση ώστε η αναζήτηση να μη ρωτά σε κάθε πλήκτρο.
+    // Debounce: η αναζήτηση δεν ρωτά τον server σε κάθε πλήκτρο.
     const timer = setTimeout(async () => {
       setLoading(true);
       setError("");
@@ -54,28 +76,38 @@ export default function ContractsClient({
         const params = new URLSearchParams();
         if (filter !== "ALL") params.set("status", filter);
         if (q.trim()) params.set("q", q.trim());
+        params.set("page", String(page));
         const res = await fetch(`/api/contracts?${params}`, { cache: "no-store" });
-        const data = await res.json().catch(() => ({}));
+        const body = await res.json().catch(() => ({}));
         if (mine !== seq.current) return;
         if (!res.ok) {
-          setError(data.message || tr("contracts.errorLoad"));
+          setError(body.message || tr("contracts.errorLoad"));
           return;
         }
-        setContracts(data.data.contracts);
+        setData(body.data);
       } catch {
         if (mine === seq.current) setError(tr("contracts.errorConnection"));
       } finally {
         if (mine === seq.current) setLoading(false);
       }
-    }, 250);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [filter, q, tr]);
+  }, [filter, q, page, tr]);
+
+  const pages = Math.max(1, Math.ceil(data.total / data.pageSize));
 
   return (
     <>
-      <div className="dash-page-head">
-        <h1 className="dash-page-title">{tr("contracts.title")}</h1>
-        <p className="dash-page-sub">{tr("contracts.subtitle")}</p>
+      <div className="dash-page-head dash-head-row">
+        <div>
+          <h1 className="dash-page-title">{tr("contracts.title")}</h1>
+          <p className="dash-page-sub">{tr("contracts.subtitle")}</p>
+        </div>
+        {canCreate && (
+          <button className="dash-btn dash-btn--primary" onClick={() => setCreating(true)}>
+            <Plus size={17} /> {tr("contracts.newContract")}
+          </button>
+        )}
       </div>
 
       <div className="dash-toolbar">
@@ -84,7 +116,10 @@ export default function ContractsClient({
             <button
               key={f}
               className={`dash-filter ${filter === f ? "active" : ""}`}
-              onClick={() => setFilter(f)}
+              onClick={() => {
+                setFilter(f);
+                setPage(1);
+              }}
               aria-pressed={filter === f}
             >
               {f === "ALL" ? tr("contracts.all") : tr(`contracts.status_${f}`)}
@@ -96,21 +131,32 @@ export default function ContractsClient({
           <input
             value={q}
             placeholder={tr("contracts.search")}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
           />
         </label>
-        {loading && <span className="dash-count">{tr("contracts.loading")}</span>}
+        <span className="dash-count">
+          {loading ? tr("contracts.loading") : `${data.total} ${tr("contracts.results")}`}
+        </span>
       </div>
 
-      <p className="dash-form-note">{tr("contracts.howToCreate")}</p>
+      <p className="dash-form-note">{tr("contracts.searchHelp")}</p>
       {error && <div className="dash-form-error">{error}</div>}
 
-      {contracts.length === 0 ? (
-        <div className="dash-panel dash-empty">{tr("contracts.empty")}</div>
+      {data.contracts.length === 0 ? (
+        <div className="dash-panel dash-empty">
+          {q.trim() || filter !== "ALL" ? tr("contracts.noResults") : tr("contracts.empty")}
+        </div>
       ) : (
         <div className="dash-invoices">
-          {contracts.map((c) => (
-            <Link key={c.id} href={`/dashboard/contracts/${c.id}`} className="dash-invoice dash-contract-row">
+          {data.contracts.map((c) => (
+            <Link
+              key={c.id}
+              href={`/dashboard/contracts/${c.id}`}
+              className="dash-invoice dash-contract-row"
+            >
               <div className="dash-invoice-id">
                 <span className="dash-invoice-number">
                   <FileSignature size={15} /> {c.contractNumber}
@@ -125,7 +171,8 @@ export default function ContractsClient({
                   <Car size={12} /> {c.vehicleLabel}
                 </span>
                 <span className="dash-invoice-booking">
-                  {c.bookingNumber} · {shortDate(c.pickupDate, locale)} → {shortDate(c.returnDate, locale)}
+                  {c.bookingNumber} · {shortDate(c.pickupDate, locale)} →{" "}
+                  {shortDate(c.returnDate, locale)}
                 </span>
               </div>
               <div className="dash-invoice-money">
@@ -138,6 +185,151 @@ export default function ContractsClient({
           ))}
         </div>
       )}
+
+      {pages > 1 && (
+        <div className="dash-pager">
+          <button
+            className="dash-btn"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            aria-label={tr("contracts.prevPage")}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="dash-count">
+            {tr("contracts.page")} {data.page} / {pages}
+          </span>
+          <button
+            className="dash-btn"
+            disabled={page >= pages || loading}
+            onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            aria-label={tr("contracts.nextPage")}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+
+      {creating && <NewContractModal onClose={() => setCreating(false)} />}
     </>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   «+ Νέο συμβόλαιο»: διάλεξε κράτηση χωρίς συμβόλαιο
+   ───────────────────────────────────────────── */
+
+function NewContractModal({ onClose }: { onClose: () => void }) {
+  const tr = useT();
+  const locale = useLocale();
+  const router = useRouter();
+
+  const [q, setQ] = useState("");
+  const [bookings, setBookings] = useState<BookingOption[] | null>(null);
+  const [error, setError] = useState("");
+  const [opening, setOpening] = useState<string | null>(null);
+  const seq = useRef(0);
+
+  useEffect(() => {
+    const mine = ++seq.current;
+    const timer = setTimeout(async () => {
+      try {
+        const params = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+        const res = await fetch(`/api/contracts/bookings${params}`, { cache: "no-store" });
+        const body = await res.json().catch(() => ({}));
+        if (mine !== seq.current) return;
+        if (!res.ok) {
+          setError(body.message || tr("contracts.errorLoad"));
+          return;
+        }
+        setError("");
+        setBookings(body.data.bookings);
+      } catch {
+        if (mine === seq.current) setError(tr("contracts.errorConnection"));
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [q, tr]);
+
+  // Η ίδια λογική με το κουμπί «Συμβόλαιο» της κράτησης: το POST επιστρέφει
+  // το υπάρχον ή φτιάχνει νέο, και ανοίγει η φόρμα.
+  const open = async (bookingId: string) => {
+    if (opening) return;
+    setOpening(bookingId);
+    setError("");
+    try {
+      const res = await fetch("/api/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body.message || tr("contracts.errorSave"));
+        return;
+      }
+      router.push(`/dashboard/contracts/${body.data.id}`);
+    } catch {
+      setError(tr("contracts.errorConnection"));
+    } finally {
+      setOpening(null);
+    }
+  };
+
+  return (
+    <div className="dash-modal-overlay" onClick={onClose}>
+      <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="dash-modal-header">
+          <h2>{tr("contracts.newContractTitle")}</h2>
+          <button className="dash-icon-btn" onClick={onClose} aria-label={tr("contracts.cancel")}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="dash-modal-body">
+          <label className="dash-field dash-contract-search">
+            <Search size={15} />
+            <input
+              autoFocus
+              value={q}
+              placeholder={tr("contracts.bookingSearch")}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </label>
+          <p className="dash-form-note">{tr("contracts.newContractHelp")}</p>
+          {error && <div className="dash-form-error">{error}</div>}
+
+          {bookings === null ? (
+            <p className="dash-form-note">{tr("contracts.loading")}</p>
+          ) : bookings.length === 0 ? (
+            <p className="dash-form-note">{tr("contracts.noBookingsWithout")}</p>
+          ) : (
+            <div className="dash-pick-list">
+              {bookings.map((b) => (
+                <button
+                  key={b.id}
+                  className="dash-pick"
+                  disabled={opening !== null}
+                  onClick={() => open(b.id)}
+                >
+                  <span className="dash-pick-main">
+                    <strong>{b.bookingNumber}</strong> · {b.customerName}
+                  </span>
+                  <span className="dash-pick-sub">
+                    <Car size={12} /> {b.vehicleLabel}
+                  </span>
+                  <span className="dash-pick-sub">
+                    {shortDate(b.pickupDate, locale)} → {shortDate(b.returnDate, locale)} ·{" "}
+                    {tr(`status.${b.status}`)}
+                  </span>
+                  {opening === b.id && (
+                    <span className="dash-pick-sub">{tr("contracts.opening")}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

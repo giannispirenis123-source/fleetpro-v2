@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 30/09/2026 · **main:** `17a1799` (Αναφορές) · **Κατάσταση:** Συμβόλαια **Φάση Α** σε commit τοπικά, **όχι pushed** — περιμένει να τρέξει το `11` στο Supabase
+**Ημερομηνία:** 30/09/2026 · **main:** `4ecc5f7` (Συμβόλαια Φάση Α) · **Κατάσταση:** Συμβόλαια **Φάση Α+** σε commit τοπικά, **όχι pushed** — περιμένει να τρέξει το `12` στο Supabase
 
-> **Επόμενο βήμα:** ο Giannis τρέχει το `prisma/sql/11-contracts.sql` στο Supabase (verification `1 | 4 | 1 | 18 | 2 | 0 | 0`) και μετά λέει «push». Έπειτα: Συμβόλαια **Φάση Β** (αρχεία σε Supabase Storage + link πελάτη) και **Φάση Γ** (διάβασμα διπλώματος με AI), §8.1.
+> **Επόμενο βήμα:** ο Giannis τρέχει το `prisma/sql/12-contracts-update.sql` στο Supabase (verification `3 | 1 | 1`) και μετά λέει «push». Έπειτα: Συμβόλαια **Φάση Β** (αρχεία σε Supabase Storage + link πελάτη) και **Φάση Γ** (διάβασμα διπλώματος με AI), §8.1.
 
 ---
 
@@ -85,7 +85,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Super Admin: εκπτώσεις συνδρομών (`PlatformDiscount`, `/api/super-admin/platform-discounts`) | ✅ (χωρίς Stripe) |
 | Οικονομικά (`/dashboard/finance`): έξοδα CRUD + σύνοψη έσοδα/έξοδα/κέρδος | ✅ |
 | Αναφορές (`/dashboard/reports`): KPIs έτους, μήνες, top 5 οχήματα, κατηγορίες | ✅ |
-| Συμβόλαια Φάση Α (`/dashboard/contracts`): δίγλωσσο συμβόλαιο, οδηγοί, υπογραφές, κλείδωμα, εκτύπωση Α4 | ✅ κώδικας · ⏳ SQL `11` |
+| Συμβόλαια Φάση Α (`/dashboard/contracts`): δίγλωσσο συμβόλαιο, οδηγοί, υπογραφές, κλείδωμα, εκτύπωση Α4 | ✅ |
+| Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα με ΦΠΑ (ένα σύνολο με την κράτηση), κάρτα (μόνο 4 ψηφία), αναζήτηση `searchText` | ✅ κώδικας · ⏳ SQL `12` |
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
@@ -108,17 +109,28 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - **Εκτύπωση:** `/print/contracts/[id]` (route group `(print)`, χωρίς sidebar, `noindex`), component `src/components/contracts/ContractDocument.tsx` (χωρίς hooks — θα το ξαναχρησιμοποιήσει η δημόσια σελίδα της Φάσης Β).
   - **Ρυθμίσεις:** νέα κάρτα «Στοιχεία εταιρίας» (περιοχή, διεύθυνση, ΑΦΜ, ΔΟΥ, τηλέφωνο· επωνυμία/email μόνο ανάγνωση) και «Όροι ενοικίασης» ΕΛ/EN.
   - Δικαιώματα `contracts.view/create/edit/delete`· το STAFF παίρνει view/create/edit (backfill στο `11`), **όχι** delete.
+- **Συμβόλαια (Φάση Α+):**
+  - **«+ Νέο συμβόλαιο»** στη λίστα (`contracts.create`): παράθυρο με κρατήσεις **χωρίς** συμβόλαιο, όχι ακυρωμένες, με `bookingScope` (`GET /api/contracts/bookings?q=`). Η επιλογή καλεί το ίδιο `POST /api/contracts`.
+  - **Τιμές με ΦΠΑ**, όπως στις κρατήσεις. Η ανάλυση δείχνει «εκ των οποίων καθαρό + ΦΠΑ X%» (`splitVatInclusive`, το ΦΠΑ μπαίνει στο snapshot ως `vatRate`). Η στρογγυλοποίηση απορροφάται στις γραμμές (`toDisplayBreakdown`), όπως στις κρατήσεις.
+  - **Πρόσθετα στο συμβόλαιο → ΕΝΑ σύνολο.** Το PATCH με `extraIds` ξαναϋπολογίζει την κράτηση με `priceBooking` + `discountOfBooking` (τον ίδιο κώδικα με το PATCH κράτησης, `src/lib/bookingPricing.ts`). Κράτηση, snapshot και συμβόλαιο γράφονται σε **μία** `$transaction`. Ποσά από τον client αγνοούνται.
+  - **Κλείδωμα πρόσθετων** (`extrasLockOf`): αλλάζουν μόνο πριν την πρώτη υπογραφή **και** αν η κράτηση δεν έχει τιμολόγιο **και** δεν είναι COMPLETED/CANCELLED. Αλλιώς 409. Εκδομένο τιμολόγιο δεν αλλάζει ποτέ.
+  - **Πρόχειρο χωρίς υπογραφές:** το snapshot ξαναπαίρνεται σε κάθε άνοιγμα (`refreshDraftSnapshot`). **Υπογεγραμμένο:** μένει παγωμένο. Αν αλλάξει το σύνολο της κράτησης, η φόρμα δείχνει προειδοποίηση (`bookingTotalNow` ≠ snapshot).
+  - **Κάρτα** (`paymentCard` / `depositCard`, JSONB): **μόνο** `{ brand, last4, holder, expiry }`. Strict zod: απορρίπτεται οτιδήποτε άλλο (π.χ. `cvv`), ψηφία ≠ 4 ή μήνας εκτός 01–12. Κρατιέται μόνο με τρόπο «Κάρτα» (και «Δέσμευση κάρτας» για εγγύηση), αλλιώς σβήνεται. Στο αντίγραφο: «Visa •••• 1234, λήξη ΜΜ/ΕΕ».
+  - **Αναζήτηση:** στήλη `searchText` (GIN `gin_trgm_ops`), που ξαναϋπολογίζεται σε δημιουργία, αποθήκευση, υπογραφή και ολοκλήρωση (`refreshSearchText`). Η κανονικοποίηση (`normalizeSearch` στο `src/lib/contracts.ts`) κάνει πεζά, βγάζει τόνους και σύμβολα, και τα ελληνικά γράμματα που μοιάζουν με λατινικά γίνονται λατινικά («ΙΚΑ-1234» = «ika1234»). Ημερομηνίες σε ISO, ημ/μήνας/έτος και με όνομα μήνα ΕΛ/EN. Τηλέφωνα και χωρίς +30. Πολλές λέξεις = AND. **Lazy backfill** έως 200 συμβόλαια με κενό `searchText` πριν από κάθε αναζήτηση. 25 ανά σελίδα, debounce 300ms.
+  - Το `searchText` **δεν** ενημερώνεται αν αλλάξει μόνο ο πελάτης από τη σελίδα Πελατών. Ενημερώνεται στην επόμενη αποθήκευση του συμβολαίου.
   - Το `ContractTemplate` και τα παλιά πεδία `content`, `signatureData`, `signature2Data` μένουν αχρησιμοποίητα. Το `invoiceIssueTrigger = ON_CONTRACT` **δεν** ενεργοποιήθηκε ακόμα.
 
 ## 6. Migrations
 
-Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
 - **09-platform-discounts:** το commit έγινε merge στο `main` (`90d2d70`) κατόπιν ρητού αιτήματος· **αξίζει επιβεβαίωση** ότι έτρεξε (αναμενόμενο verification `1 | 1 | 9 | 1 | 3`). Αν δεν έχει τρέξει, σκάει μόνο το tab «Εκπτώσεις» του `/super-admin`.
 - **10-finance:** έχει τρέξει (verification `3 | 0`).
-- **11-contracts: ΔΕΝ έχει τρέξει ακόμα.** Enum `ContractStatus`, 18 στήλες στο `contracts`, 4 στο `tenants`, `extras.excess`, unique `(tenantId, contractNumber)`, index `(tenantId, status)`, `contracts.sign` → `contracts.edit`, backfill STAFF. Αναμενόμενο verification `1 | 4 | 1 | 18 | 2 | 0 | 0`. Δοκιμάστηκε δύο φορές σε τοπική PostgreSQL 16 μετά τα 01→10 + seed· `prisma migrate diff` → «empty migration». Πρέπει να τρέξει **πριν** το push.
+- **12-contracts-update: ΔΕΝ έχει τρέξει ακόμα.** `paymentCard`, `depositCard` (JSONB), `searchText` (TEXT), `CREATE EXTENSION pg_trgm`, GIN index `contracts_searchText_trgm_idx`. Αναμενόμενο verification `3 | 1 | 1`. Δοκιμάστηκε δύο φορές σε τοπική PostgreSQL 16· `prisma migrate diff` → «empty migration». Πρέπει να τρέξει **πριν** το push.
+- **11-contracts:** έχει τρέξει (verification `1 | 4 | 1 | 18 | 2 | 0 | 0`).
+- _(ιστορικό 11)_ Enum `ContractStatus`, 18 στήλες στο `contracts`, 4 στο `tenants`, `extras.excess`, unique `(tenantId, contractNumber)`, index `(tenantId, status)`, `contracts.sign` → `contracts.edit`, backfill STAFF. Αναμενόμενο verification `1 | 4 | 1 | 18 | 2 | 0 | 0`. Έτρεξε στο Supabase πριν το merge του PR #5.
 
 Έλεγχος συμφωνίας schema ↔ βάση:
 `npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script` → πρέπει να λέει «This is an empty migration.»
@@ -130,7 +142,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🔴 Υψηλή | **Κωδικός Super Admin σε 3 αρχεία** (`SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`) σε καθαρή μορφή. Πρέπει να αφαιρεθεί από το repo. |
 | 🔴 Υψηλή | **Rotate** κωδικού Supabase DB και `JWT_SECRET` — παλιές τιμές υπάρχουν στο git history. |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
-| 🟠 Μεσαία | Το `11-contracts` να τρέξει στο Supabase πριν το push (§6). |
+| 🟠 Μεσαία | Το `12-contracts-update` να τρέξει στο Supabase πριν το push (§6). |
 | 🟡 Χαμηλή | Η σελίδα `/login` βγάζει σφάλματα hydration του React (#425/#418) στον browser — υπήρχαν πριν τα Συμβόλαια, δεν επηρεάζουν τη σύνδεση. |
 | 🟡 Χαμηλή | Το `09-platform-discounts` να επιβεβαιωθεί ότι έτρεξε (§6). |
 | 🟡 Χαμηλή | Το `08` να επιβεβαιωθεί ότι έτρεξε (§6). |
@@ -152,7 +164,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Συμβόλαια Φάση Α: δίγλωσσο συμβόλαιο από κράτηση, απεριόριστοι οδηγοί, υπογραφή με δάχτυλο, καύσιμο σε όγδοα, σκαρίφημα ζημιών, αλλαγή οχήματος, κλείδωμα, εκτύπωση Α4, στοιχεία εταιρίας + όροι ΕΛ/EN στις Ρυθμίσεις, απαλλαγή στις ασφάλειες, migration `11` |
+| _(αυτό το commit)_ | Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα στο συμβόλαιο με ένα σύνολο κράτησης/συμβολαίου (transaction), ανάλυση με ΦΠΑ, στοιχεία κάρτας μόνο για αναγνώριση, αναζήτηση `searchText` + GIN trigram, σελιδοποίηση, migration `12` |
+| `4ecc5f7` | Συμβόλαια Φάση Α (PR #5): δίγλωσσο συμβόλαιο από κράτηση, απεριόριστοι οδηγοί, υπογραφή με δάχτυλο, καύσιμο σε όγδοα, σκαρίφημα ζημιών, αλλαγή οχήματος, κλείδωμα, εκτύπωση Α4, στοιχεία εταιρίας + όροι ΕΛ/EN στις Ρυθμίσεις, απαλλαγή στις ασφάλειες, migration `11` |
 | `17a1799` | Σελίδα Αναφορές (PR #4): KPIs έτους, έσοδα/έξοδα ανά μήνα, top 5 οχήματα, κατηγορίες, `reports.view` (όχι PARTNER). Χωρίς SQL |
 | `370e0af` | Σελίδα Οικονομικά (PR #3): έξοδα CRUD, σύνοψη έσοδα (χωρίς ΦΠΑ) / έξοδα / κέρδος, `finance.*` δικαιώματα, migration `10` |
 | `90d2d70` | Εκπτώσεις συνδρομών Super Admin: `PlatformDiscount`, API `/api/super-admin/platform-discounts`, αντικατάσταση mock, migration `09` |

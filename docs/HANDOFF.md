@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 29/09/2026 · **Commit:** βλ. §9 (Οικονομικά) · **Κατάσταση:** commit τοπικά, **όχι pushed** — περιμένει να τρέξει το `10` στο Supabase
+**Ημερομηνία:** 30/09/2026 · **main:** `17a1799` (Αναφορές) · **Κατάσταση:** Συμβόλαια **Φάση Α** σε commit τοπικά, **όχι pushed** — περιμένει να τρέξει το `11` στο Supabase
 
-> **Επόμενο βήμα:** ο Giannis τρέχει το `prisma/sql/10-finance.sql` στο Supabase (verification `3 | 0`) και μετά λέει «push». Έπειτα: σελίδα **Αναφορές** (`reports.*`, §8.3).
+> **Επόμενο βήμα:** ο Giannis τρέχει το `prisma/sql/11-contracts.sql` στο Supabase (verification `1 | 4 | 1 | 18 | 2 | 0 | 0`) και μετά λέει «push». Έπειτα: Συμβόλαια **Φάση Β** (αρχεία σε Supabase Storage + link πελάτη) και **Φάση Γ** (διάβασμα διπλώματος με AI), §8.1.
 
 ---
 
@@ -31,10 +31,10 @@ Push πριν το SQL = σπασμένη παραγωγή (ο κώδικας ζ
 
 | Μεταβλητή | Ρόλος | Πού |
 |---|---|---|
-| `DATABASE_URL` | Σύνδεση Supabase PostgreSQL | Vercel + `.env.local` |
+| `DATABASE_URL` | Σύνδεση Supabase PostgreSQL (pooled, pgBouncer, πόρτα 6543) | Vercel + `.env.local` |
+| `DIRECT_URL` | Απευθείας σύνδεση (πόρτα 5432) — το ζητά το `schema.prisma` | Vercel + `.env.local` |
 | `JWT_SECRET` | Υπογραφή JWT (≥32 χαρακτήρες· χωρίς αυτό η εφαρμογή σταματά) | Vercel + `.env.local` |
-| `SUPER_ADMIN_EMAIL` | Λογαριασμός πλατφόρμας | Vercel |
-| `SUPER_ADMIN_PASSWORD` | Λογαριασμός πλατφόρμας | Vercel |
+| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Διαβάζονται **μόνο** από το `prisma/seed.ts` — η εφαρμογή δεν τα χρειάζεται | τοπικά, αν τρέξει το seed |
 
 Τιμές: **γνωστές στον Giannis**, ποτέ στη συζήτηση ή σε αρχείο.
 
@@ -84,6 +84,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Super Admin: εταιρίες, στατιστικά, reset κωδικού | ✅ |
 | Super Admin: εκπτώσεις συνδρομών (`PlatformDiscount`, `/api/super-admin/platform-discounts`) | ✅ (χωρίς Stripe) |
 | Οικονομικά (`/dashboard/finance`): έξοδα CRUD + σύνοψη έσοδα/έξοδα/κέρδος | ✅ |
+| Αναφορές (`/dashboard/reports`): KPIs έτους, μήνες, top 5 οχήματα, κατηγορίες | ✅ |
+| Συμβόλαια Φάση Α (`/dashboard/contracts`): δίγλωσσο συμβόλαιο, οδηγοί, υπογραφές, κλείδωμα, εκτύπωση Α4 | ✅ κώδικας · ⏳ SQL `11` |
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
@@ -93,14 +95,30 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - Εκπτώσεις συνδρομών (Super Admin): ποσοστό ή σταθερό €/μήνα σε **μία** εταιρία, `validFrom` → `validUntil` (κενό = μέχρι διακοπής) + `active`. **Μία ενεργή ανά εταιρία** σε επικαλυπτόμενο διάστημα (409). Οι τιμές πλάνων (`PLAN_PRICES`) ζουν πλέον στο `src/lib/platformDiscounts.ts` — το Tenant αποθηκεύει μόνο το πλάνο. **Μόνο αποθήκευση/εμφάνιση**, καμία χρέωση· το Stripe θα τις διαβάσει αργότερα. Το παλιό `PlatformCoupon` (κουπόνια με κωδικό) μένει αχρησιμοποίητο.
 - Οικονομικά: **έσοδα = τιμολόγια `PAID` με `paidAt` στο διάστημα, σε `subtotal` (καθαρό, χωρίς ΦΠΑ)** — όχι `total`, ώστε το κέρδος να μη φουσκώνει από το ΦΠΑ. Κέρδος = έσοδα χωρίς ΦΠΑ − έξοδα. Το `Expense.type` μένει **ελεύθερο κείμενο** στη βάση· οι 7 τύποι (`insurance, service, fuel, salary, rent, marketing, other`, πεζά) ελέγχονται στο zod (`src/lib/finance.ts`), και άγνωστη τιμή μετρά ως «other». Δικαιώματα `finance.view/create/edit/delete` — **όχι** στα defaults STAFF/PARTNER. Το `/dashboard/finance` βγήκε από τα `ADMIN_ROUTES` του middleware (ήταν φύλακας ρόλου)· το φυλάει μόνο το `finance.view`.
 
+- **Συμβόλαια (Φάση Α):**
+  - **Ένα ανά κράτηση.** Φτιάχνεται από το modal της κράτησης (κουμπί «Συμβόλαιο» → `POST /api/contracts {bookingId}`: επιστρέφει το υπάρχον ή φτιάχνει νέο). Όχι για ακυρωμένες κρατήσεις.
+  - **Κωδικός τυχαίος** `C-XXXXXX` (χωρίς 0/O/1/I/L), μοναδικός ανά tenant — στο υπάρχον πεδίο `contractNumber`. `createdById` + `createdByName` από το session.
+  - **Καταστάσεις:** `DRAFT` → (υπογράφουν **όλοι** οι οδηγοί) → `SIGNED` → («Ολοκλήρωση», απαιτεί καύσιμο παράδοσης) → `COMPLETED`.
+  - **Snapshot** (`Contract.snapshot`, Json): εταιρία, κράτηση (ημερομηνίες/ώρες, ποσά από το snapshot της **κράτησης**), όχημα, extras, ασφάλεια **με απαλλαγή** (από `Extra.excess`), όροι ΕΛ/EN. Ανανεώνεται όσο **δεν** υπάρχει υπογραφή· με την πρώτη υπογραφή **παγώνει**.
+  - **Οδηγοί** στο `Contract.drivers` (Json), ο πρώτος = κύριος, προσυμπληρωμένος από τον Πελάτη. Η υπογραφή (base64 PNG) ζει μέσα στον οδηγό. Αλλαγή στοιχείου παραλαβής ενώ υπάρχουν μερικές υπογραφές → οι υπογραφές **σβήνονται** (το UI ρωτά πρώτα).
+  - **Κλείδωμα:** μετά την υπογραφή όλων αλλάζουν μόνο `fuelReturn`, `vehicleChanges`, `notes` (ο server επιστρέφει 409 για τα υπόλοιπα). `COMPLETED` = τίποτα.
+  - **Διαγραφή:** μόνο πρόχειρο χωρίς υπογραφές (`contracts.delete`).
+  - **Ταυτόχρονες αλλαγές:** αισιόδοξο κλείδωμα με `updatedAt` (409 «άλλαξε στο μεταξύ»).
+  - **Στεγανότητα:** `contractScope(viewer)` στο `src/lib/contractForm.ts` — ο PARTNER βλέπει μόνο συμβόλαια κρατήσεων με δικό του `partnerId`.
+  - **Εκτύπωση:** `/print/contracts/[id]` (route group `(print)`, χωρίς sidebar, `noindex`), component `src/components/contracts/ContractDocument.tsx` (χωρίς hooks — θα το ξαναχρησιμοποιήσει η δημόσια σελίδα της Φάσης Β).
+  - **Ρυθμίσεις:** νέα κάρτα «Στοιχεία εταιρίας» (περιοχή, διεύθυνση, ΑΦΜ, ΔΟΥ, τηλέφωνο· επωνυμία/email μόνο ανάγνωση) και «Όροι ενοικίασης» ΕΛ/EN.
+  - Δικαιώματα `contracts.view/create/edit/delete`· το STAFF παίρνει view/create/edit (backfill στο `11`), **όχι** delete.
+  - Το `ContractTemplate` και τα παλιά πεδία `content`, `signatureData`, `signature2Data` μένουν αχρησιμοποίητα. Το `invoiceIssueTrigger = ON_CONTRACT` **δεν** ενεργοποιήθηκε ακόμα.
+
 ## 6. Migrations
 
-Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
 - **09-platform-discounts:** το commit έγινε merge στο `main` (`90d2d70`) κατόπιν ρητού αιτήματος· **αξίζει επιβεβαίωση** ότι έτρεξε (αναμενόμενο verification `1 | 1 | 9 | 1 | 3`). Αν δεν έχει τρέξει, σκάει μόνο το tab «Εκπτώσεις» του `/super-admin`.
-- **10-finance: ΔΕΝ έχει τρέξει ακόμα.** Μόνο indexes + μετονομασία `finance.expense` → `finance.create` (αναμενόμενο verification `3 | 0`). Πρέπει να τρέξει **πριν** το push.
+- **10-finance:** έχει τρέξει (verification `3 | 0`).
+- **11-contracts: ΔΕΝ έχει τρέξει ακόμα.** Enum `ContractStatus`, 18 στήλες στο `contracts`, 4 στο `tenants`, `extras.excess`, unique `(tenantId, contractNumber)`, index `(tenantId, status)`, `contracts.sign` → `contracts.edit`, backfill STAFF. Αναμενόμενο verification `1 | 4 | 1 | 18 | 2 | 0 | 0`. Δοκιμάστηκε δύο φορές σε τοπική PostgreSQL 16 μετά τα 01→10 + seed· `prisma migrate diff` → «empty migration». Πρέπει να τρέξει **πριν** το push.
 
 Έλεγχος συμφωνίας schema ↔ βάση:
 `npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script` → πρέπει να λέει «This is an empty migration.»
@@ -112,17 +130,18 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🔴 Υψηλή | **Κωδικός Super Admin σε 3 αρχεία** (`SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`) σε καθαρή μορφή. Πρέπει να αφαιρεθεί από το repo. |
 | 🔴 Υψηλή | **Rotate** κωδικού Supabase DB και `JWT_SECRET` — παλιές τιμές υπάρχουν στο git history. |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
-| 🟠 Μεσαία | Το `10-finance` να τρέξει στο Supabase πριν το push (§6). |
+| 🟠 Μεσαία | Το `11-contracts` να τρέξει στο Supabase πριν το push (§6). |
+| 🟡 Χαμηλή | Η σελίδα `/login` βγάζει σφάλματα hydration του React (#425/#418) στον browser — υπήρχαν πριν τα Συμβόλαια, δεν επηρεάζουν τη σύνδεση. |
 | 🟡 Χαμηλή | Το `09-platform-discounts` να επιβεβαιωθεί ότι έτρεξε (§6). |
 | 🟡 Χαμηλή | Το `08` να επιβεβαιωθεί ότι έτρεξε (§6). |
 
 ## 8. Roadmap
 
-Ανενεργά στο sidebar (τα permission keys υπάρχουν ήδη στο registry, χωρίς enforcement). **Επόμενο: Αναφορές.**
+**Επόμενο: Συμβόλαια Φάση Β.**
 
-1. **Συμβόλαια** — `contracts.*`. Υπάρχουν ήδη `Contract`/`ContractTemplate` στο schema και `invoiceIssueTrigger = ON_CONTRACT` περιμένει.
+1. **Συμβόλαια** — ✅ Φάση Α (§5). **Φάση Β:** ιδιωτικό bucket στο Supabase Storage, λογότυπο εταιρίας, φωτογραφίες ζημιών παραλαβής/παράδοσης, φωτογραφία διπλώματος (μόνο εσωτερικά, signed URL), δημόσιο link πελάτη `/c/[token]` (λήξη 90 ημέρες μετά την επιστροφή, ακύρωση/επαναδημιουργία, noindex, QR στο αντίγραφο), μεταφορά υπογραφών σε Storage. **Φάση Γ:** «Συμπλήρωση από φωτογραφία» διπλώματος μέσω Anthropic API (μόνο πρόταση, ποτέ αυτόματη αποθήκευση). Επίσης εκκρεμεί το `invoiceIssueTrigger = ON_CONTRACT`.
 2. ~~**Οικονομικά**~~ — ✅ ολοκληρώθηκε (§5).
-3. **Αναφορές** — `reports.*`.
+3. ~~**Αναφορές**~~ — ✅ ολοκληρώθηκε (§5).
 4. **Τιμολόγια: email** — το `invoiceSendMode = AUTO` και το πεδίο `Invoice.sentAt` υπάρχουν, η αποστολή όχι.
 5. **Τιμολόγια: PDF** — σήμερα μόνο εκτύπωση από browser.
 6. **Φωτογραφίες ζημιών** — τα πεδία `photos[]` / `documents[]` υπάρχουν, θέλουν Cloudinary.
@@ -133,7 +152,9 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Σελίδα Οικονομικά: έξοδα CRUD, σύνοψη έσοδα (χωρίς ΦΠΑ) / έξοδα / κέρδος, `finance.*` δικαιώματα, migration `10` |
+| _(αυτό το commit)_ | Συμβόλαια Φάση Α: δίγλωσσο συμβόλαιο από κράτηση, απεριόριστοι οδηγοί, υπογραφή με δάχτυλο, καύσιμο σε όγδοα, σκαρίφημα ζημιών, αλλαγή οχήματος, κλείδωμα, εκτύπωση Α4, στοιχεία εταιρίας + όροι ΕΛ/EN στις Ρυθμίσεις, απαλλαγή στις ασφάλειες, migration `11` |
+| `17a1799` | Σελίδα Αναφορές (PR #4): KPIs έτους, έσοδα/έξοδα ανά μήνα, top 5 οχήματα, κατηγορίες, `reports.view` (όχι PARTNER). Χωρίς SQL |
+| `370e0af` | Σελίδα Οικονομικά (PR #3): έξοδα CRUD, σύνοψη έσοδα (χωρίς ΦΠΑ) / έξοδα / κέρδος, `finance.*` δικαιώματα, migration `10` |
 | `90d2d70` | Εκπτώσεις συνδρομών Super Admin: `PlatformDiscount`, API `/api/super-admin/platform-discounts`, αντικατάσταση mock, migration `09` |
 | `46fda54` | Σελίδα Service & Ζημιές (οι πίνακες υπήρχαν· προστέθηκε `damages.date` + indexes) |
 | `d3557ed` | Βάση προμήθειας με 3 ανεξάρτητους διακόπτες + `createdById` + «Οι κρατήσεις μου» |

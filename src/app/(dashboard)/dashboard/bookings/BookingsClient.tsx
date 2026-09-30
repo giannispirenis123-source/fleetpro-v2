@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Search,
@@ -21,6 +22,7 @@ import {
   Wallet,
   Handshake,
   UserRound,
+  FileSignature,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -189,6 +191,7 @@ export default function BookingsClient({
   myCommission,
   canSeeCommission,
   focusBookingId,
+  canContract = false,
 }: {
   initialBookings: BookingDTO[];
   customers: Option[];
@@ -208,6 +211,8 @@ export default function BookingsClient({
   canSeeCommission: boolean;
   /** Η κράτηση που ζήτησε το Ημερολόγιο με ?booking=… */
   focusBookingId?: string | null;
+  /** Δικαίωμα contracts.view — εμφανίζει το κουμπί «Συμβόλαιο». */
+  canContract?: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -443,6 +448,7 @@ export default function BookingsClient({
         <BookingModal
           mode="edit"
           booking={editing}
+          canContract={canContract}
           tr={tr}
           locale={locale}
           customers={customers}
@@ -787,6 +793,7 @@ function BookingModal({
   recordWord,
   onClose,
   onSaved,
+  canContract = false,
 }: {
   mode: "create" | "edit";
   booking?: BookingDTO;
@@ -807,7 +814,35 @@ function BookingModal({
   recordWord: string;
   onClose: () => void;
   onSaved: (booking: BookingDTO) => void;
+  canContract?: boolean;
 }) {
+  const router = useRouter();
+  const [openingContract, setOpeningContract] = useState(false);
+
+  /** Ανοίγει το συμβόλαιο της κράτησης — το φτιάχνει αν δεν υπάρχει. */
+  const openContract = async () => {
+    if (!booking || openingContract) return;
+    setOpeningContract(true);
+    setError("");
+    try {
+      const res = await fetch("/api/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: booking.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || tr("bookings.errorSave"));
+        return;
+      }
+      router.push(`/dashboard/contracts/${data.data.id}`);
+    } catch {
+      setError(tr("bookings.errorConnection"));
+    } finally {
+      setOpeningContract(false);
+    }
+  };
+
   const [form, setForm] = useState<FormState>(
     booking ? formFromBooking(booking) : emptyForm()
   );
@@ -1435,6 +1470,15 @@ function BookingModal({
         </div>
 
         <div className="dash-modal-footer">
+          {mode === "edit" && booking && canContract && booking.status !== "CANCELLED" && (
+            <button
+              className="dash-btn dash-modal-footer-start"
+              onClick={openContract}
+              disabled={loading || openingContract}
+            >
+              <FileSignature size={16} /> {tr("contracts.openContract")}
+            </button>
+          )}
           <button className="dash-btn" onClick={onClose} disabled={loading}>
             {tr("bookings.cancel")}
           </button>

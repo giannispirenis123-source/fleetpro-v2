@@ -21,19 +21,29 @@ const SELECT = {
   vatRate: true,
   invoiceIssueTrigger: true,
   invoiceSendMode: true,
+  // Στοιχεία εταιρίας για την κεφαλίδα του συμβολαίου + όροι ΕΛ/EN.
+  email: true,
+  phone: true,
+  address: true,
+  region: true,
+  vat: true,
+  taxOffice: true,
+  contractTermsEl: true,
+  contractTermsEn: true,
 } as const;
 
 /** Decimal → number, ώστε ο client να μη λαμβάνει ποτέ ΦΠΑ ως κείμενο. */
-const toSettingsDTO = (t: {
-  id: string;
-  name: string;
-  rentalMode: string;
-  prepTimeMinutes: number;
-  roundUpTotal: boolean;
-  vatRate: unknown;
-  invoiceIssueTrigger: string;
-  invoiceSendMode: string;
-}) => ({ ...t, vatRate: Number(t.vatRate) });
+const toSettingsDTO = <T extends { vatRate: unknown }>(t: T) => ({
+  ...t,
+  vatRate: Number(t.vatRate),
+});
+
+/** Κείμενο ρύθμισης: κενό → null (σβήνει το πεδίο). */
+const optionalText = (max: number) =>
+  z
+    .union([z.string().max(max), z.null()])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v?.trim() || null));
 
 // Κάθε πεδίο προαιρετικό, αλλά τουλάχιστον ένα πρέπει να δοθεί: η σελίδα
 // ρυθμίσεων στέλνει μόνο αυτό που άλλαξε.
@@ -56,6 +66,14 @@ const updateSettingsSchema = z
       .optional(),
     invoiceIssueTrigger: z.enum(INVOICE_ISSUE_TRIGGERS).optional(),
     invoiceSendMode: z.enum(INVOICE_SEND_MODES).optional(),
+    // Επωνυμία και email τα διαχειρίζεται ο Super Admin — όχι από εδώ.
+    phone: optionalText(50),
+    address: optionalText(300),
+    region: optionalText(120),
+    vat: optionalText(30),
+    taxOffice: optionalText(120),
+    contractTermsEl: optionalText(30_000),
+    contractTermsEn: optionalText(30_000),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "Δεν δόθηκε καμία ρύθμιση προς αλλαγή",
@@ -111,6 +129,17 @@ export const PATCH = withPermission(
           }),
           ...(parsed.data.invoiceSendMode !== undefined && {
             invoiceSendMode: parsed.data.invoiceSendMode,
+          }),
+          ...(parsed.data.phone !== undefined && { phone: parsed.data.phone }),
+          ...(parsed.data.address !== undefined && { address: parsed.data.address }),
+          ...(parsed.data.region !== undefined && { region: parsed.data.region }),
+          ...(parsed.data.vat !== undefined && { vat: parsed.data.vat }),
+          ...(parsed.data.taxOffice !== undefined && { taxOffice: parsed.data.taxOffice }),
+          ...(parsed.data.contractTermsEl !== undefined && {
+            contractTermsEl: parsed.data.contractTermsEl,
+          }),
+          ...(parsed.data.contractTermsEn !== undefined && {
+            contractTermsEn: parsed.data.contractTermsEn,
           }),
         },
         select: SELECT,

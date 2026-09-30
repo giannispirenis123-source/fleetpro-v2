@@ -78,6 +78,12 @@ enum InsuranceType {
 }
 
 // Πότε εκδίδεται αυτόματα το τιμολόγιο.
+enum ContractStatus {
+  DRAFT
+  SIGNED
+  COMPLETED
+}
+
 enum InvoiceIssueTrigger {
   ON_COMPLETION // με το τέλος της ενοικίασης
   ON_CONTRACT // με την ολοκλήρωση συμβολαίου — δεν ενεργεί ακόμα
@@ -167,6 +173,9 @@ model Tenant {
   phone           String?
   address         String?
   vat             String?
+  // ΔΟΥ και περιοχή — για την κεφαλίδα του συμβολαίου.
+  taxOffice       String?
+  region          String?
   iban            String?
   logoUrl         String?
   brandColor      String           @default("#2563EB")
@@ -187,6 +196,10 @@ model Tenant {
   vatRate             Decimal             @default(24) @db.Decimal(5, 2)
   invoiceIssueTrigger InvoiceIssueTrigger @default(ON_COMPLETION)
   invoiceSendMode     InvoiceSendMode     @default(MANUAL)
+
+  // Όροι ενοικίασης που τυπώνονται στο συμβόλαιο, και στις δύο γλώσσες.
+  contractTermsEl String? @db.Text
+  contractTermsEn String? @db.Text
 
   trialEndsAt      DateTime?
   stripeCustomerId String?
@@ -461,18 +474,52 @@ model Contract {
   customerId String
   templateId String?
 
-  contractNumber String // CT-2025-001
-  content        String   @db.Text // rendered HTML
-  signatureData  String?  @db.Text // base64 PNG
-  signature2Data String?  @db.Text // second driver
-  photosBefore   String[] // Cloudinary URLs
+  // Ο κωδικός του συμβολαίου: ΤΥΧΑΙΟΣ (π.χ. C-7F3K9Q), μοναδικός ανά
+  // εταιρία — όχι αύξων, ώστε να μη μαρτυρά πλήθος συμβολαίων.
+  contractNumber String
+  content        String   @default("") @db.Text // αχρησιμοποίητο (παλιό HTML template)
+  signatureData  String?  @db.Text // αχρησιμοποίητο: οι υπογραφές ζουν στο drivers
+  signature2Data String?  @db.Text // αχρησιμοποίητο
+  photosBefore   String[]
   photosAfter    String[]
 
-  isSigned Boolean   @default(false)
-  signedAt DateTime?
-  signedIp String?
+  status ContractStatus @default(DRAFT)
 
-  pdfUrl String? // Cloudinary PDF URL
+  // Ποιος υπάλληλος το έφτιαξε — το όνομα κρατιέται ως snapshot.
+  createdById   String?
+  createdByName String?
+
+  // Snapshot εταιρίας, κράτησης, οχήματος, extras, ασφάλειας (με excess) και
+  // όρων ΕΛ/EN. Ανανεώνεται όσο δεν υπάρχει καμία υπογραφή· μετά παγώνει.
+  snapshot Json @default("{}")
+
+  // Οδηγοί (ο πρώτος = κύριος), ο καθένας με την υπογραφή του (base64 PNG).
+  drivers Json @default("[]")
+
+  pickupLocation String?
+  returnLocation String?
+  // Καύσιμο / μπαταρία σε όγδοα: 0–8.
+  fuelPickup     Int?
+  fuelReturn     Int?
+  // Σημάδια στο σκαρίφημα: [{ id, x, y, note }] με x, y σε % του σχεδίου.
+  damageMarks    Json    @default("[]")
+  // Αλλαγές οχήματος: [{ id, vehicleId, label, plate, date }].
+  vehicleChanges Json    @default("[]")
+  notes          String? @db.Text
+
+  paymentMethod String? // CASH | CARD | TRANSFER | OTHER
+  depositAmount Decimal? @db.Decimal(10, 2)
+  depositMethod String? // CASH | CARD | CARD_HOLD
+
+  gdprConsent   Boolean   @default(false)
+  gdprConsentAt DateTime?
+
+  isSigned    Boolean   @default(false)
+  signedAt    DateTime?
+  signedIp    String?
+  completedAt DateTime?
+
+  pdfUrl String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -482,6 +529,8 @@ model Contract {
   customer Customer          @relation(fields: [customerId], references: [id])
   template ContractTemplate? @relation(fields: [templateId], references: [id])
 
+  @@unique([tenantId, contractNumber])
+  @@index([tenantId, status])
   @@map("contracts")
 }
 
@@ -627,6 +676,8 @@ model Extra {
   price      Decimal    @db.Decimal(10, 2)
   chargeType ChargeType @default(PER_DAY)
   type       ExtraType  @default(EXTRA)
+  // Απαλλαγή (excess) σε € — μόνο για ασφάλειες. Snapshot στο συμβόλαιο.
+  excess     Decimal?   @db.Decimal(10, 2)
   isActive   Boolean    @default(true)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt

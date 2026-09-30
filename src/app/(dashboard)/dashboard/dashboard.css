@@ -1866,3 +1866,224 @@
   .dash-rep-chart { gap: 3px; height: 160px; }
   .dash-rep-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Ρυθμίσεις: στοιχεία εταιρίας & όροι ---------- */
+.dash-settings-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.dash-settings-panel .dash-field + .dash-field { margin-top: 12px; }
+.dash-field input:disabled,
+.dash-field select:disabled,
+.dash-field textarea:disabled { opacity: 0.7; cursor: not-allowed; }
+
+/* ---------- Συμβόλαια ---------- */
+.dash-contract { padding-bottom: 80px; }
+.dash-contract-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.dash-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-3);
+  text-decoration: none;
+  margin-bottom: 6px;
+}
+.dash-back:hover { color: var(--text); }
+.dash-contract-section { margin-bottom: 16px; }
+.dash-contract-lock,
+.dash-contract-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.dash-contract-lock { background: rgba(99, 102, 241, 0.1); color: var(--info-fg); }
+.dash-contract-warn { background: rgba(245, 158, 11, 0.12); color: var(--warn-fg); margin-top: 10px; }
+
+.dash-driver {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.dash-driver-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.dash-driver-head strong { flex: 1; }
+
+.dash-contract-vehicle { font-size: 14px; margin: 0 0 14px; }
+.dash-contract-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.dash-contract-sub { font-size: 14px; margin: 0 0 4px; }
+.dash-contract-cols .dash-field { margin: 8px 0 12px; }
+.dash-field-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-3); margin-bottom: 6px; }
+
+.dash-fuel { display: flex; flex-direction: column; gap: 6px; }
+.dash-fuel-steps { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; }
+.dash-fuel-step {
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  touch-action: manipulation;
+}
+.dash-fuel-step.on { background: rgba(99, 102, 241, 0.18); color: var(--primary); border-color: var(--primary-soft); }
+.dash-fuel-step.current { background: var(--primary); color: #fff; border-color: var(--primary); }
+.dash-fuel-step:disabled { cursor: not-allowed; opacity: 0.75; }
+.dash-fuel-value { font-size: 13px; font-weight: 600; }
+
+.dash-damage { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: start; }
+.dash-damage-sketch {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dash-damage-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.dash-damage-list li { display: flex; align-items: center; gap: 8px; }
+.dash-damage-list li.active input { border-color: var(--primary); }
+.dash-damage-list input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+}
+.dash-damage-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.dash-contract-money { margin-bottom: 16px; font-size: 14px; }
+.dash-contract-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.dash-contract-line small { color: var(--text-3); }
+.dash-contract-line span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dash-contract-total { font-weight: 700; border-bottom: none; }
+
+.dash-collapse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.dash-collapse-body { margin-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+.dash-change-row { display: grid; grid-template-columns: 1fr 170px auto; gap: 10px; align-items: end; }
+.dash-textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 11px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.dash-contract-terms p { white-space: pre-wrap; font-size: 13px; color: var(--text-2); margin: 0; }
+.dash-contract-gdpr { margin-top: 14px; align-items: flex-start; font-weight: 500; color: var(--text); }
+.dash-contract-gdpr input { margin-top: 3px; width: 20px; height: 20px; flex-shrink: 0; }
+.dash-contract-gdpr-text { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.dash-contract-gdpr small { color: var(--text-3); }
+
+.dash-sign-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.dash-sign-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.dash-sign-preview {
+  width: 100%;
+  height: 80px;
+  border-bottom: 1px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border-radius: 8px 8px 0 0;
+}
+.dash-sign-preview { overflow: hidden; }
+.dash-sign-preview img { display: block; max-width: 100%; max-height: 80px; object-fit: contain; }
+.dash-sign-card-actions { display: flex; gap: 8px; }
+.dash-contract-complete { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+
+.dash-sign { display: flex; flex-direction: column; gap: 10px; }
+.dash-sign-canvas {
+  width: 100%;
+  height: 220px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 12px;
+  background: #fff;
+  touch-action: none;
+  cursor: crosshair;
+}
+.dash-sign-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+.dash-savebar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-modal);
+  font-size: 13px;
+  font-weight: 600;
+  max-width: calc(100vw - 32px);
+}
+.dash-modal-footer-start { margin-right: auto; }
+.dash-contract-search { flex-direction: row; align-items: center; gap: 6px; }
+.dash-contract-search input { min-width: 220px; }
+.dash-contract-row { text-decoration: none; color: inherit; }
+
+@media (max-width: 640px) {
+  .dash-contract-cols { grid-template-columns: 1fr; }
+  .dash-damage { grid-template-columns: 1fr; }
+  .dash-damage-sketch { max-width: 200px; margin: 0 auto; }
+  .dash-change-row { grid-template-columns: 1fr 1fr auto; }
+  .dash-contract-search input { min-width: 0; width: 100%; }
+  .dash-savebar { left: 16px; right: 16px; transform: none; justify-content: flex-end; }
+  .dash-savebar span { margin-right: auto; }
+}

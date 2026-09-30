@@ -510,6 +510,14 @@ model Contract {
   paymentMethod String? // CASH | CARD | TRANSFER | OTHER
   depositAmount Decimal? @db.Decimal(10, 2)
   depositMethod String? // CASH | CARD | CARD_HOLD
+  // Στοιχεία κάρτας ΜΟΝΟ για αναγνώριση: { brand, last4, holder, expiry }.
+  // ΠΟΤΕ πλήρης αριθμός ή CVV (PCI DSS).
+  paymentCard   Json?
+  depositCard   Json?
+
+  // Κανονικοποιημένο κείμενο αναζήτησης (πεζά, χωρίς τόνους/κενά/σύμβολα),
+  // ξαναϋπολογίζεται από τον server σε κάθε αλλαγή. GIN trigram index.
+  searchText String? @db.Text
 
   gdprConsent   Boolean   @default(false)
   gdprConsentAt DateTime?
@@ -531,6 +539,7 @@ model Contract {
 
   @@unique([tenantId, contractNumber])
   @@index([tenantId, status])
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin, map: "contracts_searchText_trgm_idx")
   @@map("contracts")
 }
 

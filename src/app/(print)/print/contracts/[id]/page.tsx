@@ -4,7 +4,8 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { pageGuard } from "@/lib/authz";
-import { loadContract } from "@/lib/contractForm";
+import { loadContract, refreshDraftSnapshot } from "@/lib/contractForm";
+import { db } from "@/lib/db";
 import ContractDocument from "@/components/contracts/ContractDocument";
 import PrintToolbar from "@/components/contracts/PrintToolbar";
 
@@ -19,13 +20,18 @@ export default async function ContractPrintPage({ params }: { params: { id: stri
   const guard = await pageGuard("contracts.view");
   if (!guard) redirect("/dashboard");
 
-  const contract = await loadContract(guard.viewer, params.id);
+  await refreshDraftSnapshot(guard.viewer, params.id);
+  const [contract, tenant] = await Promise.all([
+    loadContract(guard.viewer, params.id),
+    // Μόνο για παλιά snapshot χωρίς ΦΠΑ· τα νέα έχουν το δικό τους.
+    db.tenant.findUnique({ where: { id: guard.session.tenantId }, select: { vatRate: true } }),
+  ]);
   if (!contract) notFound();
 
   return (
     <main className="cdoc-page">
       <PrintToolbar backHref={`/dashboard/contracts/${contract.id}`} />
-      <ContractDocument contract={contract} />
+      <ContractDocument contract={contract} fallbackVatRate={Number(tenant?.vatRate ?? 24)} />
     </main>
   );
 }

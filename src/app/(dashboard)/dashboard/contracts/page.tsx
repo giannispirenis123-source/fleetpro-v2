@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { pageGuard } from "@/lib/authz";
+import { pageGuard, viewerCan } from "@/lib/authz";
 import { loadContractList } from "@/lib/contractForm";
 import ContractsClient from "./ContractsClient";
 
@@ -9,6 +9,11 @@ export default async function ContractsPage() {
   const guard = await pageGuard("contracts.view");
   if (!guard) redirect("/dashboard");
 
-  const contracts = await loadContractList(guard.viewer, {});
-  return <ContractsClient initialContracts={contracts} />;
+  const page = await loadContractList(guard.viewer, {});
+  return (
+    <ContractsClient
+      initialPage={page}
+      canCreate={viewerCan(guard.viewer, "contracts.create")}
+    />
+  );
 }

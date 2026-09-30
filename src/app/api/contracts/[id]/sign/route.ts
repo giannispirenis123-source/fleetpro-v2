@@ -13,6 +13,7 @@ import { withPermission } from "@/lib/authz";
 import { allSigned, anySigned, readDrivers } from "@/lib/contracts";
 import {
   CONTRACT_INCLUDE,
+  refreshSearchText,
   buildSnapshot,
   contractScope,
   requestIp,
@@ -79,6 +80,8 @@ export const POST = withPermission(
       if (result.count === 0) {
         return conflict("Το συμβόλαιο άλλαξε στο μεταξύ. Φόρτωσε ξανά και δοκίμασε.");
       }
+
+      await refreshSearchText(current.id);
 
       if (complete) {
         await db.booking.update({

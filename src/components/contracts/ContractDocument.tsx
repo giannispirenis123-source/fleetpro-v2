@@ -13,10 +13,13 @@ import {
   ID_TYPE_LABEL,
   PAYMENT_LABEL,
   STATUS_LABEL,
+  cardLine,
   fuelLabel,
   type ContractDTO,
   type ContractDriver,
 } from "@/lib/contracts";
+import { toDisplayBreakdown } from "@/lib/pricing";
+import { splitVatInclusive } from "@/lib/invoices";
 import DamageSketch from "./DamageSketch";
 import "./contract-document.css";
 
@@ -84,8 +87,20 @@ function MainDriver({ driver }: { driver: ContractDriver }) {
   );
 }
 
-export default function ContractDocument({ contract }: { contract: ContractDTO }) {
+export default function ContractDocument({
+  contract,
+  fallbackVatRate,
+}: {
+  contract: ContractDTO;
+  /** Για παλιά snapshot που δεν κρατούν ΦΠΑ. */
+  fallbackVatRate?: number;
+}) {
   const s = contract.snapshot;
+  // Η στρογγυλοποίηση απορροφάται στις γραμμές, όπως στις κρατήσεις: οι
+  // γραμμές αθροίζουν ΑΚΡΙΒΩΣ στο σύνολο.
+  const money = s ? toDisplayBreakdown(s.booking) : null;
+  const vatRate = s?.vatRate ?? fallbackVatRate;
+  const vat = money && vatRate !== undefined ? splitVatInclusive(money.total, vatRate) : null;
   const [main, ...others] = contract.drivers;
   const electric = s?.vehicle.fuel === "ELECTRIC";
   const fuelTitle = electric ? BI.battery : BI.fuel;
@@ -256,14 +271,14 @@ export default function ContractDocument({ contract }: { contract: ContractDTO }
       <section className="cdoc-section cdoc-cols2">
         <div>
           <h2>{BI.charges}</h2>
-          {s ? (
+          {s && money ? (
             <table className="cdoc-table cdoc-money">
               <tbody>
                 <tr>
                   <td>
                     {BI.rental} · {s.booking.totalDays} {BI.days} × {eur(s.booking.dailyRate)}
                   </td>
-                  <td>{eur(s.booking.subtotal)}</td>
+                  <td>{eur(money.subtotal)}</td>
                 </tr>
                 {s.extras.map((x, i) => (
                   <tr key={`x${i}`}>
@@ -286,19 +301,27 @@ export default function ContractDocument({ contract }: { contract: ContractDTO }
                     <td>{eur(x.lineTotal)}</td>
                   </tr>
                 ))}
-                {s.booking.discountAmount > 0 && (
+                {money.discountAmount > 0 && (
                   <tr>
                     <td>
                       {BI.discount}
                       {s.booking.discountCode ? ` (${s.booking.discountCode})` : ""}
                     </td>
-                    <td>−{eur(s.booking.discountAmount)}</td>
+                    <td>−{eur(money.discountAmount)}</td>
                   </tr>
                 )}
                 <tr className="cdoc-total">
                   <td>{BI.total}</td>
-                  <td>{eur(s.booking.total)}</td>
+                  <td>{eur(money.total)}</td>
                 </tr>
+                {vat && (
+                  <tr className="cdoc-vat">
+                    <td>
+                      {BI.ofWhich}: {BI.net} {eur(vat.net)} + {BI.vatShort} {vat.vatRate}% {eur(vat.vatAmount)}
+                    </td>
+                    <td />
+                  </tr>
+                )}
               </tbody>
             </table>
           ) : (
@@ -309,7 +332,14 @@ export default function ContractDocument({ contract }: { contract: ContractDTO }
           <h2>{BI.payment}</h2>
           <Row
             label={BI.payment}
-            value={contract.paymentMethod ? PAYMENT_LABEL[contract.paymentMethod] : "—"}
+            value={
+              [
+                contract.paymentMethod ? PAYMENT_LABEL[contract.paymentMethod] : null,
+                cardLine(contract.paymentCard) || null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "—"
+            }
           />
           <Row
             label={BI.deposit}
@@ -317,6 +347,7 @@ export default function ContractDocument({ contract }: { contract: ContractDTO }
               [
                 contract.depositAmount !== null ? eur(contract.depositAmount) : null,
                 contract.depositMethod ? DEPOSIT_LABEL[contract.depositMethod] : null,
+                cardLine(contract.depositCard) || null,
               ]
                 .filter(Boolean)
                 .join(" · ") || "—"

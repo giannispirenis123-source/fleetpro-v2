@@ -42,6 +42,28 @@ export type PricingOutcome =
     }
   | { ok: false; message: string };
 
+/**
+ * Η έκπτωση μιας ΥΠΑΡΧΟΥΣΑΣ κράτησης, όπως τη διαβάζει ο ξαναϋπολογισμός:
+ * με κωδικό → ο κωδικός ξαναελέγχεται· με ποσό → το ίδιο ποσό· αλλιώς καμία.
+ * Κοινό για το PATCH κράτησης και για τα πρόσθετα του συμβολαίου, ώστε το
+ * σύνολο να βγαίνει ΠΑΝΤΑ με τον ίδιο τρόπο.
+ */
+export function discountOfBooking(b: {
+  discountCode: string | null;
+  discountAmount: unknown;
+}): { discountMode: DiscountMode; discountValue?: number; discountCode: string | null } {
+  const discountMode: DiscountMode = b.discountCode
+    ? "CODE"
+    : Number(b.discountAmount) > 0
+      ? "AMOUNT"
+      : "NONE";
+  return {
+    discountMode,
+    discountValue: discountMode === "AMOUNT" ? Number(b.discountAmount) : undefined,
+    discountCode: b.discountCode,
+  };
+}
+
 export async function priceBooking(
   req: PricingRequest
 ): Promise<PricingOutcome> {

@@ -10,16 +10,17 @@ import { ok, created, badRequest, forbidden, notFound, conflict, serverError } f
 import { bookingScope, viewerCan, withPermission } from "@/lib/authz";
 import { contractScope, createContract, loadContractList } from "@/lib/contractForm";
 
-// GET /api/contracts?status=&q=
+// GET /api/contracts?status=&q=&page=
 export const GET = withPermission(
   async (req, _session, _params, viewer) => {
     try {
       const sp = new URL(req.url).searchParams;
-      const contracts = await loadContractList(viewer!, {
+      const page = await loadContractList(viewer!, {
         status: sp.get("status"),
-        q: sp.get("q"),
+        q: sp.get("q")?.slice(0, 200) ?? null,
+        page: Number(sp.get("page")) || 1,
       });
-      return ok({ contracts });
+      return ok(page);
     } catch (error) {
       console.error(error);
       return serverError();

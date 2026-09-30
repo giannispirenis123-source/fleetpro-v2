@@ -24,7 +24,7 @@ import {
   toBookingDTO,
 } from "@/lib/bookings";
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
-import { priceBooking } from "@/lib/bookingPricing";
+import { discountOfBooking, priceBooking } from "@/lib/bookingPricing";
 import { applyDiscountUsage } from "@/lib/discounts";
 import { issueInvoiceForBooking } from "@/lib/invoiceIssue";
 import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
@@ -199,13 +199,8 @@ export const PATCH = withPermission(
       const extraIds =
         data.extraIds ?? readExtrasSnapshot(current.extras).map((l) => l.id);
 
-      const discountMode =
-        data.discountMode ??
-        (current.discountCode
-          ? "CODE"
-          : Number(current.discountAmount) > 0
-            ? "AMOUNT"
-            : "NONE");
+      const existing = discountOfBooking(current);
+      const discountMode = data.discountMode ?? existing.discountMode;
 
       const discountValue =
         data.discountValue ??

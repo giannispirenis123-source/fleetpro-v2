@@ -36,12 +36,14 @@ interface NavItem {
   /** Το δικαίωμα προβολής της ενότητας — από το μητρώο δικαιωμάτων. */
   permission: string;
   disabled?: boolean;
+  /** Κρυφό για συνεργάτη ανεξαρτήτως δικαιώματος (σύνολα εταιρίας). */
+  hideForPartner?: boolean;
 }
 
 // Η ορατότητα ΔΕΝ κρίνεται πια από τον ρόλο αλλά από το δικαίωμα προβολής.
 // Ο διαχειριστής τα έχει όλα, οπότε βλέπει τα πάντα.
 // Ενεργά: Πίνακας, Κρατήσεις, Ημερολόγιο, Στόλος, Πρόσθετα, Πελάτες,
-// Εκπτώσεις, Τιμολόγια, Service & Ζημιές, Οικονομικά, Χρήστες, Ρυθμίσεις.
+// Εκπτώσεις, Τιμολόγια, Service & Ζημιές, Αναφορές, Οικονομικά, Χρήστες, Ρυθμίσεις.
 const NAV: NavItem[] = [
   { href: "/dashboard", labelKey: "overview", icon: LayoutDashboard, permission: "dashboard.view" },
   { href: "/dashboard/bookings", labelKey: "bookings", icon: CalendarDays, permission: "bookings.view" },
@@ -53,7 +55,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/contracts", labelKey: "contracts", icon: FileText, permission: "contracts.view", disabled: true },
   { href: "/dashboard/invoices", labelKey: "invoices", icon: Receipt, permission: "invoices.view" },
   { href: "/dashboard/service", labelKey: "service", icon: Wrench, permission: "service.view" },
-  { href: "/dashboard/reports", labelKey: "reports", icon: BarChart3, permission: "reports.view", disabled: true },
+  { href: "/dashboard/reports", labelKey: "reports", icon: BarChart3, permission: "reports.view", hideForPartner: true },
   { href: "/dashboard/finance", labelKey: "finance", icon: Wallet, permission: "finance.view" },
   { href: "/dashboard/users", labelKey: "users", icon: UserCog, permission: "users.view" },
   { href: "/dashboard/settings", labelKey: "settings", icon: Settings, permission: "settings.view" },
@@ -109,7 +111,10 @@ export default function DashboardSidebar({
   // Οι ενότητες «σύντομα» μένουν ορατές σε όλους ως ένδειξη τού τι
   // έρχεται· οι υπόλοιπες μόνο σε όποιον έχει το δικαίωμα προβολής.
   const items = NAV.filter(
-    (it) => it.disabled || can(role, permissions, it.permission)
+    (it) =>
+      it.disabled ||
+      (can(role, permissions, it.permission) &&
+        !(it.hideForPartner && role === "PARTNER"))
   );
 
   const handleLogout = async () => {

@@ -2135,3 +2135,53 @@
 .dash-pick-main { font-size: 14px; }
 .dash-pick-sub { font-size: 12.5px; color: var(--text-3); display: inline-flex; align-items: center; gap: 4px; }
 .dash-contract-search input { flex: 1; }
+
+/* ---------- Γρήγορο συμβόλαιο (walk-in) ---------- */
+.dash-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+}
+.dash-link-btn:hover { text-decoration: underline; }
+.dash-form-note .dash-link-btn { margin-top: 0; }
+.dash-walkin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.dash-walkin-head .dash-section-title { margin-bottom: 0; }
+.dash-walkin-head .dash-filter { display: inline-flex; align-items: center; gap: 5px; }
+.dash-walkin-head .dash-field--check { padding-bottom: 0; }
+.dash-walkin-chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.07);
+  font-size: 14px;
+}
+.dash-walkin-chosen .dash-status { margin-left: 8px; }
+.dash-walkin-dup { flex-direction: column; align-items: stretch; margin-top: 12px; }
+.dash-walkin-dup p { display: flex; align-items: center; gap: 6px; margin: 0; }
+.dash-walkin-dup .dash-btn { align-self: flex-start; margin-top: 10px; }
+.dash-walkin-busy { color: var(--bad-fg); font-weight: 600; }
+.dash-walkin-extra-fields { margin-top: 14px; }
+.dash-walkin-actions { justify-content: flex-end; margin-top: 16px; }
+.dash-booking-source { color: var(--primary); font-weight: 600; }
+.dash-walkin-extra-fields .dash-code-row { flex-wrap: nowrap; }
+.dash-walkin-extra-fields .dash-code-row input { flex: 1; min-width: 0; }

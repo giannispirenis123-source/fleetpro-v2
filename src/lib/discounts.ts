@@ -8,7 +8,7 @@
 //
 // Server-only: εισάγει db.
 
-import type { Discount } from "@prisma/client";
+import type { Discount, Prisma } from "@prisma/client";
 import { db } from "./db";
 import { round2 } from "./pricing";
 import { toDiscountDTO } from "./discountMapper";
@@ -166,11 +166,15 @@ export async function resolveDiscountCode(opts: {
  *
  * Οι κωδικοί ταυτοποιούνται με το ζεύγος (tenantId, code) που είναι unique.
  */
-export async function applyDiscountUsage(opts: {
-  tenantId: string;
-  previousCode: string | null;
-  nextCode: string | null;
-}): Promise<void> {
+export async function applyDiscountUsage(
+  opts: {
+    tenantId: string;
+    previousCode: string | null;
+    nextCode: string | null;
+  },
+  /** Το κοινό `db` ή μια transaction (π.χ. κράτηση από συμβόλαιο). */
+  client: Prisma.TransactionClient | typeof db = db
+): Promise<void> {
   const prev = opts.previousCode?.trim().toUpperCase() || null;
   const next = opts.nextCode?.trim().toUpperCase() || null;
 
@@ -179,14 +183,14 @@ export async function applyDiscountUsage(opts: {
   if (prev) {
     // Το updateMany με φίλτρο usageCount > 0 αποτρέπει αρνητικές τιμές
     // χωρίς να χρειάζεται πρώτα ανάγνωση.
-    await db.discount.updateMany({
+    await client.discount.updateMany({
       where: { tenantId: opts.tenantId, code: prev, usageCount: { gt: 0 } },
       data: { usageCount: { decrement: 1 } },
     });
   }
 
   if (next) {
-    await db.discount.updateMany({
+    await client.discount.updateMany({
       where: { tenantId: opts.tenantId, code: next },
       data: { usageCount: { increment: 1 } },
     });

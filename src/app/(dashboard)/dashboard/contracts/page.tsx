@@ -14,6 +14,10 @@ export default async function ContractsPage() {
     <ContractsClient
       initialPage={page}
       canCreate={viewerCan(guard.viewer, "contracts.create")}
+      canWalkIn={
+        viewerCan(guard.viewer, "contracts.create") &&
+        viewerCan(guard.viewer, "bookings.create")
+      }
     />
   );
 }

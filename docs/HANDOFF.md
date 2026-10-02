@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 30/09/2026 · **main:** `4ecc5f7` (Συμβόλαια Φάση Α) · **Κατάσταση:** Συμβόλαια **Φάση Α+** σε commit τοπικά, **όχι pushed** — περιμένει να τρέξει το `12` στο Supabase
+**Ημερομηνία:** 02/10/2026 · **main:** `7d84ef8` (Συμβόλαια Φάση Α+, SQL `12` έχει τρέξει) · **Κατάσταση:** **Γρήγορο συμβόλαιο «walk-in»** σε commit τοπικά στο branch `ccr-b5be91be-58whz5`, **όχι pushed/merged**. **Χωρίς SQL.**
 
-> **Επόμενο βήμα:** ο Giannis τρέχει το `prisma/sql/12-contracts-update.sql` στο Supabase (verification `3 | 1 | 1`) και μετά λέει «push». Έπειτα: Συμβόλαια **Φάση Β** (αρχεία σε Supabase Storage + link πελάτη) και **Φάση Γ** (διάβασμα διπλώματος με AI), §8.1.
+> **Επόμενο βήμα:** ο Giannis λέει «push» (δεν χρειάζεται τίποτα στο Supabase). Έπειτα: Συμβόλαια **Φάση Β** (αρχεία σε Supabase Storage + link πελάτη) και **Φάση Γ** (διάβασμα διπλώματος με AI), §8.1.
 
 ---
 
@@ -86,7 +86,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Οικονομικά (`/dashboard/finance`): έξοδα CRUD + σύνοψη έσοδα/έξοδα/κέρδος | ✅ |
 | Αναφορές (`/dashboard/reports`): KPIs έτους, μήνες, top 5 οχήματα, κατηγορίες | ✅ |
 | Συμβόλαια Φάση Α (`/dashboard/contracts`): δίγλωσσο συμβόλαιο, οδηγοί, υπογραφές, κλείδωμα, εκτύπωση Α4 | ✅ |
-| Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα με ΦΠΑ (ένα σύνολο με την κράτηση), κάρτα (μόνο 4 ψηφία), αναζήτηση `searchText` | ✅ κώδικας · ⏳ SQL `12` |
+| Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα με ΦΠΑ (ένα σύνολο με την κράτηση), κάρτα (μόνο 4 ψηφία), αναζήτηση `searchText` | ✅ |
+| Γρήγορο συμβόλαιο «walk-in» (`/dashboard/contracts/new`): πελάτης + κράτηση + συμβόλαιο σε μία transaction, κράτηση που ακολουθεί το συμβόλαιο | ✅ κώδικας · χωρίς SQL |
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
@@ -119,6 +120,17 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - **Αναζήτηση:** στήλη `searchText` (GIN `gin_trgm_ops`), που ξαναϋπολογίζεται σε δημιουργία, αποθήκευση, υπογραφή και ολοκλήρωση (`refreshSearchText`). Η κανονικοποίηση (`normalizeSearch` στο `src/lib/contracts.ts`) κάνει πεζά, βγάζει τόνους και σύμβολα, και τα ελληνικά γράμματα που μοιάζουν με λατινικά γίνονται λατινικά («ΙΚΑ-1234» = «ika1234»). Ημερομηνίες σε ISO, ημ/μήνας/έτος και με όνομα μήνα ΕΛ/EN. Τηλέφωνα και χωρίς +30. Πολλές λέξεις = AND. **Lazy backfill** έως 200 συμβόλαια με κενό `searchText` πριν από κάθε αναζήτηση. 25 ανά σελίδα, debounce 300ms.
   - Το `searchText` **δεν** ενημερώνεται αν αλλάξει μόνο ο πελάτης από τη σελίδα Πελατών. Ενημερώνεται στην επόμενη αποθήκευση του συμβολαίου.
   - Το `ContractTemplate` και τα παλιά πεδία `content`, `signatureData`, `signature2Data` μένουν αχρησιμοποίητα. Το `invoiceIssueTrigger = ON_CONTRACT` **δεν** ενεργοποιήθηκε ακόμα.
+- **Γρήγορο συμβόλαιο «walk-in»:**
+  - **«+ Νέο συμβόλαιο»** (λίστα Συμβολαίων) → `/dashboard/contracts/new` όταν ο χρήστης έχει `contracts.create` **και** `bookings.create`· αλλιώς (μόνο `contracts.create`) ανοίγει το παλιό παράθυρο κρατήσεων. Στη φόρμα, το link «Από υπάρχουσα κράτηση» ανοίγει το ίδιο παράθυρο (`NewContractModal.tsx`, ένα αρχείο για τα δύο σημεία). Το κουμπί «Συμβόλαιο» του modal κράτησης δεν άλλαξε.
+  - **Φόρμα:** πελάτης (αναζήτηση όνομα/τηλέφωνο/email με debounce, ή «Νέος πελάτης» με όνομα, επώνυμο, τηλέφωνο, email προαιρετικό), παραλαβή = τώρα στρογγυλεμένη πάνω στο τέταρτο (μπαίνει μετά το mount, με την ώρα του browser), επιστροφή +1 ημέρα, όχημα **μόνο από τα διαθέσιμα** (όσοι έχουν `bookings.override` βλέπουν και τα μη διαθέσιμα με τικ), πρόσθετα/ασφάλεια όπως στο συμβόλαιο, κωδικός έκπτωσης, συνεργάτης (όχι για PARTNER).
+  - **Τιμή:** η προεπισκόπηση έρχεται από τον server (`POST /api/contracts/walk-in {preview:true}` → `priceBooking`, άρα `roundUpTotal`, έκπτωση και ΦΠΑ ακριβώς όπως στην αποθήκευση). Ανάλυση καθαρό + ΦΠΑ με `splitVatInclusive`, στρογγυλοποίηση απορροφημένη (`toDisplayBreakdown`).
+  - **Διπλότυπα:** τηλέφωνο συγκρίνεται σε ψηφία (χωρίς κενά/παύλες/+30/0030, τελευταία 10), email χωρίς πεζά/κεφαλαία. Η φόρμα προτείνει τον υπάρχοντα όσο γράφεις· ο server απαντά 409 `{conflicts:{duplicates}}` εκτός αν σταλεί `allowDuplicate: true` («Νέος πελάτης παρ' όλα αυτά»).
+  - **Server:** `POST /api/contracts/walk-in` (`withPermission(["contracts.create","bookings.create"])`). Η κράτηση φτιάχνεται από τον **ίδιο** κώδικα με το `POST /api/bookings`: η λογική βγήκε στο `src/lib/bookingCreate.ts` (`prepareBooking` = έλεγχοι/σύγκρουση/override/τιμή/partner χωρίς εγγραφές, `writeBooking(tx, …)` = αρίθμηση, εγγραφή, snapshot extras, χρήση κωδικού, δέσμευση οχήματος). Και το POST κράτησης τρέχει πλέον μέσα σε `$transaction`. Νέος πελάτης + κράτηση + συμβόλαιο (`createContractInTx`) σε **μία** `$transaction` (timeout 20s): αν αποτύχει οτιδήποτε, δεν γράφεται τίποτα (ούτε η χρήση του κωδικού ούτε η κατάσταση οχήματος). Ο κωδικός συμβολαίου μέσα σε transaction βρίσκεται με ανάγνωση πριν την εγγραφή (ένα σφάλμα P2002 θα ακύρωνε όλη την transaction).
+  - **Κατάσταση κράτησης:** `CONFIRMED` πάντα (και σε `rentalMode = REQUEST`: ο πελάτης είναι παρών), `source = "walk-in"` (η στήλη `Booking.source` υπήρχε ήδη — γι' αυτό **χωρίς SQL**). Στη λίστα Κρατήσεις φαίνεται η ένδειξη «Από συμβόλαιο»· στο Ημερολόγιο εμφανίζεται όπως κάθε κράτηση.
+  - **Η κράτηση ακολουθεί το συμβόλαιο** (`src/lib/bookingLifecycle.ts`, για **όλα** τα συμβόλαια, και από υπάρχουσα κράτηση): υπογραφή όλων → `ACTIVE`, ολοκλήρωση συμβολαίου → `COMPLETED`. Μόνο προς τα εμπρός στη διαδρομή `CONFIRMED → ACTIVE → COMPLETED`, βήμα-βήμα μέσα από τις `STATUS_TRANSITIONS`, στην ίδια transaction με το συμβόλαιο. Ποτέ από `CANCELLED`, ποτέ προς τα πίσω, και **ποτέ από `PENDING`** (αίτημα που δεν εγκρίθηκε μένει στον άνθρωπο). Δεν απαιτεί `bookings.status`: είναι συνέπεια του συμβολαίου (`contracts.edit`). Με το `COMPLETED` τρέχει ο **ίδιος** μηχανισμός `ON_COMPLETION` τιμολογίου με το PATCH κράτησης (`issueInvoiceOnCompletion`) και ο συγχρονισμός οχήματος (`syncVehicleStatus`, μεταφέρθηκε από το route στο lib).
+  - **Σύγκρουση:** ίδια με τις κρατήσεις — 409 με τη λίστα· `override: true` μόνο με `bookings.override` (STAFF → 403). Στη φόρμα ο STAFF δεν βλέπει κουμπί αποθήκευσης όσο υπάρχει σύγκρουση.
+  - **PARTNER:** μόνο με **και τα δύο** δικαιώματα· `partnerId` κλειδωμένο στον εαυτό του (`resolvePartnerId`), άρα βλέπει μόνο τα δικά του (`bookingScope`/`contractScope`). Δεν έχει τα δικαιώματα στα defaults. Ο νέος πελάτης φτιάχνεται χωρίς `customers.create` (αρκούν τα δύο δικαιώματα, όπως αποφασίστηκε).
+  - Βοηθητικά API: `GET /api/contracts/walk-in?pickupDate&pickupTime&returnDate&returnTime[&all=1]` (διαθέσιμα οχήματα, ένα ερώτημα για όλο τον στόλο + `findConflicts` με προετοιμασία· εξαιρούνται `MAINTENANCE`/`INACTIVE`) και `GET /api/contracts/walk-in/customers?q=` / `?phone=&email=`.
 
 ## 6. Migrations
 
@@ -128,7 +140,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
 - **09-platform-discounts:** το commit έγινε merge στο `main` (`90d2d70`) κατόπιν ρητού αιτήματος· **αξίζει επιβεβαίωση** ότι έτρεξε (αναμενόμενο verification `1 | 1 | 9 | 1 | 3`). Αν δεν έχει τρέξει, σκάει μόνο το tab «Εκπτώσεις» του `/super-admin`.
 - **10-finance:** έχει τρέξει (verification `3 | 0`).
-- **12-contracts-update: ΔΕΝ έχει τρέξει ακόμα.** `paymentCard`, `depositCard` (JSONB), `searchText` (TEXT), `CREATE EXTENSION pg_trgm`, GIN index `contracts_searchText_trgm_idx`. Αναμενόμενο verification `3 | 1 | 1`. Δοκιμάστηκε δύο φορές σε τοπική PostgreSQL 16· `prisma migrate diff` → «empty migration». Πρέπει να τρέξει **πριν** το push.
+- **12-contracts-update:** έχει τρέξει (verification `3 | 1 | 1`).
+- **Walk-in (02/10/2026): κανένα νέο SQL.** Χρησιμοποιεί την υπάρχουσα `bookings.source`. Τοπική PostgreSQL 16 με `01 → 12`: `prisma migrate diff` → «empty migration».
 - **11-contracts:** έχει τρέξει (verification `1 | 4 | 1 | 18 | 2 | 0 | 0`).
 - _(ιστορικό 11)_ Enum `ContractStatus`, 18 στήλες στο `contracts`, 4 στο `tenants`, `extras.excess`, unique `(tenantId, contractNumber)`, index `(tenantId, status)`, `contracts.sign` → `contracts.edit`, backfill STAFF. Αναμενόμενο verification `1 | 4 | 1 | 18 | 2 | 0 | 0`. Έτρεξε στο Supabase πριν το merge του PR #5.
 
@@ -142,7 +155,6 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🔴 Υψηλή | **Κωδικός Super Admin σε 3 αρχεία** (`SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`) σε καθαρή μορφή. Πρέπει να αφαιρεθεί από το repo. |
 | 🔴 Υψηλή | **Rotate** κωδικού Supabase DB και `JWT_SECRET` — παλιές τιμές υπάρχουν στο git history. |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
-| 🟠 Μεσαία | Το `12-contracts-update` να τρέξει στο Supabase πριν το push (§6). |
 | 🟡 Χαμηλή | Η σελίδα `/login` βγάζει σφάλματα hydration του React (#425/#418) στον browser — υπήρχαν πριν τα Συμβόλαια, δεν επηρεάζουν τη σύνδεση. |
 | 🟡 Χαμηλή | Το `09-platform-discounts` να επιβεβαιωθεί ότι έτρεξε (§6). |
 | 🟡 Χαμηλή | Το `08` να επιβεβαιωθεί ότι έτρεξε (§6). |
@@ -164,7 +176,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα στο συμβόλαιο με ένα σύνολο κράτησης/συμβολαίου (transaction), ανάλυση με ΦΠΑ, στοιχεία κάρτας μόνο για αναγνώριση, αναζήτηση `searchText` + GIN trigram, σελιδοποίηση, migration `12` |
+| _(αυτό το commit)_ | Γρήγορο συμβόλαιο «walk-in»: `/dashboard/contracts/new`, πελάτης + κράτηση + συμβόλαιο σε μία transaction, κοινή δημιουργία κράτησης (`bookingCreate.ts`), η κράτηση ακολουθεί το συμβόλαιο (ACTIVE/COMPLETED + τιμολόγιο ON_COMPLETION), ένδειξη «Από συμβόλαιο». Χωρίς SQL |
+| `7d84ef8` | Συμβόλαια Φάση Α+ (PR #6): «+ Νέο συμβόλαιο», πρόσθετα στο συμβόλαιο με ένα σύνολο κράτησης/συμβολαίου (transaction), ανάλυση με ΦΠΑ, στοιχεία κάρτας μόνο για αναγνώριση, αναζήτηση `searchText` + GIN trigram, σελιδοποίηση, migration `12` |
 | `4ecc5f7` | Συμβόλαια Φάση Α (PR #5): δίγλωσσο συμβόλαιο από κράτηση, απεριόριστοι οδηγοί, υπογραφή με δάχτυλο, καύσιμο σε όγδοα, σκαρίφημα ζημιών, αλλαγή οχήματος, κλείδωμα, εκτύπωση Α4, στοιχεία εταιρίας + όροι ΕΛ/EN στις Ρυθμίσεις, απαλλαγή στις ασφάλειες, migration `11` |
 | `17a1799` | Σελίδα Αναφορές (PR #4): KPIs έτους, έσοδα/έξοδα ανά μήνα, top 5 οχήματα, κατηγορίες, `reports.view` (όχι PARTNER). Χωρίς SQL |
 | `370e0af` | Σελίδα Οικονομικά (PR #3): έξοδα CRUD, σύνοψη έσοδα (χωρίς ΦΠΑ) / έξοδα / κέρδος, `finance.*` δικαιώματα, migration `10` |

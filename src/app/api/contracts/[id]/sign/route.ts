@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ok, badRequest, conflict, notFound, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
+import { advanceBookingWithContract, syncVehicleStatus } from "@/lib/bookingLifecycle";
 import { allSigned, anySigned, readDrivers } from "@/lib/contracts";
 import {
   CONTRACT_INCLUDE,
@@ -73,22 +74,34 @@ export const POST = withPermission(
         data.signedIp = requestIp(req.headers);
       }
 
-      const result = await db.contract.updateMany({
-        where: { id: current.id, updatedAt: current.updatedAt, status: "DRAFT" },
-        data,
-      });
-      if (result.count === 0) {
-        return conflict("Το συμβόλαιο άλλαξε στο μεταξύ. Φόρτωσε ξανά και δοκίμασε.");
+      // Συμβόλαιο + κράτηση σε ΜΙΑ transaction. Με την τελευταία υπογραφή η
+      // κράτηση περνά σε ACTIVE — μόνο προς τα εμπρός (βλ. bookingLifecycle).
+      const STALE = "STALE";
+      let moved: Awaited<ReturnType<typeof advanceBookingWithContract>> = null;
+      try {
+        moved = await db.$transaction(async (tx) => {
+          const result = await tx.contract.updateMany({
+            where: { id: current.id, updatedAt: current.updatedAt, status: "DRAFT" },
+            data,
+          });
+          if (result.count === 0) throw new Error(STALE);
+          if (!complete) return null;
+
+          await tx.booking.update({
+            where: { id: current.bookingId },
+            data: { contractSigned: true, signedAt: now },
+          });
+          return advanceBookingWithContract(tx, viewer!.tenantId!, current.bookingId, "ACTIVE");
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === STALE) {
+          return conflict("Το συμβόλαιο άλλαξε στο μεταξύ. Φόρτωσε ξανά και δοκίμασε.");
+        }
+        throw error;
       }
 
       await refreshSearchText(current.id);
-
-      if (complete) {
-        await db.booking.update({
-          where: { id: current.bookingId },
-          data: { contractSigned: true, signedAt: now },
-        });
-      }
+      if (moved) await syncVehicleStatus(moved.vehicleId, viewer!.tenantId!);
 
       const fresh = await db.contract.findUniqueOrThrow({
         where: { id: current.id },

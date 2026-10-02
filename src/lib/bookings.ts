@@ -81,6 +81,8 @@ export interface BookingDTO {
 
   notes: string | null;
   createdAt: string;
+  /** Από πού ήρθε: "manual", "walk-in" (γρήγορο συμβόλαιο) κ.λπ. */
+  source: string;
 
   /**
    * Ο αριθμός του τιμολογίου της κράτησης, αν έχει εκδοθεί — αλλιώς null.
@@ -170,6 +172,7 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
     extras: readExtrasSnapshot(b.extras),
     notes: b.notes,
     createdAt: b.createdAt.toISOString(),
+    source: b.source,
     invoiceNumber: b.invoice?.invoiceNumber ?? null,
 
     partnerId: b.partnerId,

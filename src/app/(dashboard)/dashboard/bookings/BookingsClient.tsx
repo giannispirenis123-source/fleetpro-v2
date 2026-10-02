@@ -644,6 +644,11 @@ function BookingCard({
         <span>
           <User size={13} /> {b.customerName}
         </span>
+        {b.source === "walk-in" && (
+          <span className="dash-booking-source">
+            <FileSignature size={13} /> {tr("bookings.fromContract")}
+          </span>
+        )}
         <span>
           <Car size={13} /> {b.vehicleName} · {b.vehiclePlate}
         </span>

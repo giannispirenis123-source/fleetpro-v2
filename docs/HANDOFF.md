@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 04/10/2026 · **main:** `2757fed` (Γρήγορο συμβόλαιο walk-in, PR #7, squash — **live**) · **Κατάσταση:** Συμβόλαια **Φάση Β, 1ο κομμάτι** (φωτογραφίες ζημιών + αφαίρεση καυσίμου επιστροφής) σε commit τοπικά στο branch `ccr-b5be91be-58whz5`, **όχι pushed/merged**. Θέλει **bucket + 2 env vars + SQL `13`** πριν το push.
+**Ημερομηνία:** 04/10/2026 · **main:** `7f8915b` (Συμβόλαια Φάση Β (1) — φωτογραφίες ζημιών, PR #8, squash — **live**· bucket `fleetpro-files`, env vars και SQL `13` έχουν γίνει) · **Κατάσταση:** συγκεκριμένα μηνύματα σφάλματος Storage + έλεγχος εκκίνησης, σε PR. **Χωρίς SQL.**
 
-> **Επόμενο βήμα:** ο Giannis (1) φτιάχνει το bucket `fleetpro-files` στο Supabase Storage (§3.1), (2) βάζει `SUPABASE_URL` και `SUPABASE_SERVICE_ROLE_KEY` στο Vercel (§3), (3) τρέχει το `prisma/sql/13-contract-photos.sql` (verification `3 | 0`) και **μετά** λέει «push». Έπειτα: υπόλοιπη Φάση Β (λογότυπο, δίπλωμα, link πελάτη `/c/[token]`) και Φάση Γ, §8.1.
+> **Επόμενο βήμα:** υπόλοιπη Φάση Β (λογότυπο, δίπλωμα, link πελάτη `/c/[token]`) και Φάση Γ, §8.1. Αν το ανέβασμα φωτογραφιών αποτυγχάνει, το μήνυμα στην οθόνη και τα logs του Vercel (`Storage …`, `[FleetPro] …`) λένε ακριβώς την αιτία (§5).
 
 ---
 
@@ -38,7 +38,9 @@ Push πριν το SQL = σπασμένη παραγωγή (ο κώδικας ζ
 | `SUPABASE_URL` | Η διεύθυνση του project (`https://<ref>.supabase.co`). Supabase → Project Settings → API (Data API) → Project URL | Vercel (όλα τα environments) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Κλειδί **μόνο για τον server** (Storage). Supabase → Project Settings → API Keys → `service_role` (legacy, `eyJ…`) **ή** ένα νέο Secret key (`sb_secret_…`) — δουλεύουν και τα δύο. **Ποτέ** με πρόθεμα `NEXT_PUBLIC_`, ποτέ στον client | Vercel (όλα τα environments) |
 
-Χωρίς τα δύο `SUPABASE_*` η εφαρμογή δουλεύει κανονικά· απλώς το ανέβασμα φωτογραφιών απαντά «δεν έχει ρυθμιστεί» (503) και οι υπάρχουσες δεν εμφανίζονται.
+Χωρίς τα δύο `SUPABASE_*` η εφαρμογή δουλεύει κανονικά· απλώς το ανέβασμα φωτογραφιών απαντά ποια μεταβλητή λείπει (503) και οι υπάρχουσες δεν εμφανίζονται. Το `SUPABASE_URL` πρέπει να ξεκινά με `https://` και να τελειώνει σε `.supabase.co` (χωρίς διαδρομή)· αλλιώς ίδιο σαφές μήνυμα. Στην εκκίνηση (`src/instrumentation.ts`) γράφεται στα logs `[FleetPro] Supabase Storage: ρυθμίσεις εντάξει` ή τι φταίει.
+
+`STORAGE_ALLOW_LOCAL_URL=1` υπάρχει **μόνο για τοπικές δοκιμές** με mock Storage σε `http://localhost` — **ποτέ** στο Vercel.
 
 ### 3.1 Supabase Storage
 
@@ -100,7 +102,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Συμβόλαια Φάση Α (`/dashboard/contracts`): δίγλωσσο συμβόλαιο, οδηγοί, υπογραφές, κλείδωμα, εκτύπωση Α4 | ✅ |
 | Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα με ΦΠΑ (ένα σύνολο με την κράτηση), κάρτα (μόνο 4 ψηφία), αναζήτηση `searchText` | ✅ |
 | Γρήγορο συμβόλαιο «walk-in» (`/dashboard/contracts/new`): πελάτης + κράτηση + συμβόλαιο σε μία transaction, κράτηση που ακολουθεί το συμβόλαιο | ✅ live (`2757fed`, PR #7) |
-| Συμβόλαια Φάση Β (1ο κομμάτι): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα (Supabase Storage), φωτογραφίες στις ζημιές της σελίδας Service, χωρίς καύσιμο επιστροφής | ✅ κώδικας · ⏳ bucket + env + SQL `13` |
+| Συμβόλαια Φάση Β (1ο κομμάτι): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα (Supabase Storage), φωτογραφίες στις ζημιές της σελίδας Service, χωρίς καύσιμο επιστροφής | ✅ live (`7f8915b`, PR #8) |
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
@@ -156,6 +158,19 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - **Αντίγραφο Α4:** συμπαγές πλέγμα 6 μικρογραφιών ανά σειρά (ύψος 22mm) ανά ομάδα με ετικέτα ΕΛ/EN, ώρα λήψης και σημείωση· οι ομάδες τυπώνονται μόνο αν έχουν φωτογραφίες ή περιγραφή. Το κουμπί «Εκτύπωση» περιμένει να φορτώσουν οι εικόνες (έως 15″) πριν ανοίξει το παράθυρο.
   - **Service & Ζημιές:** ίδιο component στη φόρμα της ζημιάς (μόνο σε αποθηκευμένη ζημιά) + κουμπί 📷 με το πλήθος στη γραμμή (προβολή για όσους έχουν `damages.view`). Αποθήκευση στο υπάρχον `damages.photos` (TEXT[]) ως διαδρομές, ατομικά με `array_append`/`array_remove`, όριο **20**. Ανέβασμα/διαγραφή `damages.edit`, προβολή `damages.view`. Τιμές που είναι ήδη URL (παλιά) εμφανίζονται ως έχουν. Η διαγραφή ζημιάς ή πρόχειρου συμβολαίου σβήνει και τα αρχεία (best effort).
   - Το `searchText` **δεν** περιέχει φωτογραφίες ή περιγραφές ζημιών.
+  - **Σφάλματα Storage (συγκεκριμένα, ασφαλή):** κάθε αποτυχία γίνεται `StorageError` με κωδικό, και ο server απαντά `{ message, code }`. Το UI δείχνει το `message` στην ουρά ανεβάσματος (με «Ξανά»):
+
+    | Αιτία | `code` | HTTP | Μήνυμα (σύνοψη) |
+    |---|---|---|---|
+    | Λείπει env var | `CONFIG_MISSING` | 503 | «Λείπει η μεταβλητή SUPABASE_… » (όνομα, ποτέ τιμή) |
+    | Λάθος μορφή URL | `CONFIG_INVALID_URL` | 503 | «πρέπει να ξεκινά με https:// και να τελειώνει σε .supabase.co» |
+    | Storage 401/403 | `AUTH` | 502 | λάθος κλειδί στο `SUPABASE_SERVICE_ROLE_KEY` (όχι anon/publishable) |
+    | Storage 404 | `BUCKET_NOT_FOUND` | 502 | δεν βρέθηκε το bucket `fleetpro-files` (ή άλλο project) |
+    | Storage 400/415 | `REJECTED_TYPE` | 415 | Allowed MIME types του bucket |
+    | Storage 413 | `REJECTED_SIZE` | 413 | όριο μεγέθους του bucket |
+    | Δίκτυο | `NETWORK` | 502 | δεν υπάρχει σύνδεση με το Storage |
+
+    Η Supabase συχνά απαντά HTTP 400 με `statusCode` μέσα στο σώμα (π.χ. `"404"` + «Bucket not found»)· η κατάταξη κοιτά πρώτα αυτό. **Logs:** `Storage upload: HTTP 400 → BUCKET_NOT_FOUND — statusCode 404 · Bucket not found`· το κείμενο της Supabase περνά από `scrub()` (βγάζει URLs, JWT, `sb_secret_…`, `token=`/`key=`, `Bearer`), σε σφάλμα δικτύου γράφεται μόνο ο κωδικός (π.χ. `ECONNREFUSED`). Όταν η απάντηση δεν είναι JSON (π.χ. 413 του Vercel), το UI δείχνει μήνυμα ανά HTTP status. Τα ίδια ισχύουν για τις ζημιές της σελίδας Service.
 
 ## 6. Migrations
 
@@ -166,7 +181,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - **09-platform-discounts:** το commit έγινε merge στο `main` (`90d2d70`) κατόπιν ρητού αιτήματος· **αξίζει επιβεβαίωση** ότι έτρεξε (αναμενόμενο verification `1 | 1 | 9 | 1 | 3`). Αν δεν έχει τρέξει, σκάει μόνο το tab «Εκπτώσεις» του `/super-admin`.
 - **10-finance:** έχει τρέξει (verification `3 | 0`).
 - **12-contracts-update:** έχει τρέξει (verification `3 | 1 | 1`).
-- **13-contract-photos: ΔΕΝ έχει τρέξει ακόμα.** `contracts."damagePhotos"` (JSONB, default `[]`), `"damageNotesPickup"`, `"damageNotesReturn"` (TEXT). Τίποτα δεν σβήνεται. Αναμενόμενο verification `3 | 0`. Δοκιμάστηκε δύο φορές σε τοπική PostgreSQL 16· `prisma migrate diff` → «empty migration». Πρέπει να τρέξει **πριν** το push.
+- **13-contract-photos:** έχει τρέξει (verification `3 | 0`). `contracts."damagePhotos"` (JSONB, default `[]`), `"damageNotesPickup"`, `"damageNotesReturn"` (TEXT).
 - **Walk-in (02/10/2026): κανένα νέο SQL.** Χρησιμοποιεί την υπάρχουσα `bookings.source`. Τοπική PostgreSQL 16 με `01 → 12`: `prisma migrate diff` → «empty migration».
 - **11-contracts:** έχει τρέξει (verification `1 | 4 | 1 | 18 | 2 | 0 | 0`).
 - _(ιστορικό 11)_ Enum `ContractStatus`, 18 στήλες στο `contracts`, 4 στο `tenants`, `extras.excess`, unique `(tenantId, contractNumber)`, index `(tenantId, status)`, `contracts.sign` → `contracts.edit`, backfill STAFF. Αναμενόμενο verification `1 | 4 | 1 | 18 | 2 | 0 | 0`. Έτρεξε στο Supabase πριν το merge του PR #5.
@@ -181,7 +196,6 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🔴 Υψηλή | **Κωδικός Super Admin σε 3 αρχεία** (`SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`) σε καθαρή μορφή. Πρέπει να αφαιρεθεί από το repo. |
 | 🔴 Υψηλή | **Rotate** κωδικού Supabase DB και `JWT_SECRET` — παλιές τιμές υπάρχουν στο git history. |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
-| 🟠 Μεσαία | Πριν το push της Φάσης Β (1): bucket `fleetpro-files` + `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` στο Vercel + SQL `13` (§3, §6). |
 | 🟡 Χαμηλή | Η σελίδα `/login` βγάζει σφάλματα hydration του React (#425/#418) στον browser — υπήρχαν πριν τα Συμβόλαια, δεν επηρεάζουν τη σύνδεση. |
 | 🟡 Χαμηλή | Το `09-platform-discounts` να επιβεβαιωθεί ότι έτρεξε (§6). |
 | 🟡 Χαμηλή | Το `08` να επιβεβαιωθεί ότι έτρεξε (§6). |
@@ -203,7 +217,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Συμβόλαια Φάση Β (1ο κομμάτι): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα και συμπίεση στον browser, ιδιωτικό Supabase Storage με signed URLs, ίδιο component και server κώδικας στις ζημιές της σελίδας Service, αφαίρεση καυσίμου επιστροφής, παλιό σκαρίφημα μόνο για ανάγνωση, migration `13` |
+| _(αυτό το commit)_ | Φωτογραφίες: συγκεκριμένο μήνυμα ανά αιτία σφάλματος Storage (env var, μορφή URL, κλειδί, bucket, τύπος/μέγεθος, δίκτυο), ασφαλή logs χωρίς κλειδιά/tokens/URLs, έλεγχος ρυθμίσεων στην εκκίνηση (`instrumentation.ts`). Χωρίς SQL |
+| `7f8915b` | Συμβόλαια Φάση Β (1ο κομμάτι) (PR #8, squash): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα και συμπίεση στον browser, ιδιωτικό Supabase Storage με signed URLs, ίδιο component και server κώδικας στις ζημιές της σελίδας Service, αφαίρεση καυσίμου επιστροφής, παλιό σκαρίφημα μόνο για ανάγνωση, migration `13` |
 | `2757fed` | Γρήγορο συμβόλαιο «walk-in» (PR #7, squash): `/dashboard/contracts/new`, πελάτης + κράτηση + συμβόλαιο σε μία transaction, κοινή δημιουργία κράτησης (`bookingCreate.ts`), η κράτηση ακολουθεί το συμβόλαιο (ACTIVE/COMPLETED + τιμολόγιο ON_COMPLETION), ένδειξη «Από συμβόλαιο». Χωρίς SQL |
 | `7d84ef8` | Συμβόλαια Φάση Α+ (PR #6): «+ Νέο συμβόλαιο», πρόσθετα στο συμβόλαιο με ένα σύνολο κράτησης/συμβολαίου (transaction), ανάλυση με ΦΠΑ, στοιχεία κάρτας μόνο για αναγνώριση, αναζήτηση `searchText` + GIN trigram, σελιδοποίηση, migration `12` |
 | `4ecc5f7` | Συμβόλαια Φάση Α (PR #5): δίγλωσσο συμβόλαιο από κράτηση, απεριόριστοι οδηγοί, υπογραφή με δάχτυλο, καύσιμο σε όγδοα, σκαρίφημα ζημιών, αλλαγή οχήματος, κλείδωμα, εκτύπωση Α4, στοιχεία εταιρίας + όροι ΕΛ/EN στις Ρυθμίσεις, απαλλαγή στις ασφάλειες, migration `11` |

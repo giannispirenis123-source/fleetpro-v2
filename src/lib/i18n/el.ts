@@ -734,6 +734,10 @@ export const el = {
     errorDelete: "Η διαγραφή απέτυχε",
     errorSave: "Η αποθήκευση απέτυχε",
     errorLoad: "Οι φωτογραφίες δεν φορτώθηκαν",
+    errorSession: "Η σύνδεσή σου έληξε. Κάνε ξανά είσοδο.",
+    errorPermission: "Δεν έχεις δικαίωμα να ανεβάσεις φωτογραφίες εδώ.",
+    errorTooLarge: "Η φωτογραφία είναι πολύ μεγάλη για ανέβασμα.",
+    errorType: "Επιτρέπονται μόνο εικόνες JPEG, PNG ή WebP.",
     errorConnection: "Σφάλμα σύνδεσης",
   },
 

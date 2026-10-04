@@ -60,6 +60,20 @@ function send(
   });
 }
 
+/**
+ * Μήνυμα όταν ο server δεν έδωσε δικό του (π.χ. το Vercel κόβει μεγάλο
+ * αίτημα με 413 σε HTML, ή timeout). Με μήνυμα από τον server, δείχνεται
+ * εκείνο — είναι πάντα συγκεκριμένο και ασφαλές.
+ */
+function uploadErrorFor(status: number, tr: (k: string) => string): string {
+  if (status === 401) return tr("photos.errorSession");
+  if (status === 403) return tr("photos.errorPermission");
+  if (status === 413) return tr("photos.errorTooLarge");
+  if (status === 415 || status === 400) return tr("photos.errorType");
+  if (status === 0 || status === 502 || status === 504) return tr("photos.errorConnection");
+  return `${tr("photos.errorUpload")} (HTTP ${status})`;
+}
+
 export default function PhotoManager({
   photos,
   uploadUrl,
@@ -137,7 +151,7 @@ export default function PhotoManager({
       } else {
         patch(item.key, {
           status: "error",
-          message: res.body.message || tr("photos.errorUpload"),
+          message: res.body.message || uploadErrorFor(res.status, tr),
         });
       }
     } catch {

@@ -19,9 +19,8 @@ import {
   discardPhoto,
   noteFrom,
   readPhotoUpload,
-  storageConfigured,
-  storageFailed,
-  storageUnavailable,
+  storageErrorResponse,
+  storageProblemResponse,
   storePhoto,
   takenAtFrom,
 } from "@/lib/photos";
@@ -55,7 +54,8 @@ export const POST = withPermission(
         select: { id: true, tenantId: true, status: true, drivers: true, damagePhotos: true },
       });
       if (!c) return notFound("Το συμβόλαιο δεν βρέθηκε");
-      if (!storageConfigured()) return storageUnavailable();
+      const misconfigured = storageProblemResponse();
+      if (misconfigured) return misconfigured;
 
       const read = await readPhotoUpload(req);
       if (!read.ok) return read.response;
@@ -107,9 +107,7 @@ export const POST = withPermission(
       const urls = await signUrls([photo.path]);
       return created({ photo: toPhotoDTO(photo, urls.get(photo.path) ?? null) });
     } catch (error) {
-      if (error instanceof StorageError) {
-        return storageFailed();
-      }
+      if (error instanceof StorageError) return storageErrorResponse(error);
       console.error(error);
       return serverError();
     }

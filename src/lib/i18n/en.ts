@@ -733,6 +733,10 @@ export const en: Dictionary = {
     errorDelete: "Delete failed",
     errorSave: "Save failed",
     errorLoad: "Could not load the photos",
+    errorSession: "Your session expired. Please sign in again.",
+    errorPermission: "You don't have permission to upload photos here.",
+    errorTooLarge: "The photo is too large to upload.",
+    errorType: "Only JPEG, PNG or WebP images are allowed.",
     errorConnection: "Connection error",
   },
 

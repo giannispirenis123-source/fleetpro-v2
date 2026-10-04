@@ -11,7 +11,7 @@ import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { badRequest } from "./api";
 import { PHOTO_MAX_BYTES, PHOTO_NOTE_MAX, type PhotoType } from "./photoShared";
-import { StorageError, removeObjects, storageConfigured, uploadObject } from "./storage";
+import { StorageError, removeObjects, storageStartupProblem, uploadObject } from "./storage";
 
 const EXT: Record<PhotoType, string> = {
   "image/jpeg": "jpg",
@@ -39,16 +39,23 @@ function sniff(b: Uint8Array): PhotoType | null {
   return null;
 }
 
-/** 503 όταν λείπουν τα env vars του Storage. */
-export const storageUnavailable = () =>
+/**
+ * Η απάντηση για ένα σφάλμα Storage: συγκεκριμένο, ασφαλές μήνυμα (ονόματα
+ * μεταβλητών, ποτέ τιμές) + κωδικός αιτίας για το UI.
+ */
+export const storageErrorResponse = (e: StorageError) =>
   NextResponse.json(
-    { success: false, message: "Η αποθήκευση φωτογραφιών δεν έχει ρυθμιστεί ακόμα" },
-    { status: 503 }
+    { success: false, message: e.message, code: e.code },
+    { status: e.httpStatus }
   );
 
-/** Το Storage απάντησε με σφάλμα — γενικό μήνυμα, ποτέ λεπτομέρειες. */
-export const storageFailed = (message = "Το ανέβασμα απέτυχε. Δοκίμασε ξανά.") =>
-  NextResponse.json({ success: false, message }, { status: 502 });
+/** Λείπει/είναι λάθος κάποια ρύθμιση; Τότε η απάντηση· αλλιώς null. */
+export function storageProblemResponse(): NextResponse | null {
+  const problem = storageStartupProblem();
+  if (!problem) return null;
+  console.error(`Storage config: ${problem.code} — ${problem.message}`);
+  return storageErrorResponse(problem);
+}
 
 export interface PhotoUpload {
   bytes: Uint8Array;
@@ -128,4 +135,4 @@ export async function storePhoto(prefix: string, upload: PhotoUpload) {
 /** Ο καλών δεν κατάφερε να γράψει στη βάση: το αρχείο δεν πρέπει να μείνει. */
 export const discardPhoto = (path: string) => removeObjects([path]);
 
-export { StorageError, storageConfigured };
+export { StorageError };

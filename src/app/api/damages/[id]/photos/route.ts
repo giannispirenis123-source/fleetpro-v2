@@ -10,9 +10,8 @@ import {
   StorageError,
   discardPhoto,
   readPhotoUpload,
-  storageConfigured,
-  storageFailed,
-  storageUnavailable,
+  storageErrorResponse,
+  storageProblemResponse,
   storePhoto,
 } from "@/lib/photos";
 import { appendDamagePhoto, findDamage, signDamagePhotos } from "@/lib/damagePhotos";
@@ -38,7 +37,8 @@ export const POST = withPermission(
     try {
       const damage = await findDamage(session.tenantId!, params!.id);
       if (!damage) return notFound("Η ζημιά δεν βρέθηκε");
-      if (!storageConfigured()) return storageUnavailable();
+      const misconfigured = storageProblemResponse();
+      if (misconfigured) return misconfigured;
       if (damage.photos.length >= MAX_DAMAGE_PHOTOS) {
         return conflict(`Έως ${MAX_DAMAGE_PHOTOS} φωτογραφίες ανά ζημιά`);
       }
@@ -58,7 +58,7 @@ export const POST = withPermission(
       const [photo] = await signDamagePhotos([stored.path]);
       return created({ photo });
     } catch (error) {
-      if (error instanceof StorageError) return storageFailed();
+      if (error instanceof StorageError) return storageErrorResponse(error);
       console.error(error);
       return serverError();
     }

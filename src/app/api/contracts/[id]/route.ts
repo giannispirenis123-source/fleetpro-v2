@@ -5,14 +5,16 @@ export const dynamic = "force-dynamic";
 // Ο server κρίνει τι αλλάζει:
 //  · DRAFT      → όλα. Αν αλλάξουν στοιχεία παραλαβής ενώ υπάρχουν
 //                 υπογραφές, οι υπογραφές σβήνονται (άλλαξε ό,τι υπέγραψαν).
-//  · SIGNED     → μόνο καύσιμο παράδοσης, αλλαγές οχήματος, παρατηρήσεις.
+//  · SIGNED     → μόνο ζημιές παράδοσης (κείμενο), αλλαγές οχήματος, παρατηρήσεις.
+//  (Οι φωτογραφίες ζημιών έχουν δικό τους route: …/photos.)
 //  · COMPLETED  → τίποτα.
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ok, badRequest, conflict, notFound, noContent, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { anySigned, readDrivers } from "@/lib/contracts";
+import { anySigned, readDrivers, readPhotos } from "@/lib/contracts";
+import { removeObjects } from "@/lib/storage";
 import { readExtrasSnapshot } from "@/lib/pricing";
 import {
   CONTRACT_INCLUDE,
@@ -99,7 +101,9 @@ export const PATCH = withPermission(
       }
 
       /* ── Πάντα επιτρεπτά (εκτός COMPLETED) ── */
-      if (patch.fuelReturn !== undefined) data.fuelReturn = patch.fuelReturn;
+      if (patch.damageNotesReturn !== undefined) {
+        data.damageNotesReturn = patch.damageNotesReturn || null;
+      }
       if (patch.notes !== undefined) data.notes = patch.notes || null;
       if (patch.vehicleChanges !== undefined) {
         const resolved = await resolveVehicleChanges(tenantId, patch.vehicleChanges);
@@ -123,8 +127,8 @@ export const PATCH = withPermission(
         if (patch.pickupLocation !== undefined) data.pickupLocation = patch.pickupLocation || null;
         if (patch.returnLocation !== undefined) data.returnLocation = patch.returnLocation || null;
         if (patch.fuelPickup !== undefined) data.fuelPickup = patch.fuelPickup;
-        if (patch.damageMarks !== undefined) {
-          data.damageMarks = patch.damageMarks as unknown as Prisma.InputJsonValue;
+        if (patch.damageNotesPickup !== undefined) {
+          data.damageNotesPickup = patch.damageNotesPickup || null;
         }
         if (patch.paymentMethod !== undefined) data.paymentMethod = patch.paymentMethod;
         if (patch.depositAmount !== undefined) data.depositAmount = patch.depositAmount;
@@ -199,7 +203,7 @@ export const DELETE = withPermission(
     try {
       const current = await db.contract.findFirst({
         where: { ...contractScope(viewer!), id: params!.id },
-        select: { id: true, status: true, drivers: true, bookingId: true },
+        select: { id: true, status: true, drivers: true, bookingId: true, damagePhotos: true },
       });
       if (!current) return notFound("Το συμβόλαιο δεν βρέθηκε");
 
@@ -208,6 +212,8 @@ export const DELETE = withPermission(
       }
 
       await db.contract.delete({ where: { id: current.id } });
+      // Τα αρχεία των φωτογραφιών φεύγουν κι αυτά (best effort).
+      await removeObjects(readPhotos(current.damagePhotos).map((p) => p.path));
       return noContent();
     } catch (error) {
       console.error(error);

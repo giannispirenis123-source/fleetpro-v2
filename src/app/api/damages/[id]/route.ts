@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { ok, badRequest, notFound, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
+import { removeObjects } from "@/lib/storage";
 import { DAMAGE_INCLUDE, toDamageDTO } from "@/lib/service";
 import {
   damageUpdateSchema,
@@ -89,11 +90,13 @@ export const DELETE = withPermission(
     try {
       const current = await db.damage.findFirst({
         where: { id: params!.id, tenantId: session.tenantId! },
-        select: { id: true },
+        select: { id: true, photos: true },
       });
       if (!current) return notFound("Η ζημιά δεν βρέθηκε");
 
       await db.damage.delete({ where: { id: current.id } });
+      // Και τα αρχεία των φωτογραφιών (best effort).
+      await removeObjects(current.photos ?? []);
 
       return ok({ id: current.id });
     } catch (error) {

@@ -160,3 +160,41 @@
   .cdoc-signs { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- Φωτογραφίες ζημιών: συμπαγές πλέγμα μικρογραφιών ---------- */
+.cdoc-photo-group { margin-bottom: 6px; break-inside: avoid; }
+.cdoc-photo-group h3,
+.cdoc-damages h3 { font-size: 9.5px; font-weight: 700; margin: 4px 0 3px; }
+.cdoc-photos {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+.cdoc-photos figure { margin: 0; break-inside: avoid; }
+.cdoc-photos img,
+.cdoc-photo-missing {
+  display: block;
+  width: 100%;
+  height: 22mm;
+  object-fit: cover;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  background: #f4f4f4;
+}
+.cdoc-photo-missing { display: flex; align-items: center; justify-content: center; color: #999; }
+.cdoc-photos figcaption {
+  font-size: 7px;
+  line-height: 1.25;
+  color: #555;
+  margin-top: 1px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+@media (max-width: 640px) {
+  .cdoc-photos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media print {
+  .cdoc-photos { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
+}

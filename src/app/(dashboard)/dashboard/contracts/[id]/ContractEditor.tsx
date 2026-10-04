@@ -32,7 +32,9 @@ import {
   randomId,
   type ContractDTO,
   type ContractDriver,
-  type DamageMark,
+  photoLockOf,
+  type ContractPhotoDTO,
+  type PhotoGroup,
   CARD_BRANDS,
   CARD_EXPIRY_RE,
   LAST4_RE,
@@ -46,6 +48,8 @@ import type { ExtraDTO } from "@/lib/extras";
 import DamageSketch from "@/components/contracts/DamageSketch";
 import FuelGauge from "@/components/contracts/FuelGauge";
 import SignaturePad from "@/components/contracts/SignaturePad";
+import PhotoManager from "@/components/photos/PhotoManager";
+import { MAX_CONTRACT_PHOTOS, type PhotoItem } from "@/lib/photoShared";
 
 const INTL: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
@@ -89,8 +93,8 @@ interface FormState {
   pickupLocation: string;
   returnLocation: string;
   fuelPickup: number | null;
-  fuelReturn: number | null;
-  damageMarks: DamageMark[];
+  damageNotesPickup: string;
+  damageNotesReturn: string;
   vehicleChanges: ChangeRow[];
   notes: string;
   paymentMethod: string;
@@ -133,8 +137,8 @@ const fromContract = (c: ContractDTO): FormState => ({
   pickupLocation: c.pickupLocation,
   returnLocation: c.returnLocation,
   fuelPickup: c.fuelPickup,
-  fuelReturn: c.fuelReturn,
-  damageMarks: c.damageMarks,
+  damageNotesPickup: c.damageNotesPickup,
+  damageNotesReturn: c.damageNotesReturn,
   vehicleChanges: c.vehicleChanges.map((v) => ({ id: v.id, vehicleId: v.vehicleId, date: v.date })),
   notes: c.notes,
   paymentMethod: c.paymentMethod ?? "",
@@ -153,7 +157,7 @@ const pickupPart = (f: FormState) =>
     pickupLocation: f.pickupLocation,
     returnLocation: f.returnLocation,
     fuelPickup: f.fuelPickup,
-    damageMarks: f.damageMarks,
+    damageNotesPickup: f.damageNotesPickup,
     paymentMethod: f.paymentMethod,
     depositAmount: f.depositAmount,
     depositMethod: f.depositMethod,
@@ -165,12 +169,16 @@ const pickupPart = (f: FormState) =>
 const extrasPart = (f: FormState) => f.extraIds.join(",");
 
 const afterPart = (f: FormState) =>
-  JSON.stringify({ fuelReturn: f.fuelReturn, vehicleChanges: f.vehicleChanges, notes: f.notes });
+  JSON.stringify({
+    damageNotesReturn: f.damageNotesReturn,
+    vehicleChanges: f.vehicleChanges,
+    notes: f.notes,
+  });
 
 /** Το σώμα του PATCH. Σε υπογεγραμμένο στέλνουμε μόνο ό,τι επιτρέπεται. */
 function toPayload(f: FormState, locked: boolean, sendExtras: boolean) {
   const after = {
-    fuelReturn: f.fuelReturn,
+    damageNotesReturn: f.damageNotesReturn,
     vehicleChanges: f.vehicleChanges,
     notes: f.notes,
   };
@@ -181,7 +189,7 @@ function toPayload(f: FormState, locked: boolean, sendExtras: boolean) {
     pickupLocation: f.pickupLocation,
     returnLocation: f.returnLocation,
     fuelPickup: f.fuelPickup,
-    damageMarks: f.damageMarks,
+    damageNotesPickup: f.damageNotesPickup,
     paymentMethod: f.paymentMethod || null,
     depositAmount: f.depositAmount.trim() === "" ? null : Number(f.depositAmount),
     depositMethod: f.depositMethod || null,
@@ -226,7 +234,9 @@ export default function ContractEditor({
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [signing, setSigning] = useState<ContractDriver | null>(null);
-  const [selectedMark, setSelectedMark] = useState<string | null>(null);
+  // Οι φωτογραφίες ζουν χωριστά από τη φόρμα: ανεβαίνουν αμέσως και δεν
+  // περιμένουν το «Αποθήκευση» (ούτε το χαλάνε αν αποτύχουν).
+  const [photos, setPhotos] = useState<ContractPhotoDTO[]>(initialContract.damagePhotos);
   const [openChanges, setOpenChanges] = useState(initialContract.vehicleChanges.length > 0);
   const [openNotes, setOpenNotes] = useState(initialContract.notes.trim() !== "");
   const [openTerms, setOpenTerms] = useState(false);
@@ -409,19 +419,27 @@ export default function ContractEditor({
   const removeDriver = (id: string) =>
     setForm((f) => ({ ...f, drivers: f.drivers.filter((d) => d.id !== id) }));
 
-  /* ── Σημάδια ζημιών ── */
-  const addMark = (x: number, y: number) => {
-    const mark = { id: randomId(), x, y, note: "" };
-    setForm((f) => ({ ...f, damageMarks: [...f.damageMarks, mark] }));
-    setSelectedMark(mark.id);
+  /* ── Φωτογραφίες ζημιών ── */
+  const photoProps = (group: PhotoGroup) => {
+    const lock = photoLockOf(group, contract.status, contract.drivers);
+    return {
+      photos: photos.filter((p) => p.group === group),
+      uploadUrl: `/api/contracts/${contract.id}/photos`,
+      fields: { group },
+      itemUrl: (id: string) => `/api/contracts/${contract.id}/photos/${id}`,
+      editable: can.edit && lock === null,
+      withNotes: true,
+      // Το όριο είναι ανά συμβόλαιο: όσες χωράνε ακόμα συνολικά.
+      max: MAX_CONTRACT_PHOTOS - photos.length + photos.filter((p) => p.group === group).length,
+      lockedText: lock ? tr(`contracts.photosLock_${lock}`) : undefined,
+      counter: `${photos.length}/${MAX_CONTRACT_PHOTOS}`,
+      onAdded: (p: PhotoItem) =>
+        setPhotos((list) => [...list, { ...p, group }]),
+      onRemoved: (id: string) => setPhotos((list) => list.filter((p) => p.id !== id)),
+      onNoted: (id: string, note: string) =>
+        setPhotos((list) => list.map((p) => (p.id === id ? { ...p, note } : p))),
+    };
   };
-  const setMarkNote = (id: string, note: string) =>
-    setForm((f) => ({
-      ...f,
-      damageMarks: f.damageMarks.map((m) => (m.id === id ? { ...m, note } : m)),
-    }));
-  const removeMark = (id: string) =>
-    setForm((f) => ({ ...f, damageMarks: f.damageMarks.filter((m) => m.id !== id) }));
 
   /* ── Αλλαγές οχήματος ── */
   const addChange = () =>
@@ -668,61 +686,75 @@ export default function ContractEditor({
                 onChange={(e) => set("returnLocation", e.target.value)}
               />
             </label>
-            <span className="dash-field-label">
-              {fuelWord} · {tr("contracts.atReturn")}
-            </span>
-            <FuelGauge
-              value={form.fuelReturn}
-              disabled={readOnly}
-              label={fuelWord}
-              onChange={(v) => set("fuelReturn", v)}
-            />
+            {/* Παλιά συμβόλαια: το καύσιμο παράδοσης μόνο για ανάγνωση. */}
+            {contract.fuelReturn !== null && (
+              <>
+                <span className="dash-field-label">
+                  {fuelWord} · {tr("contracts.atReturn")} · {tr("contracts.legacy")}
+                </span>
+                <FuelGauge value={contract.fuelReturn} disabled label={fuelWord} onChange={() => {}} />
+              </>
+            )}
           </div>
         </div>
       </section>
 
-      {/* ── Σκαρίφημα ζημιών ── */}
+      {/* ── Ζημιές: φωτογραφίες παραλαβής / παράδοσης ── */}
       <section className="dash-panel dash-contract-section">
-        <h2 className="dash-section-title">{tr("contracts.damages")}</h2>
-        <p className="dash-form-note">
-          {pickupReadOnly ? tr("contracts.damagesReadOnly") : tr("contracts.damagesHelp")}
-        </p>
-        <div className="dash-damage">
-          <DamageSketch
-            className="dash-damage-sketch"
-            marks={form.damageMarks}
-            onAdd={pickupReadOnly ? undefined : addMark}
-            onSelect={setSelectedMark}
-            selectedId={selectedMark}
-          />
-          <ol className="dash-damage-list">
-            {form.damageMarks.length === 0 && (
-              <li className="dash-form-note">{tr("contracts.noDamages")}</li>
-            )}
-            {form.damageMarks.map((m, i) => (
-              <li key={m.id} className={m.id === selectedMark ? "active" : ""}>
-                <span className="dash-damage-num">{i + 1}</span>
-                <input
-                  value={m.note}
-                  placeholder={tr("contracts.damageNote")}
-                  disabled={pickupReadOnly}
-                  maxLength={200}
-                  onFocus={() => setSelectedMark(m.id)}
-                  onChange={(e) => setMarkNote(m.id, e.target.value)}
-                />
-                {!pickupReadOnly && (
-                  <button
-                    className="dash-icon-btn"
-                    onClick={() => removeMark(m.id)}
-                    aria-label={tr("contracts.removeMark")}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ol>
+        <h2 className="dash-section-title">{tr("contracts.damagesTitle")}</h2>
+        <p className="dash-form-note">{tr("contracts.photosHelp")}</p>
+
+        <div className="dash-damage-group">
+          <h3 className="dash-contract-sub">{tr("contracts.damagesPickup")}</h3>
+          <PhotoManager {...photoProps("PICKUP")} />
+          <label className="dash-field">
+            {tr("contracts.damageDescription")}
+            <textarea
+              className="dash-textarea"
+              rows={2}
+              maxLength={1000}
+              value={form.damageNotesPickup}
+              disabled={pickupReadOnly}
+              placeholder={pickupReadOnly ? "" : tr("contracts.damageNote")}
+              onChange={(e) => set("damageNotesPickup", e.target.value)}
+            />
+          </label>
         </div>
+
+        <div className="dash-damage-group">
+          <h3 className="dash-contract-sub">{tr("contracts.damagesReturn")}</h3>
+          <PhotoManager {...photoProps("RETURN")} />
+          <label className="dash-field">
+            {tr("contracts.damageDescription")}
+            <textarea
+              className="dash-textarea"
+              rows={2}
+              maxLength={1000}
+              value={form.damageNotesReturn}
+              disabled={readOnly}
+              placeholder={readOnly ? "" : tr("contracts.damageNote")}
+              onChange={(e) => set("damageNotesReturn", e.target.value)}
+            />
+          </label>
+        </div>
+
+        {/* Παλιά συμβόλαια με σκαρίφημα: μόνο ανάγνωση, μικρό. */}
+        {contract.damageMarks.length > 0 && (
+          <div className="dash-damage-legacy">
+            <h3 className="dash-contract-sub">{tr("contracts.oldSketch")}</h3>
+            <div className="dash-damage">
+              <DamageSketch className="dash-damage-sketch dash-damage-sketch--small" marks={contract.damageMarks} />
+              <ol className="dash-damage-list">
+                {contract.damageMarks.map((m, i) => (
+                  <li key={m.id}>
+                    <span className="dash-damage-num">{i + 1}</span>
+                    <span>{m.note || "—"}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ── Οικονομικά ── */}
@@ -1061,14 +1093,11 @@ export default function ContractEditor({
           <div className="dash-contract-complete">
             <button
               className="dash-btn dash-btn--primary"
-              disabled={busy || dirty || contract.fuelReturn === null}
+              disabled={busy || dirty}
               onClick={complete}
             >
               <CheckCircle2 size={16} /> {tr("contracts.complete")}
             </button>
-            {contract.fuelReturn === null && (
-              <span className="dash-form-note">{tr("contracts.completeNeedsFuel")}</span>
-            )}
           </div>
         )}
         {allSigned(contract.drivers) && contract.signedAt && (

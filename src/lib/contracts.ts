@@ -124,6 +124,10 @@ export const BI = {
   battery: "Μπαταρία / Battery",
   damages: "Ζημιές στην παραλαβή / Damages at pick-up",
   noDamages: "Χωρίς σημειωμένες ζημιές / No marked damages",
+  damagesTitle: "Ζημιές / Damages",
+  damagesPickup: "Ζημιές παραλαβής / Damages at pick-up",
+  damagesReturn: "Ζημιές παράδοσης / Damages at return",
+  oldSketch: "Σκαρίφημα (παλιά καταγραφή) / Sketch (legacy)",
   vehicleChanges: "Αλλαγή οχήματος / Vehicle change",
   date: "Ημερομηνία / Date",
   notes: "Παρατηρήσεις / Remarks",
@@ -422,8 +426,14 @@ export interface ContractDTO {
   pickupLocation: string;
   returnLocation: string;
   fuelPickup: number | null;
+  /** ΠΑΛΙΟ — μόνο ανάγνωση σε παλιά συμβόλαια. */
   fuelReturn: number | null;
+  /** ΠΑΛΙΟ σκαρίφημα — μόνο ανάγνωση. */
   damageMarks: DamageMark[];
+  /** Τα URLs υπάρχουν μόνο όταν φορτώνει σελίδα (loadContract)· αλλιώς null. */
+  damagePhotos: ContractPhotoDTO[];
+  damageNotesPickup: string;
+  damageNotesReturn: string;
   vehicleChanges: VehicleChange[];
   notes: string;
   paymentMethod: PaymentMethod | null;
@@ -603,4 +613,62 @@ export function searchTokens(query: string): string[] {
     if (token) out.push(token);
   }
   return Array.from(new Set(out));
+}
+
+/* ─────────────────────────────────────────────
+   Φωτογραφίες ζημιών
+   ───────────────────────────────────────────── */
+
+export const PHOTO_GROUPS = ["PICKUP", "RETURN"] as const;
+export type PhotoGroup = (typeof PHOTO_GROUPS)[number];
+
+/** Όπως αποθηκεύεται στο contracts."damagePhotos". */
+export interface ContractPhoto {
+  id: string;
+  path: string;
+  group: PhotoGroup;
+  takenAt: string | null;
+  note: string;
+}
+
+export interface ContractPhotoDTO {
+  id: string;
+  group: PhotoGroup;
+  url: string | null;
+  takenAt: string | null;
+  note: string;
+}
+
+export function readPhotos(value: unknown): ContractPhoto[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((x) => {
+    if (!x || typeof x !== "object") return [];
+    const o = x as Record<string, unknown>;
+    if (typeof o.id !== "string" || typeof o.path !== "string") return [];
+    const group = o.group === "RETURN" ? "RETURN" : "PICKUP";
+    return [
+      {
+        id: o.id,
+        path: o.path,
+        group,
+        takenAt: typeof o.takenAt === "string" ? o.takenAt : null,
+        note: typeof o.note === "string" ? o.note : "",
+      } satisfies ContractPhoto,
+    ];
+  });
+}
+
+/**
+ * Γιατί δεν αλλάζουν οι φωτογραφίες μιας ομάδας — ο ΙΔΙΟΣ κανόνας για UI
+ * και server. Παραλαβή: μόνο πριν την πρώτη υπογραφή. Παράδοση: μέχρι την
+ * ολοκλήρωση.
+ */
+export function photoLockOf(
+  group: PhotoGroup,
+  status: string,
+  drivers: ContractDriver[]
+): "signed" | "completed" | null {
+  if (status === "COMPLETED") return "completed";
+  if (group === "PICKUP" && (status !== "DRAFT" || anySigned(drivers))) return "signed";
+  return null;
 }

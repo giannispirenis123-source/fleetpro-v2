@@ -2185,3 +2185,82 @@
 .dash-booking-source { color: var(--primary); font-weight: 600; }
 .dash-walkin-extra-fields .dash-code-row { flex-wrap: nowrap; }
 .dash-walkin-extra-fields .dash-code-row input { flex: 1; min-width: 0; }
+
+/* ---------- Φωτογραφίες (συμβόλαια + ζημιές) ---------- */
+.dash-photos { display: flex; flex-direction: column; gap: 10px; }
+.dash-photos-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dash-photos-actions .dash-form-note { margin: 0 0 0 auto; }
+.dash-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+.dash-photo {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+}
+.dash-photo img,
+.dash-photo-missing {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--hover);
+}
+.dash-photo-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-4);
+}
+.dash-photo figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 6px 7px;
+  font-size: 11.5px;
+}
+.dash-photo figcaption input {
+  flex: 1 1 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+.dash-photo figcaption .dash-icon-btn { margin-left: auto; }
+.dash-photo-time { color: var(--text-4); font-variant-numeric: tabular-nums; }
+.dash-photo-note { flex: 1 1 100%; color: var(--text-2); }
+.dash-photo-queue { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dash-photo-queue li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 12.5px;
+}
+.dash-photo-queue li.error { border-color: var(--bad-border); background: var(--bad-bg); }
+.dash-photo-queue-name { font-weight: 600; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-photo-queue-msg { color: var(--text-3); }
+.dash-photo-queue li.error .dash-photo-queue-msg { color: var(--bad-fg); }
+.dash-photo-bar { flex: 1; min-width: 80px; height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.dash-photo-bar span { display: block; height: 100%; background: var(--primary); transition: width 0.15s; }
+.dash-damage-group { display: flex; flex-direction: column; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); }
+.dash-damage-group:first-of-type { border-top: none; padding-top: 4px; }
+.dash-damage-legacy { border-top: 1px solid var(--border); padding-top: 12px; }
+.dash-damage-sketch--small { max-width: 110px; }
+.dash-damage-legacy .dash-damage { grid-template-columns: 110px 1fr; }

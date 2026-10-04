@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Wrench,
@@ -11,7 +11,10 @@ import {
   Check,
   Car,
   CalendarDays,
+  Camera,
 } from "lucide-react";
+import PhotoManager from "@/components/photos/PhotoManager";
+import { MAX_DAMAGE_PHOTOS, type PhotoItem } from "@/lib/photoShared";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
   SERVICE_TYPES,
@@ -96,6 +99,7 @@ export default function ServiceClient({
   const [editRecord, setEditRecord] = useState<ServiceRecordDTO | null>(null);
   const [newRecord, setNewRecord] = useState(false);
   const [editDamage, setEditDamage] = useState<DamageDTO | null>(null);
+  const [photosDamage, setPhotosDamage] = useState<DamageDTO | null>(null);
   const [newDamage, setNewDamage] = useState(false);
   const [removing, setRemoving] = useState<
     { kind: Tab; id: string; label: string } | null
@@ -135,6 +139,9 @@ export default function ServiceClient({
         ? prev.map((x) => (x.id === d.id ? d : x))
         : [d, ...prev]
     );
+
+  const setPhotoCount = (id: string, n: number) =>
+    setDamages((prev) => prev.map((x) => (x.id === id ? { ...x, photoCount: n } : x)));
 
   const resolve = async (d: DamageDTO) => {
     if (busyId) return;
@@ -332,6 +339,7 @@ export default function ServiceClient({
               busy={busyId === d.id}
               onResolve={() => resolve(d)}
               onEdit={() => setEditDamage(d)}
+              onPhotos={() => setPhotosDamage(d)}
               onDelete={() =>
                 setRemoving({
                   kind: "DAMAGES",
@@ -361,12 +369,40 @@ export default function ServiceClient({
         />
       )}
 
+      {photosDamage && (
+        <div className="dash-modal-overlay" onClick={() => setPhotosDamage(null)}>
+          <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="dash-modal-header">
+              <h2>
+                {tr("photos.title")} · {photosDamage.description}
+              </h2>
+              <button
+                className="dash-modal-close"
+                onClick={() => setPhotosDamage(null)}
+                aria-label={tr("service.cancel")}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="dash-modal-body">
+              <DamagePhotos
+                damageId={photosDamage.id}
+                editable={can.damagesEdit}
+                onCount={(n) => setPhotoCount(photosDamage.id, n)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {(newDamage || editDamage) && (
         <DamageModal
           damage={editDamage}
           vehicles={vehicles}
           bookings={bookings}
           tr={tr}
+          canEditPhotos={can.damagesEdit}
+          onPhotoCount={(id, n) => setPhotoCount(id, n)}
           onClose={() => {
             setNewDamage(false);
             setEditDamage(null);
@@ -517,6 +553,7 @@ function DamageRow({
   busy,
   onResolve,
   onEdit,
+  onPhotos,
   onDelete,
 }: {
   damage: DamageDTO;
@@ -526,6 +563,7 @@ function DamageRow({
   busy: boolean;
   onResolve: () => void;
   onEdit: () => void;
+  onPhotos: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -571,6 +609,16 @@ function DamageRow({
             disabled={busy}
           >
             <Check size={16} /> {tr("service.markResolved")}
+          </button>
+        )}
+        {(d.photoCount > 0 || can.damagesEdit) && (
+          <button
+            className="dash-btn"
+            onClick={onPhotos}
+            title={tr("photos.title")}
+            aria-label={tr("photos.title")}
+          >
+            <Camera size={15} /> {d.photoCount}
           </button>
         )}
         {can.damagesEdit && (
@@ -825,6 +873,8 @@ function DamageModal({
   vehicles,
   bookings,
   tr,
+  canEditPhotos,
+  onPhotoCount,
   onClose,
   onSaved,
 }: {
@@ -832,6 +882,8 @@ function DamageModal({
   vehicles: Option[];
   bookings: BookingOption[];
   tr: (key: string) => string;
+  canEditPhotos: boolean;
+  onPhotoCount: (id: string, n: number) => void;
   onClose: () => void;
   onSaved: (d: DamageDTO) => void;
 }) {
@@ -1008,6 +1060,21 @@ function DamageModal({
             </label>
           </div>
 
+          <div className="dash-damage-group">
+            <span className="dash-field-label">
+              <Camera size={13} /> {tr("photos.title")}
+            </span>
+            {damage ? (
+              <DamagePhotos
+                damageId={damage.id}
+                editable={canEditPhotos}
+                onCount={(n) => onPhotoCount(damage.id, n)}
+              />
+            ) : (
+              <p className="dash-form-note">{tr("photos.saveFirst")}</p>
+            )}
+          </div>
+
           <p className="dash-form-note">{tr("service.damageNote")}</p>
           {error && <div className="dash-form-error">{error}</div>}
         </div>
@@ -1026,5 +1093,63 @@ function DamageModal({
         </div>
       </div>
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Φωτογραφίες ζημιάς — το ΙΔΙΟ component με το συμβόλαιο
+   ───────────────────────────────────────────── */
+
+function DamagePhotos({
+  damageId,
+  editable,
+  onCount,
+}: {
+  damageId: string;
+  editable: boolean;
+  onCount: (n: number) => void;
+}) {
+  const tr = useT();
+  const [photos, setPhotos] = useState<PhotoItem[] | null>(null);
+  const [error, setError] = useState("");
+
+  // Τα προσωρινά URLs βγαίνουν μόνο όταν ανοίξει η ζημιά.
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/damages/${damageId}/photos`, { cache: "no-store" })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (!alive) return;
+        if (!res.ok) setError(body.message || tr("photos.errorLoad"));
+        else setPhotos(body.data.photos);
+      })
+      .catch(() => alive && setError(tr("photos.errorConnection")));
+    return () => {
+      alive = false;
+    };
+  }, [damageId, tr]);
+
+  // Το πλήθος στη λίστα ζημιών ακολουθεί τις αλλαγές.
+  const count = photos?.length;
+  useEffect(() => {
+    if (count !== undefined) onCount(count);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [count]);
+
+  if (error) return <div className="dash-form-error">{error}</div>;
+  if (!photos) return <p className="dash-form-note">{tr("photos.loading")}</p>;
+
+  return (
+    <PhotoManager
+      photos={photos}
+      uploadUrl={`/api/damages/${damageId}/photos`}
+      itemUrl={(id) => `/api/damages/${damageId}/photos/${id}`}
+      editable={editable}
+      withNotes={false}
+      max={MAX_DAMAGE_PHOTOS}
+      onAdded={(p) => setPhotos((list) => [...(list ?? []), p])}
+      onRemoved={(id) => setPhotos((list) => (list ?? []).filter((p) => p.id !== id))}
+      onNoted={() => {}}
+    />
   );
 }

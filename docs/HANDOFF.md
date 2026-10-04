@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 02/10/2026 · **main:** `7d84ef8` (Συμβόλαια Φάση Α+, SQL `12` έχει τρέξει) · **Κατάσταση:** **Γρήγορο συμβόλαιο «walk-in»** σε commit τοπικά στο branch `ccr-b5be91be-58whz5`, **όχι pushed/merged**. **Χωρίς SQL.**
+**Ημερομηνία:** 04/10/2026 · **main:** `2757fed` (Γρήγορο συμβόλαιο walk-in, PR #7, squash — **live**) · **Κατάσταση:** Συμβόλαια **Φάση Β, 1ο κομμάτι** (φωτογραφίες ζημιών + αφαίρεση καυσίμου επιστροφής) σε commit τοπικά στο branch `ccr-b5be91be-58whz5`, **όχι pushed/merged**. Θέλει **bucket + 2 env vars + SQL `13`** πριν το push.
 
-> **Επόμενο βήμα:** ο Giannis λέει «push» (δεν χρειάζεται τίποτα στο Supabase). Έπειτα: Συμβόλαια **Φάση Β** (αρχεία σε Supabase Storage + link πελάτη) και **Φάση Γ** (διάβασμα διπλώματος με AI), §8.1.
+> **Επόμενο βήμα:** ο Giannis (1) φτιάχνει το bucket `fleetpro-files` στο Supabase Storage (§3.1), (2) βάζει `SUPABASE_URL` και `SUPABASE_SERVICE_ROLE_KEY` στο Vercel (§3), (3) τρέχει το `prisma/sql/13-contract-photos.sql` (verification `3 | 0`) και **μετά** λέει «push». Έπειτα: υπόλοιπη Φάση Β (λογότυπο, δίπλωμα, link πελάτη `/c/[token]`) και Φάση Γ, §8.1.
 
 ---
 
@@ -35,6 +35,18 @@ Push πριν το SQL = σπασμένη παραγωγή (ο κώδικας ζ
 | `DIRECT_URL` | Απευθείας σύνδεση (πόρτα 5432) — το ζητά το `schema.prisma` | Vercel + `.env.local` |
 | `JWT_SECRET` | Υπογραφή JWT (≥32 χαρακτήρες· χωρίς αυτό η εφαρμογή σταματά) | Vercel + `.env.local` |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Διαβάζονται **μόνο** από το `prisma/seed.ts` — η εφαρμογή δεν τα χρειάζεται | τοπικά, αν τρέξει το seed |
+| `SUPABASE_URL` | Η διεύθυνση του project (`https://<ref>.supabase.co`). Supabase → Project Settings → API (Data API) → Project URL | Vercel (όλα τα environments) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Κλειδί **μόνο για τον server** (Storage). Supabase → Project Settings → API Keys → `service_role` (legacy, `eyJ…`) **ή** ένα νέο Secret key (`sb_secret_…`) — δουλεύουν και τα δύο. **Ποτέ** με πρόθεμα `NEXT_PUBLIC_`, ποτέ στον client | Vercel (όλα τα environments) |
+
+Χωρίς τα δύο `SUPABASE_*` η εφαρμογή δουλεύει κανονικά· απλώς το ανέβασμα φωτογραφιών απαντά «δεν έχει ρυθμιστεί» (503) και οι υπάρχουσες δεν εμφανίζονται.
+
+### 3.1 Supabase Storage
+
+- **Bucket:** `fleetpro-files` (το όνομα είναι σταθερά στον κώδικα: `STORAGE_BUCKET` στο `src/lib/storage.ts`).
+- **Ρυθμίσεις:** Public bucket = **OFF** (ιδιωτικό) · Restrict file size = **5 MB** · Allowed MIME types = `image/jpeg, image/png, image/webp`.
+- **Policies (RLS):** καμία. Ο server μιλά με service role, που παρακάμπτει τις policies· χωρίς policies κανείς άλλος (anon/authenticated) δεν διαβάζει ή γράφει.
+- **Διαδρομές:** `tenantId/contractId/pickup|return/<τυχαίο>.jpg` για συμβόλαια, `tenantId/damages/damageId/<τυχαίο>.jpg` για ζημιές.
+- Προβολή μόνο με **signed URLs** (1 ώρα) που βγαίνουν σε κάθε φόρτωση σελίδας.
 
 Τιμές: **γνωστές στον Giannis**, ποτέ στη συζήτηση ή σε αρχείο.
 
@@ -87,7 +99,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Αναφορές (`/dashboard/reports`): KPIs έτους, μήνες, top 5 οχήματα, κατηγορίες | ✅ |
 | Συμβόλαια Φάση Α (`/dashboard/contracts`): δίγλωσσο συμβόλαιο, οδηγοί, υπογραφές, κλείδωμα, εκτύπωση Α4 | ✅ |
 | Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα με ΦΠΑ (ένα σύνολο με την κράτηση), κάρτα (μόνο 4 ψηφία), αναζήτηση `searchText` | ✅ |
-| Γρήγορο συμβόλαιο «walk-in» (`/dashboard/contracts/new`): πελάτης + κράτηση + συμβόλαιο σε μία transaction, κράτηση που ακολουθεί το συμβόλαιο | ✅ κώδικας · χωρίς SQL |
+| Γρήγορο συμβόλαιο «walk-in» (`/dashboard/contracts/new`): πελάτης + κράτηση + συμβόλαιο σε μία transaction, κράτηση που ακολουθεί το συμβόλαιο | ✅ live (`2757fed`, PR #7) |
+| Συμβόλαια Φάση Β (1ο κομμάτι): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα (Supabase Storage), φωτογραφίες στις ζημιές της σελίδας Service, χωρίς καύσιμο επιστροφής | ✅ κώδικας · ⏳ bucket + env + SQL `13` |
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
@@ -131,16 +144,29 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - **Σύγκρουση:** ίδια με τις κρατήσεις — 409 με τη λίστα· `override: true` μόνο με `bookings.override` (STAFF → 403). Στη φόρμα ο STAFF δεν βλέπει κουμπί αποθήκευσης όσο υπάρχει σύγκρουση.
   - **PARTNER:** μόνο με **και τα δύο** δικαιώματα· `partnerId` κλειδωμένο στον εαυτό του (`resolvePartnerId`), άρα βλέπει μόνο τα δικά του (`bookingScope`/`contractScope`). Δεν έχει τα δικαιώματα στα defaults. Ο νέος πελάτης φτιάχνεται χωρίς `customers.create` (αρκούν τα δύο δικαιώματα, όπως αποφασίστηκε).
   - Βοηθητικά API: `GET /api/contracts/walk-in?pickupDate&pickupTime&returnDate&returnTime[&all=1]` (διαθέσιμα οχήματα, ένα ερώτημα για όλο τον στόλο + `findConflicts` με προετοιμασία· εξαιρούνται `MAINTENANCE`/`INACTIVE`) και `GET /api/contracts/walk-in/customers?q=` / `?phone=&email=`.
+- **Φωτογραφίες ζημιών (Φάση Β, 1ο κομμάτι):**
+  - **Αποθήκευση:** Supabase Storage, ιδιωτικό bucket `fleetpro-files` (§3.1), μέσω του REST API με `fetch` από τον server (`src/lib/storage.ts`, καμία νέα εξάρτηση). Το κλειδί δεν φεύγει ποτέ από τον server· στα logs γράφεται μόνο ο κωδικός HTTP.
+  - **Κοινός κώδικας:** `src/lib/photos.ts` (έλεγχος αρχείου από τα πρώτα bytes — JPEG/PNG/WebP, όριο **4 MB** ανά αρχείο λόγω του ορίου 4,5 MB του Vercel, τυχαίο όνομα, ανέβασμα) και ένα component `src/components/photos/PhotoManager.tsx` (κουμπιά «📷 Κάμερα» με `capture="environment"` και «Συλλογή», συμπίεση στον browser `src/lib/imageCompress.ts` σε 1600px / JPEG 0.8 που σβήνει και τα EXIF/GPS, ανέβασμα ένα-ένα με πρόοδο, «Ξανά» σε αποτυχία, μικρογραφίες, σημείωση, διαγραφή). Τα χρησιμοποιούν **και** τα συμβόλαια **και** οι ζημιές.
+  - **Συμβόλαιο:** ενότητα «Ζημιές» με ομάδες **Παραλαβή** / **Παράδοση** (αντί για σκαρίφημα), φωτογραφίες + ελεύθερη περιγραφή ανά ομάδα. Στήλες `contracts."damagePhotos"` (JSONB `[{id, path, group, takenAt, note}]`), `"damageNotesPickup"`, `"damageNotesReturn"` (migration `13`). Όριο **40** φωτογραφίες ανά συμβόλαιο. Ώρα λήψης από το `lastModified` του αρχείου (λογικές τιμές μόνο, αλλιώς ώρα server).
+  - **Κανόνες (`photoLockOf`, ίδιος σε UI και server):** παραλαβή → προσθήκη/διαγραφή/σημείωση **μόνο πριν την πρώτη υπογραφή**· παράδοση → μέχρι την **ολοκλήρωση**. Η περιγραφή παραλαβής είναι στοιχείο παραλαβής (κλειδώνει όπως τα άλλα)· η περιγραφή παράδοσης αλλάζει και μετά την υπογραφή.
+  - **Ανεξάρτητα από τη φόρμα:** οι φωτογραφίες ανεβαίνουν αμέσως (`POST/PATCH/DELETE /api/contracts/[id]/photos[/photoId]`) με raw SQL μέσα σε transaction με `SELECT … FOR UPDATE` και **χωρίς** να αλλάζει το `updatedAt` — αλλιώς το αισιόδοξο κλείδωμα της φόρμας θα έβγαζε «άλλαξε στο μεταξύ». Αποτυχία ανεβάσματος = καθαρό μήνυμα + «Ξανά»· η φόρμα και η αποθήκευσή της δεν επηρεάζονται. Αν αποτύχει η εγγραφή στη βάση, το αρχείο σβήνεται. Διαγραφή: πρώτα η βάση, μετά το αρχείο.
+  - **Δικαιώματα:** ανέβασμα/σημείωση/διαγραφή `contracts.edit`, προβολή `contracts.view`· `contractScope` (tenant + PARTNER μόνο τα δικά του → 404 στα ξένα). Το middleware αφήνει ήδη τα `/api/*` στους δικούς τους φύλακες· δεν χρειάστηκε αλλαγή.
+  - **Καύσιμο επιστροφής:** βγήκε από τη φόρμα και το αντίγραφο· η «Ολοκλήρωση» δεν το απαιτεί πια. Η στήλη `fuelReturn` **μένει** (όχι drop)· σε παλιά συμβόλαια με τιμή εμφανίζεται μόνο για ανάγνωση. Το PATCH δεν το δέχεται πια.
+  - **Παλιό σκαρίφημα:** τα `damageMarks` **μένουν**· αν υπάρχουν, εμφανίζονται μικρά και μόνο για ανάγνωση στη φόρμα και στο αντίγραφο. Τα νέα συμβόλαια δεν έχουν σκαρίφημα, και το PATCH δεν δέχεται πια `damageMarks`.
+  - **Αντίγραφο Α4:** συμπαγές πλέγμα 6 μικρογραφιών ανά σειρά (ύψος 22mm) ανά ομάδα με ετικέτα ΕΛ/EN, ώρα λήψης και σημείωση· οι ομάδες τυπώνονται μόνο αν έχουν φωτογραφίες ή περιγραφή. Το κουμπί «Εκτύπωση» περιμένει να φορτώσουν οι εικόνες (έως 15″) πριν ανοίξει το παράθυρο.
+  - **Service & Ζημιές:** ίδιο component στη φόρμα της ζημιάς (μόνο σε αποθηκευμένη ζημιά) + κουμπί 📷 με το πλήθος στη γραμμή (προβολή για όσους έχουν `damages.view`). Αποθήκευση στο υπάρχον `damages.photos` (TEXT[]) ως διαδρομές, ατομικά με `array_append`/`array_remove`, όριο **20**. Ανέβασμα/διαγραφή `damages.edit`, προβολή `damages.view`. Τιμές που είναι ήδη URL (παλιά) εμφανίζονται ως έχουν. Η διαγραφή ζημιάς ή πρόχειρου συμβολαίου σβήνει και τα αρχεία (best effort).
+  - Το `searchText` **δεν** περιέχει φωτογραφίες ή περιγραφές ζημιών.
 
 ## 6. Migrations
 
-Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
 - **09-platform-discounts:** το commit έγινε merge στο `main` (`90d2d70`) κατόπιν ρητού αιτήματος· **αξίζει επιβεβαίωση** ότι έτρεξε (αναμενόμενο verification `1 | 1 | 9 | 1 | 3`). Αν δεν έχει τρέξει, σκάει μόνο το tab «Εκπτώσεις» του `/super-admin`.
 - **10-finance:** έχει τρέξει (verification `3 | 0`).
 - **12-contracts-update:** έχει τρέξει (verification `3 | 1 | 1`).
+- **13-contract-photos: ΔΕΝ έχει τρέξει ακόμα.** `contracts."damagePhotos"` (JSONB, default `[]`), `"damageNotesPickup"`, `"damageNotesReturn"` (TEXT). Τίποτα δεν σβήνεται. Αναμενόμενο verification `3 | 0`. Δοκιμάστηκε δύο φορές σε τοπική PostgreSQL 16· `prisma migrate diff` → «empty migration». Πρέπει να τρέξει **πριν** το push.
 - **Walk-in (02/10/2026): κανένα νέο SQL.** Χρησιμοποιεί την υπάρχουσα `bookings.source`. Τοπική PostgreSQL 16 με `01 → 12`: `prisma migrate diff` → «empty migration».
 - **11-contracts:** έχει τρέξει (verification `1 | 4 | 1 | 18 | 2 | 0 | 0`).
 - _(ιστορικό 11)_ Enum `ContractStatus`, 18 στήλες στο `contracts`, 4 στο `tenants`, `extras.excess`, unique `(tenantId, contractNumber)`, index `(tenantId, status)`, `contracts.sign` → `contracts.edit`, backfill STAFF. Αναμενόμενο verification `1 | 4 | 1 | 18 | 2 | 0 | 0`. Έτρεξε στο Supabase πριν το merge του PR #5.
@@ -155,20 +181,21 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🔴 Υψηλή | **Κωδικός Super Admin σε 3 αρχεία** (`SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`) σε καθαρή μορφή. Πρέπει να αφαιρεθεί από το repo. |
 | 🔴 Υψηλή | **Rotate** κωδικού Supabase DB και `JWT_SECRET` — παλιές τιμές υπάρχουν στο git history. |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
+| 🟠 Μεσαία | Πριν το push της Φάσης Β (1): bucket `fleetpro-files` + `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` στο Vercel + SQL `13` (§3, §6). |
 | 🟡 Χαμηλή | Η σελίδα `/login` βγάζει σφάλματα hydration του React (#425/#418) στον browser — υπήρχαν πριν τα Συμβόλαια, δεν επηρεάζουν τη σύνδεση. |
 | 🟡 Χαμηλή | Το `09-platform-discounts` να επιβεβαιωθεί ότι έτρεξε (§6). |
 | 🟡 Χαμηλή | Το `08` να επιβεβαιωθεί ότι έτρεξε (§6). |
 
 ## 8. Roadmap
 
-**Επόμενο: Συμβόλαια Φάση Β.**
+**Επόμενο: Συμβόλαια Φάση Β (υπόλοιπο).**
 
-1. **Συμβόλαια** — ✅ Φάση Α (§5). **Φάση Β:** ιδιωτικό bucket στο Supabase Storage, λογότυπο εταιρίας, φωτογραφίες ζημιών παραλαβής/παράδοσης, φωτογραφία διπλώματος (μόνο εσωτερικά, signed URL), δημόσιο link πελάτη `/c/[token]` (λήξη 90 ημέρες μετά την επιστροφή, ακύρωση/επαναδημιουργία, noindex, QR στο αντίγραφο), μεταφορά υπογραφών σε Storage. **Φάση Γ:** «Συμπλήρωση από φωτογραφία» διπλώματος μέσω Anthropic API (μόνο πρόταση, ποτέ αυτόματη αποθήκευση). Επίσης εκκρεμεί το `invoiceIssueTrigger = ON_CONTRACT`.
+1. **Συμβόλαια** — ✅ Φάση Α (§5). **Φάση Β:** ✅ ιδιωτικό bucket + φωτογραφίες ζημιών παραλαβής/παράδοσης (§5). Απομένουν: λογότυπο εταιρίας, φωτογραφία διπλώματος (μόνο εσωτερικά, signed URL), δημόσιο link πελάτη `/c/[token]` (λήξη 90 ημέρες μετά την επιστροφή, ακύρωση/επαναδημιουργία, noindex, QR στο αντίγραφο), μεταφορά υπογραφών σε Storage. **Φάση Γ:** «Συμπλήρωση από φωτογραφία» διπλώματος μέσω Anthropic API (μόνο πρόταση, ποτέ αυτόματη αποθήκευση). Επίσης εκκρεμεί το `invoiceIssueTrigger = ON_CONTRACT`.
 2. ~~**Οικονομικά**~~ — ✅ ολοκληρώθηκε (§5).
 3. ~~**Αναφορές**~~ — ✅ ολοκληρώθηκε (§5).
 4. **Τιμολόγια: email** — το `invoiceSendMode = AUTO` και το πεδίο `Invoice.sentAt` υπάρχουν, η αποστολή όχι.
 5. **Τιμολόγια: PDF** — σήμερα μόνο εκτύπωση από browser.
-6. **Φωτογραφίες ζημιών** — τα πεδία `photos[]` / `documents[]` υπάρχουν, θέλουν Cloudinary.
+6. ~~**Φωτογραφίες ζημιών**~~ — ✅ με Supabase Storage (§5). Το `documents[]` και το πακέτο `cloudinary` μένουν αχρησιμοποίητα.
 7. **Billing / Stripe** — συνδρομές εταιριών. Οι εκπτώσεις συνδρομών (`PlatformDiscount`) υπάρχουν ήδη· το billing θα εφαρμόζει την ενεργή με `platformDiscountStatus` + `discountedPrice`.
 8. **Δημόσιο site κρατήσεων** — το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
 
@@ -176,7 +203,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Γρήγορο συμβόλαιο «walk-in»: `/dashboard/contracts/new`, πελάτης + κράτηση + συμβόλαιο σε μία transaction, κοινή δημιουργία κράτησης (`bookingCreate.ts`), η κράτηση ακολουθεί το συμβόλαιο (ACTIVE/COMPLETED + τιμολόγιο ON_COMPLETION), ένδειξη «Από συμβόλαιο». Χωρίς SQL |
+| _(αυτό το commit)_ | Συμβόλαια Φάση Β (1ο κομμάτι): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα και συμπίεση στον browser, ιδιωτικό Supabase Storage με signed URLs, ίδιο component και server κώδικας στις ζημιές της σελίδας Service, αφαίρεση καυσίμου επιστροφής, παλιό σκαρίφημα μόνο για ανάγνωση, migration `13` |
+| `2757fed` | Γρήγορο συμβόλαιο «walk-in» (PR #7, squash): `/dashboard/contracts/new`, πελάτης + κράτηση + συμβόλαιο σε μία transaction, κοινή δημιουργία κράτησης (`bookingCreate.ts`), η κράτηση ακολουθεί το συμβόλαιο (ACTIVE/COMPLETED + τιμολόγιο ON_COMPLETION), ένδειξη «Από συμβόλαιο». Χωρίς SQL |
 | `7d84ef8` | Συμβόλαια Φάση Α+ (PR #6): «+ Νέο συμβόλαιο», πρόσθετα στο συμβόλαιο με ένα σύνολο κράτησης/συμβολαίου (transaction), ανάλυση με ΦΠΑ, στοιχεία κάρτας μόνο για αναγνώριση, αναζήτηση `searchText` + GIN trigram, σελιδοποίηση, migration `12` |
 | `4ecc5f7` | Συμβόλαια Φάση Α (PR #5): δίγλωσσο συμβόλαιο από κράτηση, απεριόριστοι οδηγοί, υπογραφή με δάχτυλο, καύσιμο σε όγδοα, σκαρίφημα ζημιών, αλλαγή οχήματος, κλείδωμα, εκτύπωση Α4, στοιχεία εταιρίας + όροι ΕΛ/EN στις Ρυθμίσεις, απαλλαγή στις ασφάλειες, migration `11` |
 | `17a1799` | Σελίδα Αναφορές (PR #4): KPIs έτους, έσοδα/έξοδα ανά μήνα, top 5 οχήματα, κατηγορίες, `reports.view` (όχι PARTNER). Χωρίς SQL |

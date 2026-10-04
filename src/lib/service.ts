@@ -116,6 +116,8 @@ export interface DamageDTO {
   resolvedAt: string | null;
   notes: string | null;
   createdAt: string;
+  /** Πλήθος φωτογραφιών· τα URLs φορτώνονται όταν ανοίξει η ζημιά. */
+  photoCount: number;
 }
 
 export function toDamageDTO(
@@ -135,6 +137,7 @@ export function toDamageDTO(
     resolvedAt: dayOf(d.resolvedAt),
     notes: d.notes,
     createdAt: d.createdAt.toISOString(),
+    photoCount: d.photos?.length ?? 0,
   };
 }
 

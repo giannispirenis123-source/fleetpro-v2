@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 04/10/2026 · **main:** `7f8915b` (Συμβόλαια Φάση Β (1) — φωτογραφίες ζημιών, PR #8, squash — **live**· bucket `fleetpro-files`, env vars και SQL `13` έχουν γίνει) · **Κατάσταση:** συγκεκριμένα μηνύματα σφάλματος Storage + έλεγχος εκκίνησης, σε PR. **Χωρίς SQL.**
+**Ημερομηνία:** 04/10/2026 · **main:** το squash του PR «fix: ανεκτικός έλεγχος SUPABASE_URL» (#10), πάνω από `a2e02a8` (#9). Ένα commit δεν μπορεί να γράψει το δικό του hash· το ακριβές βγαίνει με `git log -1 origin/main`. · **Κατάσταση:** φωτογραφίες ζημιών live (bucket `fleetpro-files`, env vars, SQL `13` έγιναν). **Χωρίς SQL.**
 
 > **Επόμενο βήμα:** υπόλοιπη Φάση Β (λογότυπο, δίπλωμα, link πελάτη `/c/[token]`) και Φάση Γ, §8.1. Αν το ανέβασμα φωτογραφιών αποτυγχάνει, το μήνυμα στην οθόνη και τα logs του Vercel (`Storage …`, `[FleetPro] …`) λένε ακριβώς την αιτία (§5).
 
@@ -35,10 +35,10 @@ Push πριν το SQL = σπασμένη παραγωγή (ο κώδικας ζ
 | `DIRECT_URL` | Απευθείας σύνδεση (πόρτα 5432) — το ζητά το `schema.prisma` | Vercel + `.env.local` |
 | `JWT_SECRET` | Υπογραφή JWT (≥32 χαρακτήρες· χωρίς αυτό η εφαρμογή σταματά) | Vercel + `.env.local` |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Διαβάζονται **μόνο** από το `prisma/seed.ts` — η εφαρμογή δεν τα χρειάζεται | τοπικά, αν τρέξει το seed |
-| `SUPABASE_URL` | Η διεύθυνση του project (`https://<ref>.supabase.co`). Supabase → Project Settings → API (Data API) → Project URL | Vercel (όλα τα environments) |
+| `SUPABASE_URL` | Η διεύθυνση του project, **ακριβώς `https://<ref>.supabase.co`** (χωρίς διαδρομή). Supabase → Project Settings → API (Data API) → Project URL | Vercel (όλα τα environments) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Κλειδί **μόνο για τον server** (Storage). Supabase → Project Settings → API Keys → `service_role` (legacy, `eyJ…`) **ή** ένα νέο Secret key (`sb_secret_…`) — δουλεύουν και τα δύο. **Ποτέ** με πρόθεμα `NEXT_PUBLIC_`, ποτέ στον client | Vercel (όλα τα environments) |
 
-Χωρίς τα δύο `SUPABASE_*` η εφαρμογή δουλεύει κανονικά· απλώς το ανέβασμα φωτογραφιών απαντά ποια μεταβλητή λείπει (503) και οι υπάρχουσες δεν εμφανίζονται. Το `SUPABASE_URL` πρέπει να ξεκινά με `https://` και να τελειώνει σε `.supabase.co` (χωρίς διαδρομή)· αλλιώς ίδιο σαφές μήνυμα. Στην εκκίνηση (`src/instrumentation.ts`) γράφεται στα logs `[FleetPro] Supabase Storage: ρυθμίσεις εντάξει` ή τι φταίει.
+Χωρίς τα δύο `SUPABASE_*` η εφαρμογή δουλεύει κανονικά· απλώς το ανέβασμα φωτογραφιών απαντά ποια μεταβλητή λείπει (503) και οι υπάρχουσες δεν εμφανίζονται. Το `SUPABASE_URL` πρέπει να είναι `https://<ref>.supabase.co`. Ο έλεγχος (`normalizeSupabaseUrl` στο `src/lib/storage.ts`, **ένα** σημείο για ανέβασμα, signed URLs και έλεγχο εκκίνησης) ανέχεται μικρές διαφορές αντιγραφής: κενά/αλλαγές γραμμής και εισαγωγικά γύρω από την τιμή, «/» στο τέλος, καταλήξεις `/rest/v1`, `/storage/v1`, `/auth/v1`. Αν δοθεί διεύθυνση του dashboard (`supabase.com/dashboard/project/<ref>`), σχηματίζεται αυτόματα το `https://<ref>.supabase.co` και γράφεται στα logs ότι έγινε διόρθωση (χωρίς την τιμή). Οτιδήποτε άλλο → το σαφές μήνυμα `CONFIG_INVALID_URL`. Tests: `npm test` (`tests/supabase-url.test.mjs`, με τον ενσωματωμένο `node:test`). Στην εκκίνηση (`src/instrumentation.ts`) γράφεται στα logs `[FleetPro] Supabase Storage: ρυθμίσεις εντάξει` ή τι φταίει.
 
 `STORAGE_ALLOW_LOCAL_URL=1` υπάρχει **μόνο για τοπικές δοκιμές** με mock Storage σε `http://localhost` — **ποτέ** στο Vercel.
 
@@ -217,7 +217,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Φωτογραφίες: συγκεκριμένο μήνυμα ανά αιτία σφάλματος Storage (env var, μορφή URL, κλειδί, bucket, τύπος/μέγεθος, δίκτυο), ασφαλή logs χωρίς κλειδιά/tokens/URLs, έλεγχος ρυθμίσεων στην εκκίνηση (`instrumentation.ts`). Χωρίς SQL |
+| _(αυτό το commit)_ | Ανεκτικός έλεγχος `SUPABASE_URL` (κενά, εισαγωγικά, «/», `/rest/v1` κ.λπ., διεύθυνση dashboard → `https://<ref>.supabase.co`) σε ένα σημείο, unit tests με `node:test` (`npm test`). Χωρίς SQL |
+| `a2e02a8` | Φωτογραφίες (PR #9): συγκεκριμένο μήνυμα ανά αιτία σφάλματος Storage (env var, μορφή URL, κλειδί, bucket, τύπος/μέγεθος, δίκτυο), ασφαλή logs χωρίς κλειδιά/tokens/URLs, έλεγχος ρυθμίσεων στην εκκίνηση (`instrumentation.ts`). Χωρίς SQL |
 | `7f8915b` | Συμβόλαια Φάση Β (1ο κομμάτι) (PR #8, squash): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα και συμπίεση στον browser, ιδιωτικό Supabase Storage με signed URLs, ίδιο component και server κώδικας στις ζημιές της σελίδας Service, αφαίρεση καυσίμου επιστροφής, παλιό σκαρίφημα μόνο για ανάγνωση, migration `13` |
 | `2757fed` | Γρήγορο συμβόλαιο «walk-in» (PR #7, squash): `/dashboard/contracts/new`, πελάτης + κράτηση + συμβόλαιο σε μία transaction, κοινή δημιουργία κράτησης (`bookingCreate.ts`), η κράτηση ακολουθεί το συμβόλαιο (ACTIVE/COMPLETED + τιμολόγιο ON_COMPLETION), ένδειξη «Από συμβόλαιο». Χωρίς SQL |
 | `7d84ef8` | Συμβόλαια Φάση Α+ (PR #6): «+ Νέο συμβόλαιο», πρόσθετα στο συμβόλαιο με ένα σύνολο κράτησης/συμβολαίου (transaction), ανάλυση με ΦΠΑ, στοιχεία κάρτας μόνο για αναγνώριση, αναζήτηση `searchText` + GIN trigram, σελιδοποίηση, migration `12` |
@@ -246,4 +247,5 @@ _Παλιότερα (`d4d62ac` → `cf262c0`): αρχικό στήσιμο, depl
 npx tsc --noEmit        # typecheck
 npm run build           # ΠΑΝΤΑ πριν το commit — πιάνει τα invalid route exports
 npx prisma generate     # μετά από αλλαγή schema
+npm test                # unit tests (node:test, χωρίς εξάρτηση)
 ```

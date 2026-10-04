@@ -61,43 +61,101 @@ export class StorageError extends Error {
 const ENV_URL = "SUPABASE_URL";
 const ENV_KEY = "SUPABASE_SERVICE_ROLE_KEY";
 
+export type SupabaseUrlResult =
+  | { ok: true; url: string; fixedFromDashboard: boolean }
+  | { ok: false };
+
+/** Το ref ενός project: πεζά γράμματα/ψηφία (στην πράξη 20 χαρακτήρες). */
+const REF_RE = /^[a-z0-9]{6,40}$/;
+
+/**
+ * ΤΟ ΜΟΝΑΔΙΚΟ σημείο που διαβάζει το SUPABASE_URL — το χρησιμοποιούν το
+ * ανέβασμα, τα signed URLs και ο έλεγχος εκκίνησης. Ανεκτικό σε μικρές
+ * διαφορές αντιγραφής:
+ *   · κενά / αλλαγές γραμμής και εισαγωγικά γύρω από την τιμή,
+ *   · «/» στο τέλος,
+ *   · καταλήξεις /rest/v1, /storage/v1, /auth/v1,
+ *   · διεύθυνση του dashboard (supabase.com/dashboard/project/<ref>)
+ *     → https://<ref>.supabase.co.
+ * Μετά την κανονικοποίηση πρέπει να είναι ακριβώς https://<ref>.supabase.co.
+ */
+export function normalizeSupabaseUrl(raw: string | null | undefined): SupabaseUrlResult {
+  let v = String(raw ?? "").trim();
+  // Εισαγωγικά γύρω από την τιμή (και πολλαπλά/ανάμικτα), μετά ξανά trim.
+  v = v.replace(/^["'`\s]+|["'`\s]+$/g, "");
+
+  const dashboard = v.match(
+    /^(?:https?:\/\/)?(?:app\.)?supabase\.com\/dashboard\/project\/([A-Za-z0-9]+)(?:[/?#].*)?$/i
+  );
+  if (dashboard) {
+    const ref = dashboard[1].toLowerCase();
+    return REF_RE.test(ref)
+      ? { ok: true, url: `https://${ref}.supabase.co`, fixedFromDashboard: true }
+      : { ok: false };
+  }
+
+  // «/» στο τέλος και καταλήξεις API (όσες φορές χρειαστεί).
+  let prev = "";
+  while (prev !== v) {
+    prev = v;
+    v = v.replace(/\/+$/, "").replace(/\/(?:rest|storage|auth)\/v1$/i, "");
+  }
+
+  if (!/^https:\/\//i.test(v) || !/\.supabase\.co$/i.test(v)) return { ok: false };
+  try {
+    const u = new URL(v);
+    const host = u.hostname.toLowerCase();
+    const ref = host.slice(0, -".supabase.co".length);
+    if (
+      u.protocol !== "https:" ||
+      u.username ||
+      u.password ||
+      u.port ||
+      u.pathname !== "/" ||
+      u.search ||
+      u.hash ||
+      !REF_RE.test(ref)
+    ) {
+      return { ok: false };
+    }
+    return { ok: true, url: `https://${host}`, fixedFromDashboard: false };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** Μία φορά ανά διεργασία: η αυτόματη διόρθωση γράφεται στο log χωρίς την τιμή. */
+let dashboardFixLogged = false;
+function noteDashboardFix() {
+  if (dashboardFixLogged) return;
+  dashboardFixLogged = true;
+  console.warn(
+    `[FleetPro] ${ENV_URL}: δόθηκε διεύθυνση του dashboard της Supabase — έγινε αυτόματη ` +
+      "διόρθωση σε https://<ref>.supabase.co. Καλό είναι να διορθωθεί και η τιμή στο Vercel."
+  );
+}
+
+const missingEnv = (names: string[]) =>
+  new StorageError(
+    "CONFIG_MISSING",
+    `Λείπει ${names.length > 1 ? "οι μεταβλητές" : "η μεταβλητή"} ${names.join(", ")} ` +
+      "στις ρυθμίσεις του server (Vercel → Settings → Environment Variables)."
+  );
+
+const invalidUrl = () =>
+  new StorageError(
+    "CONFIG_INVALID_URL",
+    `Το ${ENV_URL} δεν έχει τη σωστή μορφή: πρέπει να είναι https://<ref>.supabase.co ` +
+      "(Supabase → Project Settings → API → Project URL)."
+  );
+
 /**
  * Τι λείπει ή τι είναι λάθος στις ρυθμίσεις — με ΟΝΟΜΑΤΑ μεταβλητών,
  * ποτέ τιμές. null = όλα εντάξει.
  */
 export function storageConfigProblem(): StorageError | null {
-  const url = process.env[ENV_URL]?.trim() ?? "";
-  const key = process.env[ENV_KEY]?.trim() ?? "";
-
-  const missing = [!url && ENV_URL, !key && ENV_KEY].filter(Boolean) as string[];
-  if (missing.length > 0) {
-    return new StorageError(
-      "CONFIG_MISSING",
-      `Λείπει ${missing.length > 1 ? "οι μεταβλητές" : "η μεταβλητή"} ${missing.join(", ")} ` +
-        "στις ρυθμίσεις του server (Vercel → Settings → Environment Variables)."
-    );
-  }
-
-  if (!validSupabaseUrl(url)) {
-    return new StorageError(
-      "CONFIG_INVALID_URL",
-      `Το ${ENV_URL} δεν έχει τη σωστή μορφή: πρέπει να ξεκινά με https:// και να ` +
-        "τελειώνει σε .supabase.co (Supabase → Project Settings → API → Project URL)."
-    );
-  }
-  return null;
-}
-
-/** https://<ref>.supabase.co (χωρίς διαδρομή — μια κάθετος στο τέλος επιτρέπεται). */
-function validSupabaseUrl(raw: string): boolean {
-  const url = raw.replace(/\/+$/, "");
-  if (!/^https:\/\//i.test(url) || !/\.supabase\.co$/i.test(url)) return false;
-  try {
-    const u = new URL(url);
-    return u.protocol === "https:" && u.hostname.endsWith(".supabase.co") && u.pathname === "/";
-  } catch {
-    return false;
-  }
+  const r = resolveConfig();
+  return "problem" in r ? r.problem : null;
 }
 
 /**
@@ -110,32 +168,36 @@ function localOverride(raw: string): boolean {
   ) && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(raw);
 }
 
+function resolveConfig(): { url: string; key: string } | { problem: StorageError } {
+  const rawUrl = process.env[ENV_URL] ?? "";
+  const key = (process.env[ENV_KEY] ?? "").trim().replace(/^["'`]+|["'`]+$/g, "");
+
+  const missing = [!rawUrl.trim() && ENV_URL, !key && ENV_KEY].filter(Boolean) as string[];
+  if (missing.length > 0) return { problem: missingEnv(missing) };
+
+  const local = rawUrl.trim();
+  if (localOverride(local)) return { url: local.replace(/\/+$/, ""), key };
+
+  const n = normalizeSupabaseUrl(rawUrl);
+  if (!n.ok) return { problem: invalidUrl() };
+  if (n.fixedFromDashboard) noteDashboardFix();
+  return { url: n.url, key };
+}
+
 function config(): { url: string; key: string } {
-  const url = process.env[ENV_URL]?.trim() ?? "";
-  const problem = storageConfigProblem();
-  // Μόνο η μορφή του URL παρακάμπτεται τοπικά — ποτέ κάποια μεταβλητή που λείπει.
-  if (problem && !(problem.code === "CONFIG_INVALID_URL" && localOverride(url))) throw problem;
-  return { url: url.replace(/\/+$/, ""), key: process.env[ENV_KEY]!.trim() };
+  const r = resolveConfig();
+  if ("problem" in r) throw r.problem;
+  return r;
 }
 
 /** Υπάρχουν σωστές ρυθμίσεις; Αλλιώς οι φωτογραφίες απενεργοποιούνται καθαρά. */
 export function storageConfigured(): boolean {
-  try {
-    config();
-    return true;
-  } catch {
-    return false;
-  }
+  return !("problem" in resolveConfig());
 }
 
-/** Για τον έλεγχο εκκίνησης (instrumentation): ίδιο κριτήριο με το config(). */
+/** Για τον έλεγχο εκκίνησης (instrumentation): ίδιο κριτήριο με το ανέβασμα. */
 export function storageStartupProblem(): StorageError | null {
-  try {
-    config();
-    return null;
-  } catch (e) {
-    return e instanceof StorageError ? e : null;
-  }
+  return storageConfigProblem();
 }
 
 /**

@@ -65,3 +65,39 @@ export async function compressImage(file: File): Promise<Blob> {
     close();
   }
 }
+
+/** Λογότυπο: μέγιστη πλευρά ~600px. */
+export const LOGO_MAX_SIDE = 600;
+export const LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+
+/**
+ * Σμίκρυνση λογότυπου ΧΩΡΙΣ αλλαγή τύπου: PNG/WebP μένουν PNG/WebP (κρατούν
+ * τη διαφάνεια), JPEG μένει JPEG. Όχι SVG (απορρίπτεται πριν φτάσει εδώ).
+ * Αν ο browser δεν γράφει WebP, το canvas δίνει PNG — διάφανο κι αυτό.
+ */
+export async function compressLogo(file: File): Promise<Blob> {
+  const type = (LOGO_TYPES as readonly string[]).includes(file.type) ? file.type : "image/png";
+  const { img, w, h, close } = await decode(file);
+  try {
+    const scale = Math.min(1, LOGO_MAX_SIDE / Math.max(w, h));
+    const width = Math.max(1, Math.round(w * scale));
+    const height = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas");
+    if (type === "image/jpeg") {
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, width, height);
+    }
+    ctx.drawImage(img, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, type, type === "image/png" ? undefined : 0.9)
+    );
+    if (!blob) throw new Error("encode");
+    return blob;
+  } finally {
+    close();
+  }
+}

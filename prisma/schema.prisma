@@ -178,6 +178,9 @@ model Tenant {
   region          String?
   iban            String?
   logoUrl         String?
+  // Λογότυπο στο Storage (ιδιωτικό bucket): tenantId/branding/logo-<τυχαίο>.<ext>.
+  // Εμφανίζεται με signed URL· στα συμβόλαια πάντα το ΤΡΕΧΟΝ (όχι snapshot).
+  logoPath        String?
   brandColor      String           @default("#2563EB")
   customDomain    String?          @unique
   website         String? // external website embed
@@ -530,6 +533,11 @@ model Contract {
   // Κανονικοποιημένο κείμενο αναζήτησης (πεζά, χωρίς τόνους/κενά/σύμβολα),
   // ξαναϋπολογίζεται από τον server σε κάθε αλλαγή. GIN trigram index.
   searchText String? @db.Text
+
+  // Link πελάτη (/c/[token]): τυχαίο token ≥32 bytes, base64url. Φτιάχνεται
+  // με την υπογραφή όλων. Λήξη = 90 ημέρες μετά την επιστροφή (υπολογίζεται).
+  publicToken          String?   @unique
+  publicTokenRevokedAt DateTime?
 
   gdprConsent   Boolean   @default(false)
   gdprConsentAt DateTime?

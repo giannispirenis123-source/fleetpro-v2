@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ImagePlus, Trash2 } from "lucide-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import { LOGO_TYPES, compressLogo } from "@/lib/imageCompress";
 
 export interface CompanyFields {
   phone: string;
@@ -27,13 +29,76 @@ export default function CompanyContractSettings({
   companyName,
   companyEmail,
   initial,
+  initialLogoUrl,
 }: {
   companyName: string;
   companyEmail: string;
   initial: CompanyFields;
+  /** Τρέχον λογότυπο (signed URL) ή null. */
+  initialLogoUrl: string | null;
 }) {
   const tr = useT();
   const router = useRouter();
+
+  /* ── Λογότυπο: ανεβαίνει αμέσως, χωριστά από τα πεδία ── */
+  const logoInput = useRef<HTMLInputElement>(null);
+  const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState("");
+
+  const uploadLogo = async (file: File | undefined) => {
+    if (!file || logoBusy) return;
+    setLogoError("");
+    // Όχι SVG (ούτε τίποτα άλλο): μόνο JPEG/PNG/WebP. Ο server ξαναελέγχει.
+    if (!(LOGO_TYPES as readonly string[]).includes(file.type)) {
+      setLogoError(tr("settings.logoErrorType"));
+      return;
+    }
+    setLogoBusy(true);
+    try {
+      let blob: Blob;
+      try {
+        blob = await compressLogo(file);
+      } catch {
+        setLogoError(tr("settings.logoErrorRead"));
+        return;
+      }
+      const form = new FormData();
+      form.append("file", blob, "logo");
+      const res = await fetch("/api/settings/logo", { method: "POST", body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLogoError(data.message || `${tr("settings.errorSave")} (HTTP ${res.status})`);
+        return;
+      }
+      setLogoUrl(data.data?.url ?? null);
+      router.refresh();
+    } catch {
+      setLogoError(tr("settings.errorConnection"));
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
+  const removeLogo = async () => {
+    if (logoBusy || !window.confirm(tr("settings.logoRemoveConfirm"))) return;
+    setLogoBusy(true);
+    setLogoError("");
+    try {
+      const res = await fetch("/api/settings/logo", { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLogoError(data.message || tr("settings.errorSave"));
+        return;
+      }
+      setLogoUrl(null);
+      router.refresh();
+    } catch {
+      setLogoError(tr("settings.errorConnection"));
+    } finally {
+      setLogoBusy(false);
+    }
+  };
 
   const [saved, setSaved] = useState<CompanyFields>(initial);
   const [draft, setDraft] = useState<CompanyFields>(initial);
@@ -103,6 +168,57 @@ export default function CompanyContractSettings({
           {COMPANY_KEYS.map(field)}
         </div>
         <p className="dash-form-note">{tr("settings.companyManagedNote")}</p>
+
+        <div className="dash-logo-block">
+          <h3 className="dash-logo-title">{tr("settings.logo")}</h3>
+          <p className="dash-form-note">{tr("settings.logoHelp")}</p>
+          <div className="dash-logo-row">
+            <div className="dash-logo-preview">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt={tr("settings.logo")} />
+              ) : (
+                <span className="dash-form-note">{tr("settings.logoNone")}</span>
+              )}
+            </div>
+            <div className="dash-logo-actions">
+              <button
+                type="button"
+                className="dash-btn"
+                disabled={logoBusy}
+                onClick={() => logoInput.current?.click()}
+              >
+                <ImagePlus size={16} />{" "}
+                {logoBusy
+                  ? tr("settings.logoUploading")
+                  : logoUrl
+                    ? tr("settings.logoChange")
+                    : tr("settings.logoUpload")}
+              </button>
+              {logoUrl && (
+                <button
+                  type="button"
+                  className="dash-btn dash-btn--danger"
+                  disabled={logoBusy}
+                  onClick={removeLogo}
+                >
+                  <Trash2 size={16} /> {tr("settings.logoRemove")}
+                </button>
+              )}
+              <input
+                ref={logoInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                onChange={(e) => {
+                  void uploadLogo(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          </div>
+          {logoError && <div className="dash-form-error">{logoError}</div>}
+        </div>
 
         {error?.part === "company" && <div className="dash-form-error">{error.message}</div>}
         <div className="dash-settings-actions">

@@ -18,8 +18,20 @@ const ADMIN_ROUTES = [
   "/dashboard/users",
 ];
 
+// Η σελίδα πελάτη /c/<token>: ΜΟΝΟ αυτή η διαδρομή (ακριβώς ένα τμήμα,
+// χαρακτήρες base64url) είναι ελεύθερη χωρίς login.
+const PUBLIC_CONTRACT_RE = /^\/c\/[A-Za-z0-9_-]{1,128}$/;
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (PUBLIC_CONTRACT_RE.test(pathname)) {
+    const res = NextResponse.next();
+    res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+    res.headers.set("Cache-Control", "no-store, max-age=0");
+    res.headers.set("Referrer-Policy", "no-referrer");
+    return res;
+  }
 
   // Επιτρέπουμε public routes
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {

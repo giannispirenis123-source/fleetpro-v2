@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -17,6 +17,11 @@ import {
   CheckCircle2,
   Save,
   X,
+  Link2,
+  Share2,
+  Copy,
+  RefreshCw,
+  Ban,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -41,7 +46,12 @@ import {
   depositUsesCard,
   paymentUsesCard,
   type CardInfo,
+  LICENSE_SIDES,
+  licenseLockOf,
+  type LicensePhotoDTO,
+  type LicenseSide,
 } from "@/lib/contracts";
+import { appBaseUrl, publicContractUrl, type PublicLinkDTO } from "@/lib/contractLink";
 import { computePrice, toDisplayBreakdown, type PricedExtraInput } from "@/lib/pricing";
 import { splitVatInclusive } from "@/lib/invoices";
 import type { ExtraDTO } from "@/lib/extras";
@@ -211,6 +221,7 @@ export default function ContractEditor({
   vatRate,
   roundUpTotal,
   can,
+  logoUrl,
 }: {
   initialContract: ContractDTO;
   vehicles: VehicleOption[];
@@ -219,6 +230,8 @@ export default function ContractEditor({
   vatRate: number;
   roundUpTotal: boolean;
   can: { edit: boolean; delete: boolean };
+  /** Τρέχον λογότυπο εταιρίας (signed URL) ή null. */
+  logoUrl: string | null;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -237,6 +250,10 @@ export default function ContractEditor({
   // Οι φωτογραφίες ζουν χωριστά από τη φόρμα: ανεβαίνουν αμέσως και δεν
   // περιμένουν το «Αποθήκευση» (ούτε το χαλάνε αν αποτύχουν).
   const [photos, setPhotos] = useState<ContractPhotoDTO[]>(initialContract.damagePhotos);
+  // Διπλώματα: όπως οι ζημιές, ανεβαίνουν αμέσως, χωριστά από τη φόρμα.
+  const [licenses, setLicenses] = useState<LicensePhotoDTO[]>(initialContract.licensePhotos);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkMsg, setLinkMsg] = useState("");
   const [openChanges, setOpenChanges] = useState(initialContract.vehicleChanges.length > 0);
   const [openNotes, setOpenNotes] = useState(initialContract.notes.trim() !== "");
   const [openTerms, setOpenTerms] = useState(false);
@@ -441,6 +458,98 @@ export default function ContractEditor({
     };
   };
 
+  /* ── Φωτογραφίες διπλώματος (ΜΟΝΟ εσωτερικά) ── */
+  const savedDriverIds = new Set(contract.drivers.map((d) => d.id));
+  const licenseProps = (driverId: string, side: LicenseSide) => {
+    const uploadLock = licenseLockOf("upload", contract.status, contract.drivers);
+    const deleteLock = licenseLockOf("delete", contract.status, contract.drivers);
+    const lock = uploadLock ?? deleteLock;
+    return {
+      photos: licenses
+        .filter((l) => l.driverId === driverId && l.side === side)
+        .map((l) => ({ id: l.id, url: l.url, takenAt: null, note: "" })),
+      uploadUrl: `/api/contracts/${contract.id}/licenses`,
+      fields: { driverId, side },
+      itemUrl: () =>
+        `/api/contracts/${contract.id}/licenses?driverId=${encodeURIComponent(driverId)}&side=${side}`,
+      editable: can.edit && uploadLock === null,
+      canDelete: can.edit && deleteLock === null,
+      withNotes: false,
+      replace: true,
+      max: 1,
+      lockedText: can.edit && lock ? tr(`contracts.licenseLock_${lock}`) : undefined,
+      onAdded: (p: PhotoItem) =>
+        setLicenses((list) => [
+          ...list.filter((l) => !(l.driverId === driverId && l.side === side)),
+          { driverId, side, id: p.id, url: p.url },
+        ]),
+      onRemoved: () =>
+        setLicenses((list) => list.filter((l) => !(l.driverId === driverId && l.side === side))),
+      onNoted: () => undefined,
+    };
+  };
+
+  /* ── Link πελάτη ── */
+  const link: PublicLinkDTO = contract.publicLink;
+  // Το origin μόνο μετά το mount (αλλιώς διαφορά server/client στο hydration).
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+  const linkUrl =
+    link.state === "active" && link.token && origin
+      ? publicContractUrl(appBaseUrl(process.env.NEXT_PUBLIC_APP_URL, origin), link.token)
+      : null;
+
+  const copyLink = async () => {
+    if (!linkUrl) return;
+    setLinkMsg("");
+    try {
+      await navigator.clipboard.writeText(linkUrl);
+      setLinkMsg(tr("contracts.linkCopied"));
+    } catch {
+      window.prompt(tr("contracts.linkCopyManual"), linkUrl);
+    }
+  };
+
+  const shareLink = async () => {
+    if (!linkUrl) return;
+    const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
+    if (typeof nav.share === "function") {
+      try {
+        await nav.share({ title: `${tr("contracts.contract")} ${contract.contractNumber}`, url: linkUrl });
+        return;
+      } catch (e) {
+        if ((e as Error)?.name === "AbortError") return;
+      }
+    }
+    await copyLink();
+  };
+
+  const linkAction = async (action: "revoke" | "renew") => {
+    if (action === "revoke" && !window.confirm(tr("contracts.linkRevokeConfirm"))) return;
+    if (action === "renew" && link.state === "active" && !window.confirm(tr("contracts.linkRenewConfirm"))) return;
+    setLinkBusy(true);
+    setLinkMsg("");
+    setError("");
+    try {
+      const res = await fetch(`/api/contracts/${contract.id}/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || tr("contracts.errorSave"));
+        return;
+      }
+      setContract((c) => ({ ...c, publicLink: data.data.publicLink }));
+      setLinkMsg(action === "revoke" ? tr("contracts.linkRevoked") : tr("contracts.linkRenewed"));
+    } catch {
+      setError(tr("contracts.errorConnection"));
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
   /* ── Αλλαγές οχήματος ── */
   const addChange = () =>
     setForm((f) => ({
@@ -480,6 +589,10 @@ export default function ContractEditor({
           </p>
         </div>
         <div className="dash-contract-actions">
+          {logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="dash-contract-logo" src={logoUrl} alt="" />
+          )}
           <a
             className="dash-btn"
             href={`/print/contracts/${contract.id}`}
@@ -631,6 +744,22 @@ export default function ContractEditor({
                   ({shortDate(returnDate, locale)})
                 </div>
               )}
+              <div className="dash-license">
+                <h3 className="dash-license-title">{tr("contracts.licensePhotos")}</h3>
+                {savedDriverIds.has(d.id) ? (
+                  <div className="dash-license-sides">
+                    {LICENSE_SIDES.map((side) => (
+                      <div key={side} className="dash-license-side">
+                        <span className="dash-license-label">{tr(`contracts.license_${side}`)}</span>
+                        <PhotoManager {...licenseProps(d.id, side)} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="dash-form-note">{tr("contracts.licenseSaveFirst")}</p>
+                )}
+                <p className="dash-form-note">{tr("contracts.licensePrivateNote")}</p>
+              </div>
             </div>
           );
         })}
@@ -640,6 +769,55 @@ export default function ContractEditor({
           </button>
         )}
       </section>
+
+      {/* ── Link πελάτη (μόνο μετά την υπογραφή όλων) ── */}
+      {locked && (
+        <section className="dash-panel dash-contract-section">
+          <h2 className="dash-section-title">
+            <Link2 size={17} /> {tr("contracts.linkTitle")}
+          </h2>
+          <p className="dash-form-note">
+            {tr(`contracts.linkState_${link.state}`)}
+            {link.expiresAt && link.state === "active" && (
+              <> · {tr("contracts.linkExpires")} {shortDate(link.expiresAt, locale)}</>
+            )}
+          </p>
+          {linkUrl && <code className="dash-link-url">{linkUrl}</code>}
+          <div className="dash-link-actions">
+            {linkUrl && (
+              <>
+                <button type="button" className="dash-btn dash-btn--primary" onClick={shareLink}>
+                  <Share2 size={16} /> {tr("contracts.linkShare")}
+                </button>
+                <button type="button" className="dash-btn" onClick={copyLink}>
+                  <Copy size={16} /> {tr("contracts.linkCopy")}
+                </button>
+              </>
+            )}
+            {can.edit && link.state === "active" && (
+              <button
+                type="button"
+                className="dash-btn dash-btn--danger"
+                disabled={linkBusy}
+                onClick={() => linkAction("revoke")}
+              >
+                <Ban size={16} /> {tr("contracts.linkRevoke")}
+              </button>
+            )}
+            {can.edit && (
+              <button
+                type="button"
+                className="dash-btn"
+                disabled={linkBusy}
+                onClick={() => linkAction("renew")}
+              >
+                <RefreshCw size={16} /> {tr("contracts.linkRenew")}
+              </button>
+            )}
+          </div>
+          {linkMsg && <span className="dash-count">{linkMsg}</span>}
+        </section>
+      )}
 
       {/* ── Όχημα, παραλαβή, παράδοση ── */}
       <section className="dash-panel dash-contract-section">

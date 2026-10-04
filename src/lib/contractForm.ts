@@ -10,6 +10,14 @@ import { z } from "zod";
 import { Prisma, type Contract } from "@prisma/client";
 import { db } from "./db";
 import { signUrls } from "./storage";
+import {
+  PUBLIC_SIGNED_URL_SECONDS,
+  PUBLIC_TOKEN_RE,
+  linkStateOf,
+  publicLinkDTO,
+  toPublicContract,
+} from "./contractLink";
+import { photoIdOf } from "./photoShared";
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
 import { discountOfBooking, priceBooking } from "./bookingPricing";
@@ -46,6 +54,8 @@ import {
   type ContractSnapshot,
   type ContractStatusValue,
   type DepositMethod,
+  type LicensePhotoDTO,
+  LICENSE_SIDES,
   type ExtrasLock,
   type PaymentMethod,
 } from "./contracts";
@@ -457,8 +467,39 @@ export function mergeDrivers(
       ...d,
       signature: resetSignatures ? null : (old?.signature ?? null),
       signedAt: resetSignatures ? null : (old?.signedAt ?? null),
+      // Οι φωτογραφίες διπλώματος δεν έρχονται ποτέ από τη φόρμα.
+      ...(old?.licensePhotos ? { licensePhotos: old.licensePhotos } : {}),
     };
   });
+}
+
+/**
+ * Οι φωτογραφίες διπλώματος ανεβαίνουν ΧΩΡΙΣ να αλλάζει το updatedAt (όπως
+ * οι ζημιές), οπότε η φόρμα ή η υπογραφή μπορεί να γράφει οδηγούς που
+ * διάβασε πριν από ένα ανέβασμα. Μέσα στην transaction, με κλείδωμα της
+ * γραμμής, παίρνουμε τις ΤΡΕΧΟΥΣΕΣ διαδρομές και τις βάζουμε στους οδηγούς
+ * που θα γραφτούν. Επιστρέφει και τις διαδρομές οδηγών που αφαιρέθηκαν
+ * (τα αρχεία σβήνονται ΜΕΤΑ την εγγραφή).
+ */
+export async function withLatestLicensePhotos(
+  tx: Prisma.TransactionClient,
+  contractId: string,
+  next: ContractDriver[]
+): Promise<{ drivers: ContractDriver[]; orphans: string[] }> {
+  const rows = await tx.$queryRaw<{ drivers: unknown }[]>(Prisma.sql`
+    SELECT "drivers" FROM "contracts" WHERE "id" = ${contractId} FOR UPDATE
+  `);
+  const latest = new Map(readDrivers(rows[0]?.drivers).map((d) => [d.id, d.licensePhotos]));
+  const keep = new Set(next.map((d) => d.id));
+  const orphans = Array.from(latest.entries())
+    .filter(([id]) => !keep.has(id))
+    .flatMap(([, lp]) => LICENSE_SIDES.map((s) => lp?.[s]).filter((p): p is string => !!p));
+  const drivers = next.map((d) => {
+    const { licensePhotos: _ignored, ...rest } = d;
+    const lp = latest.get(d.id);
+    return lp ? { ...rest, licensePhotos: lp } : rest;
+  });
+  return { drivers, orphans };
 }
 
 /** Οι αλλαγές οχήματος με μοντέλο/πινακίδα από τον Στόλο — όχι από τον client. */
@@ -500,6 +541,7 @@ export const CONTRACT_INCLUDE = {
       status: true,
       total: true,
       extras: true,
+      returnDate: true,
       invoice: { select: { id: true } },
     },
   },
@@ -511,9 +553,25 @@ type ContractWithBooking = Contract & {
     status: string;
     total: Prisma.Decimal;
     extras: Prisma.JsonValue;
+    returnDate: Date;
     invoice: { id: string } | null;
   };
 };
+
+/** Οι φωτογραφίες διπλώματος χωρίς διαδρομές (id = τυχαίο όνομα αρχείου). */
+function licensePhotoDTOs(
+  drivers: ContractDriver[],
+  urls?: Map<string, string>
+): LicensePhotoDTO[] {
+  return drivers.flatMap((d) =>
+    LICENSE_SIDES.flatMap((side) => {
+      const path = d.licensePhotos?.[side];
+      return path
+        ? [{ driverId: d.id, side, id: photoIdOf(path), url: urls?.get(path) ?? null }]
+        : [];
+    })
+  );
+}
 
 /**
  * Γιατί δεν αλλάζουν τα πρόσθετα — ο ΙΔΙΟΣ κανόνας για UI και server.
@@ -531,7 +589,9 @@ export function extrasLockOf(
 }
 
 export function toContractDTO(c: ContractWithBooking): ContractDTO {
-  const drivers = readDrivers(c.drivers);
+  const stored = readDrivers(c.drivers);
+  // Οι διαδρομές των διπλωμάτων δεν φεύγουν ποτέ από τον server.
+  const drivers = stored.map(({ licensePhotos: _paths, ...d }) => d);
   return {
     id: c.id,
     contractNumber: c.contractNumber,
@@ -573,6 +633,12 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     bookingExtraIds: readExtrasSnapshot(c.booking.extras).map((l) => l.id),
     bookingTotalNow: Number(c.booking.total),
     extrasLock: extrasLockOf(drivers, c.booking),
+    licensePhotos: licensePhotoDTOs(stored),
+    publicLink: publicLinkDTO({
+      publicToken: c.publicToken,
+      publicTokenRevokedAt: c.publicTokenRevokedAt,
+      returnDate: dateOnly(c.booking.returnDate),
+    }),
   };
 }
 
@@ -589,10 +655,31 @@ export async function loadContract(
   const urls = await signUrls(readPhotos(c.damagePhotos).map((p) => p.path));
   const dto = toContractDTO(c);
   const byId = new Map(readPhotos(c.damagePhotos).map((p) => [p.id, urls.get(p.path) ?? null]));
+  // Διπλώματα: σύντομα URLs (ευαίσθητο έγγραφο).
+  const stored = readDrivers(c.drivers);
+  const licenseUrls = await signUrls(
+    stored.flatMap((d) => LICENSE_SIDES.map((s) => d.licensePhotos?.[s]).filter((p): p is string => !!p)),
+    PUBLIC_SIGNED_URL_SECONDS
+  );
   return {
     ...dto,
     damagePhotos: dto.damagePhotos.map((p) => ({ ...p, url: byId.get(p.id) ?? null })),
+    licensePhotos: licensePhotoDTOs(stored, licenseUrls),
   };
+}
+
+/**
+ * Τρέχον λογότυπο εταιρίας ως signed URL (ΟΧΙ από το snapshot: αλλάζει και
+ * στα παλιά συμβόλαια). null όταν δεν υπάρχει.
+ */
+export async function tenantLogoUrl(
+  tenantId: string,
+  seconds?: number
+): Promise<string | null> {
+  const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { logoPath: true } });
+  if (!t?.logoPath) return null;
+  const urls = await signUrls([t.logoPath], seconds);
+  return urls.get(t.logoPath) ?? null;
 }
 
 /**
@@ -930,4 +1017,48 @@ export function cardsFor(
 export function requestIp(headers: Headers): string | null {
   const fwd = headers.get("x-forwarded-for");
   return fwd ? fwd.split(",")[0].trim() : headers.get("x-real-ip");
+}
+
+/* ─────────────────────────────────────────────
+   Δημόσια σελίδα πελάτη (/c/[token])
+   ───────────────────────────────────────────── */
+
+/**
+ * Το συμβόλαιο για τη σελίδα του πελάτη — ή null αν το token δεν υπάρχει,
+ * ακυρώθηκε ή έληξε. Αναζήτηση με το UNIQUE index του token (όχι σύγκριση
+ * σε βρόχο). Επιστρέφει ΜΟΝΟ τα καθαρισμένα δεδομένα του toPublicContract
+ * (χωρίς ids, διπλώματα, πληρωμή) με σύντομα signed URLs (~10′).
+ */
+export async function loadPublicContract(
+  token: string
+): Promise<{ contract: ContractDTO; logoUrl: string | null; vatRate: number } | null> {
+  if (!PUBLIC_TOKEN_RE.test(token)) return null;
+  const c = await db.contract.findUnique({
+    where: { publicToken: token },
+    include: CONTRACT_INCLUDE,
+  });
+  if (!c || c.status === "DRAFT") return null;
+  const state = linkStateOf({
+    publicToken: c.publicToken,
+    publicTokenRevokedAt: c.publicTokenRevokedAt,
+    returnDate: dateOnly(c.booking.returnDate),
+  });
+  if (state !== "active") return null;
+
+  const photos = readPhotos(c.damagePhotos);
+  const [urls, logoUrl, tenant] = await Promise.all([
+    signUrls(photos.map((p) => p.path), PUBLIC_SIGNED_URL_SECONDS),
+    tenantLogoUrl(c.tenantId, PUBLIC_SIGNED_URL_SECONDS),
+    db.tenant.findUnique({ where: { id: c.tenantId }, select: { vatRate: true } }),
+  ]);
+  const byId = new Map(photos.map((p) => [p.id, urls.get(p.path) ?? null]));
+  const dto = toContractDTO(c);
+  return {
+    contract: toPublicContract({
+      ...dto,
+      damagePhotos: dto.damagePhotos.map((p) => ({ ...p, url: byId.get(p.id) ?? null })),
+    }),
+    logoUrl,
+    vatRate: Number(tenant?.vatRate ?? 24),
+  };
 }

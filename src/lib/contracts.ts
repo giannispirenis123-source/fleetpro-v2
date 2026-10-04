@@ -12,6 +12,8 @@
 //  · Μετά την υπογραφή όλων κλειδώνουν τα στοιχεία παραλαβής. Αλλάζουν μόνο
 //    το καύσιμο παράδοσης, οι αλλαγές οχήματος και οι παρατηρήσεις.
 
+import type { PublicLinkDTO } from "./contractLink";
+
 export const CONTRACT_STATUSES = ["DRAFT", "SIGNED", "COMPLETED"] as const;
 export type ContractStatusValue = (typeof CONTRACT_STATUSES)[number];
 
@@ -149,6 +151,7 @@ export const BI = {
   signatures: "Υπογραφές / Signatures",
   signedAt: "Υπογράφηκε / Signed",
   notSigned: "Εκκρεμεί υπογραφή / Not signed yet",
+  qr: "Το συμβόλαιο online / This agreement online",
 } as const;
 
 export const PAYMENT_LABEL: Record<string, string> = {
@@ -211,6 +214,53 @@ export interface ContractDriver {
   signature: string | null;
   /** ISO ή null */
   signedAt: string | null;
+  /**
+   * Φωτογραφίες διπλώματος: ΔΙΑΔΡΟΜΕΣ στο Storage. Μόνο στον server — το
+   * toContractDTO τις αφαιρεί· η φόρμα παίρνει signed URLs (licensePhotos
+   * του DTO). Ποτέ στο Α4, στη σελίδα πελάτη ή στο searchText.
+   */
+  licensePhotos?: LicensePhotoPaths;
+}
+
+/* ─────────────────────────────────────────────
+   Φωτογραφίες διπλώματος
+   ───────────────────────────────────────────── */
+
+export const LICENSE_SIDES = ["front", "back"] as const;
+export type LicenseSide = (typeof LICENSE_SIDES)[number];
+export type LicensePhotoPaths = Partial<Record<LicenseSide, string>>;
+
+/** Μία φωτογραφία διπλώματος όπως τη βλέπει η φόρμα (ποτέ διαδρομή). */
+export interface LicensePhotoDTO {
+  driverId: string;
+  side: LicenseSide;
+  id: string;
+  url: string | null;
+}
+
+/**
+ * Ο ΙΔΙΟΣ κανόνας για UI και server. Ανέβασμα/αντικατάσταση: μέχρι την
+ * ολοκλήρωση (και μετά τις υπογραφές — είναι αποδεικτικό). Διαγραφή: μόνο
+ * πριν την πρώτη υπογραφή.
+ */
+export function licenseLockOf(
+  action: "upload" | "delete",
+  status: string,
+  drivers: ContractDriver[]
+): "signed" | "completed" | null {
+  if (status === "COMPLETED") return "completed";
+  if (action === "delete" && (status !== "DRAFT" || anySigned(drivers))) return "signed";
+  return null;
+}
+
+function readLicensePhotos(v: unknown): LicensePhotoPaths | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const o = v as Record<string, unknown>;
+  const out: LicensePhotoPaths = {};
+  for (const side of LICENSE_SIDES) {
+    if (typeof o[side] === "string" && o[side]) out[side] = o[side] as string;
+  }
+  return out.front || out.back ? out : undefined;
 }
 
 export const emptyDriver = (id: string): ContractDriver => ({
@@ -369,6 +419,7 @@ export function readDrivers(value: unknown): ContractDriver[] {
         address: str(o.address),
         signature: typeof o.signature === "string" ? o.signature : null,
         signedAt: typeof o.signedAt === "string" ? o.signedAt : null,
+        ...(readLicensePhotos(o.licensePhotos) ? { licensePhotos: readLicensePhotos(o.licensePhotos) } : {}),
       },
     ];
   });
@@ -454,6 +505,11 @@ export interface ContractDTO {
   bookingTotalNow: number;
   /** Γιατί δεν αλλάζουν τα πρόσθετα· null όταν αλλάζουν. */
   extrasLock: ExtrasLock | null;
+
+  /** Διπλώματα — ΜΟΝΟ για τη φόρμα· URLs μόνο στο loadContract. */
+  licensePhotos: LicensePhotoDTO[];
+  /** Link πελάτη (/c/[token]). */
+  publicLink: PublicLinkDTO;
 }
 
 /**

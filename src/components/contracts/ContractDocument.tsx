@@ -2,7 +2,15 @@
 // Το αντίγραφο του συμβολαίου: δίγλωσσο (ΕΛ / EN), καθαρό σε Α4.
 //
 // Χωρίς hooks και χωρίς handlers, ώστε να αποδίδεται από server component
-// (σελίδα εκτύπωσης) — και αργότερα από τη δημόσια σελίδα του πελάτη.
+// (σελίδα εκτύπωσης ΚΑΙ δημόσια σελίδα πελάτη /c/[token]).
+//
+// mode="public": η σελίδα του πελάτη. Παίρνει ΗΔΗ καθαρισμένα δεδομένα
+// (toPublicContract) και επιπλέον κρύβει ό,τι δεν αφορά τον πελάτη
+// (κράτηση, συντάκτη, κατάσταση, παρατηρήσεις, πληρωμή/εγγύηση). Οι
+// φωτογραφίες ζημιών μεγεθύνονται με πάτημα (CSS :target, χωρίς JS).
+//
+// Λογότυπο: ΠΑΝΤΑ το τρέχον της εταιρίας (prop logoUrl), όχι του snapshot·
+// χωρίς λογότυπο η θέση μένει κενή.
 // Τα ποσά έρχονται από το snapshot του συμβολαίου, ποτέ από σημερινές τιμές.
 // Οι φωτογραφίες έρχονται με προσωρινά URLs (loadContract).
 
@@ -91,11 +99,20 @@ function MainDriver({ driver }: { driver: ContractDriver }) {
 export default function ContractDocument({
   contract,
   fallbackVatRate,
+  logoUrl = null,
+  mode = "print",
+  qrSvg = null,
 }: {
   contract: ContractDTO;
   /** Για παλιά snapshot που δεν κρατούν ΦΠΑ. */
   fallbackVatRate?: number;
+  /** Τρέχον λογότυπο εταιρίας (signed URL) ή null. */
+  logoUrl?: string | null;
+  mode?: "print" | "public";
+  /** SVG του QR με το link πελάτη (μόνο όταν υπάρχει ενεργό link). */
+  qrSvg?: string | null;
 }) {
+  const pub = mode === "public";
   const s = contract.snapshot;
   // Η στρογγυλοποίηση απορροφάται στις γραμμές, όπως στις κρατήσεις: οι
   // γραμμές αθροίζουν ΑΚΡΙΒΩΣ στο σύνολο.
@@ -130,11 +147,9 @@ export default function ContractDocument({
           </span>
         </div>
         <div className="cdoc-logo">
-          {s?.company.logoUrl ? (
+          {logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={s.company.logoUrl} alt="" />
-          ) : (
-            <span>{BI.logo}</span>
+            <img src={logoUrl} alt={BI.logo} />
           )}
         </div>
       </header>
@@ -145,15 +160,19 @@ export default function ContractDocument({
           <span>
             {BI.code}: <strong>{contract.contractNumber}</strong>
           </span>
-          <span>
-            {BI.booking}: {s?.booking.number ?? contract.bookingNumber}
-          </span>
-          <span>
-            {BI.issuedBy}: {v(contract.createdByName)}
-          </span>
-          <span>
-            {BI.status}: {STATUS_LABEL[contract.status]}
-          </span>
+          {!pub && (
+            <>
+              <span>
+                {BI.booking}: {s?.booking.number ?? contract.bookingNumber}
+              </span>
+              <span>
+                {BI.issuedBy}: {v(contract.createdByName)}
+              </span>
+              <span>
+                {BI.status}: {STATUS_LABEL[contract.status]}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -241,7 +260,18 @@ export default function ContractDocument({
                 <div className="cdoc-photos">
                   {g.photos.map((p) => (
                     <figure key={p.id}>
-                      {p.url ? (
+                      {p.url && pub ? (
+                        <>
+                          <a href={`#zoom-${p.id}`} className="cdoc-zoom-thumb">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={p.url} alt={p.note || g.label} loading="lazy" />
+                          </a>
+                          <a href="#_" id={`zoom-${p.id}`} className="cdoc-zoom">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={p.url} alt={p.note || g.label} loading="lazy" />
+                          </a>
+                        </>
+                      ) : p.url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={p.url} alt={p.note || g.label} loading="eager" />
                       ) : (
@@ -298,7 +328,7 @@ export default function ContractDocument({
         </section>
       )}
 
-      {contract.notes.trim() && (
+      {!pub && contract.notes.trim() && (
         <section className="cdoc-section">
           <h2>{BI.notes}</h2>
           <p className="cdoc-pre">{contract.notes}</p>
@@ -366,6 +396,7 @@ export default function ContractDocument({
             <p>—</p>
           )}
         </div>
+        {!pub && (
         <div>
           <h2>{BI.payment}</h2>
           <Row
@@ -393,6 +424,7 @@ export default function ContractDocument({
           />
           {s && s.insurance.length === 0 && <Row label={BI.insurance} value="—" />}
         </div>
+        )}
       </section>
 
       {/* ── Όροι ── */}
@@ -438,6 +470,13 @@ export default function ContractDocument({
               )}
             </div>
           ))}
+          {qrSvg && (
+            <div className="cdoc-qr">
+              {/* SVG που φτιάχνει ο server (πακέτο qrcode) από το δικό μας URL. */}
+              <div className="cdoc-qr-img" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+              <small>{BI.qr}</small>
+            </div>
+          )}
         </div>
       </section>
     </article>

@@ -20,7 +20,9 @@ import {
   requestIp,
   signSchema,
   toContractDTO,
+  withLatestLicensePhotos,
 } from "@/lib/contractForm";
+import { newPublicToken } from "@/lib/contractLink";
 
 // POST /api/contracts/[id]/sign { driverId, signature | null }
 export const POST = withPermission(
@@ -72,6 +74,11 @@ export const POST = withPermission(
         data.isSigned = true;
         data.signedAt = now;
         data.signedIp = requestIp(req.headers);
+        // Link πελάτη: αυτόματα με την υπογραφή όλων (αν δεν υπάρχει ήδη).
+        if (!current.publicToken) {
+          data.publicToken = newPublicToken();
+          data.publicTokenRevokedAt = null;
+        }
       }
 
       // Συμβόλαιο + κράτηση σε ΜΙΑ transaction. Με την τελευταία υπογραφή η
@@ -80,6 +87,8 @@ export const POST = withPermission(
       let moved: Awaited<ReturnType<typeof advanceBookingWithContract>> = null;
       try {
         moved = await db.$transaction(async (tx) => {
+          const latest = await withLatestLicensePhotos(tx, current.id, drivers);
+          data.drivers = latest.drivers as unknown as Prisma.InputJsonValue;
           const result = await tx.contract.updateMany({
             where: { id: current.id, updatedAt: current.updatedAt, status: "DRAFT" },
             data,

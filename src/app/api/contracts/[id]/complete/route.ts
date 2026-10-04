@@ -1,11 +1,11 @@
 export const dynamic = "force-dynamic";
 // src/app/api/contracts/[id]/complete/route.ts
-// Ολοκλήρωση: μόνο υπογεγραμμένο συμβόλαιο με καταγεγραμμένο καύσιμο
-// παράδοσης. Μετά δεν αλλάζει τίποτα. Η κράτηση ακολουθεί (→ COMPLETED,
+// Ολοκλήρωση: μόνο υπογεγραμμένο συμβόλαιο (το καύσιμο παράδοσης δεν
+// καταγράφεται πια). Μετά δεν αλλάζει τίποτα. Η κράτηση ακολουθεί (→ COMPLETED,
 // μόνο προς τα εμπρός) και ενεργοποιεί το αυτόματο τιμολόγιο, αν ισχύει.
 
 import { db } from "@/lib/db";
-import { ok, badRequest, conflict, notFound, serverError } from "@/lib/api";
+import { ok, conflict, notFound, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import {
   advanceBookingWithContract,
@@ -20,14 +20,11 @@ export const POST = withPermission(
     try {
       const current = await db.contract.findFirst({
         where: { ...contractScope(viewer!), id: params!.id },
-        select: { id: true, status: true, fuelReturn: true, bookingId: true },
+        select: { id: true, status: true, bookingId: true },
       });
       if (!current) return notFound("Το συμβόλαιο δεν βρέθηκε");
       if (current.status !== "SIGNED") {
         return conflict("Ολοκληρώνεται μόνο υπογεγραμμένο συμβόλαιο");
-      }
-      if (current.fuelReturn === null) {
-        return badRequest("Κατέγραψε πρώτα το καύσιμο στην παράδοση");
       }
 
       const tenantId = viewer!.tenantId!;

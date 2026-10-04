@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { Prisma, type Contract } from "@prisma/client";
 import { db } from "./db";
+import { signUrls } from "./storage";
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
 import { discountOfBooking, priceBooking } from "./bookingPricing";
@@ -37,6 +38,7 @@ import {
   readChanges,
   readDrivers,
   readMarks,
+  readPhotos,
   readSnapshot,
   type ContractDTO,
   type ContractDriver,
@@ -95,12 +97,6 @@ const driverSchema = z.object({
   address: text(500),
 });
 
-const markSchema = z.object({
-  id: z.string().min(1).max(40),
-  x: z.number().min(0).max(100),
-  y: z.number().min(0).max(100),
-  note: text(200),
-});
 
 const changeSchema = z.object({
   id: z.string().min(1).max(40),
@@ -135,7 +131,8 @@ export const contractPatchSchema = z.object({
   pickupLocation: text(200).optional(),
   returnLocation: text(200).optional(),
   fuelPickup: z.union([eighths, z.null()]).optional(),
-  damageMarks: z.array(markSchema).max(60).optional(),
+  /** Ελεύθερη περιγραφή ζημιών παραλαβής — κλειδώνει με την υπογραφή. */
+  damageNotesPickup: text(1000).optional(),
   paymentMethod: z.union([z.enum(PAYMENT_METHODS), z.null()]).optional(),
   depositAmount: z.union([z.number().min(0).max(1_000_000), z.null()]).optional(),
   depositMethod: z.union([z.enum(DEPOSIT_METHODS), z.null()]).optional(),
@@ -147,7 +144,7 @@ export const contractPatchSchema = z.object({
   extraIds: z.array(z.string().min(1)).max(50).optional(),
 
   /* ── Επιτρέπονται και μετά την υπογραφή ── */
-  fuelReturn: z.union([eighths, z.null()]).optional(),
+  damageNotesReturn: text(1000).optional(),
   vehicleChanges: z.array(changeSchema).max(30).optional(),
   notes: text(5000).optional(),
 });
@@ -155,7 +152,8 @@ export const contractPatchSchema = z.object({
 export type ContractPatch = z.infer<typeof contractPatchSchema>;
 
 /** Τα πεδία που επιτρέπονται και μετά την υπογραφή όλων. */
-export const AFTER_SIGN_FIELDS = ["fuelReturn", "vehicleChanges", "notes"] as const;
+// (Το καύσιμο παράδοσης και το σκαρίφημα δεν αλλάζουν πια — μόνο ανάγνωση.)
+export const AFTER_SIGN_FIELDS = ["damageNotesReturn", "vehicleChanges", "notes"] as const;
 
 /** Υπογραφή: PNG σε data URL. ~700KB όριο — ένα σχέδιο με δάχτυλο είναι λίγα KB. */
 export const signSchema = z.object({
@@ -431,7 +429,8 @@ export function pickupChanged(current: Contract, patch: ContractPatch): boolean 
     patch.pickupLocation !== undefined && patch.pickupLocation !== (current.pickupLocation ?? ""),
     patch.returnLocation !== undefined && patch.returnLocation !== (current.returnLocation ?? ""),
     patch.fuelPickup !== undefined && patch.fuelPickup !== current.fuelPickup,
-    patch.damageMarks !== undefined && !sameJson(readMarks(current.damageMarks), patch.damageMarks),
+    patch.damageNotesPickup !== undefined &&
+      patch.damageNotesPickup !== (current.damageNotesPickup ?? ""),
     patch.paymentMethod !== undefined && patch.paymentMethod !== current.paymentMethod,
     patch.depositAmount !== undefined && patch.depositAmount !== deposit,
     patch.depositMethod !== undefined && patch.depositMethod !== current.depositMethod,
@@ -548,6 +547,16 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     fuelPickup: c.fuelPickup,
     fuelReturn: c.fuelReturn,
     damageMarks: readMarks(c.damageMarks),
+    // Τα URLs μπαίνουν μόνο στο loadContract (σελίδα)· εδώ null.
+    damagePhotos: readPhotos(c.damagePhotos).map((p) => ({
+      id: p.id,
+      group: p.group,
+      url: null,
+      takenAt: p.takenAt,
+      note: p.note,
+    })),
+    damageNotesPickup: c.damageNotesPickup ?? "",
+    damageNotesReturn: c.damageNotesReturn ?? "",
     vehicleChanges: readChanges(c.vehicleChanges),
     notes: c.notes ?? "",
     paymentMethod: (c.paymentMethod as PaymentMethod | null) ?? null,
@@ -575,7 +584,15 @@ export async function loadContract(
     where: { ...contractScope(viewer), id },
     include: CONTRACT_INCLUDE,
   });
-  return c ? toContractDTO(c) : null;
+  if (!c) return null;
+  // Νέα προσωρινά URLs σε κάθε φόρτωση.
+  const urls = await signUrls(readPhotos(c.damagePhotos).map((p) => p.path));
+  const dto = toContractDTO(c);
+  const byId = new Map(readPhotos(c.damagePhotos).map((p) => [p.id, urls.get(p.path) ?? null]));
+  return {
+    ...dto,
+    damagePhotos: dto.damagePhotos.map((p) => ({ ...p, url: byId.get(p.id) ?? null })),
+  };
 }
 
 /**

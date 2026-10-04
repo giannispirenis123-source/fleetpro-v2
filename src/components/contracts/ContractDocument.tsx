@@ -4,6 +4,7 @@
 // Χωρίς hooks και χωρίς handlers, ώστε να αποδίδεται από server component
 // (σελίδα εκτύπωσης) — και αργότερα από τη δημόσια σελίδα του πελάτη.
 // Τα ποσά έρχονται από το snapshot του συμβολαίου, ποτέ από σημερινές τιμές.
+// Οι φωτογραφίες έρχονται με προσωρινά URLs (loadContract).
 
 import {
   BI,
@@ -104,6 +105,14 @@ export default function ContractDocument({
   const [main, ...others] = contract.drivers;
   const electric = s?.vehicle.fuel === "ELECTRIC";
   const fuelTitle = electric ? BI.battery : BI.fuel;
+
+  // Οι ομάδες ζημιών τυπώνονται ΜΟΝΟ αν έχουν φωτογραφίες ή περιγραφή.
+  const damageGroups = [
+    { group: "PICKUP", label: BI.damagesPickup, notes: contract.damageNotesPickup.trim() },
+    { group: "RETURN", label: BI.damagesReturn, notes: contract.damageNotesReturn.trim() },
+  ]
+    .map((g) => ({ ...g, photos: contract.damagePhotos.filter((p) => p.group === g.group) }))
+    .filter((g) => g.photos.length > 0 || g.notes);
 
   return (
     <article className="cdoc">
@@ -215,25 +224,54 @@ export default function ContractDocument({
           <h2>{BI.return}</h2>
           <Row label={BI.location} value={v(contract.returnLocation)} />
           <Row label={BI.dateTime} value={dt(s?.booking.returnDate, s?.booking.returnTime)} />
-          <Row label={fuelTitle} value={fuelLabel(contract.fuelReturn)} />
         </div>
       </section>
 
-      {/* ── Ζημιές παραλαβής ── */}
-      <section className="cdoc-section cdoc-damages">
-        <DamageSketch marks={contract.damageMarks} className="cdoc-sketch" />
-        <div>
-          <h2>{BI.damages}</h2>
-          {contract.damageMarks.length === 0 ? (
-            <p className="cdoc-muted">{BI.noDamages}</p>
-          ) : (
-            <ol className="cdoc-marks">
-              {contract.damageMarks.map((m) => (
-                <li key={m.id}>{v(m.note)}</li>
-              ))}
-            </ol>
-          )}
-        </div>
+      {/* ── Ζημιές: φωτογραφίες ανά ομάδα (μόνο όσες έχουν κάτι) ── */}
+      <section className="cdoc-section">
+        <h2>{BI.damagesTitle}</h2>
+        {damageGroups.length === 0 && contract.damageMarks.length === 0 ? (
+          <p className="cdoc-muted">{BI.noDamages}</p>
+        ) : (
+          damageGroups.map((g) => (
+            <div key={g.group} className="cdoc-photo-group">
+              <h3>{g.label}</h3>
+              {g.notes && <p className="cdoc-pre">{g.notes}</p>}
+              {g.photos.length > 0 && (
+                <div className="cdoc-photos">
+                  {g.photos.map((p) => (
+                    <figure key={p.id}>
+                      {p.url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.url} alt={p.note || g.label} loading="eager" />
+                      ) : (
+                        <span className="cdoc-photo-missing">—</span>
+                      )}
+                      <figcaption>
+                        {p.takenAt ? stamp(p.takenAt) : ""}
+                        {p.note ? ` · ${p.note}` : ""}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+        {/* Παλιά συμβόλαια: το σκαρίφημα, μικρό και μόνο αν υπάρχει. */}
+        {contract.damageMarks.length > 0 && (
+          <div className="cdoc-damages">
+            <DamageSketch marks={contract.damageMarks} className="cdoc-sketch" />
+            <div>
+              <h3>{BI.oldSketch}</h3>
+              <ol className="cdoc-marks">
+                {contract.damageMarks.map((m) => (
+                  <li key={m.id}>{v(m.note)}</li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        )}
       </section>
 
       {contract.vehicleChanges.length > 0 && (

@@ -500,9 +500,21 @@ model Contract {
   returnLocation String?
   // Καύσιμο / μπαταρία σε όγδοα: 0–8.
   fuelPickup     Int?
+  // ΠΑΛΙΟ: το καύσιμο παράδοσης δεν καταγράφεται πια. Μένει για τα παλιά
+  // συμβόλαια (μόνο ανάγνωση). Δεν σβήνεται.
   fuelReturn     Int?
   // Σημάδια στο σκαρίφημα: [{ id, x, y, note }] με x, y σε % του σχεδίου.
+  // ΠΑΛΙΟ: τα νέα συμβόλαια δεν έχουν σκαρίφημα· τα παλιά εμφανίζονται μόνο
+  // για ανάγνωση. Δεν σβήνεται.
   damageMarks    Json    @default("[]")
+  // Φωτογραφίες ζημιών (Supabase Storage, ιδιωτικό bucket):
+  // [{ id, path, group: "PICKUP" | "RETURN", takenAt, note }].
+  // Δεν μπαίνουν στο searchText.
+  damagePhotos      Json    @default("[]")
+  // Ελεύθερη περιγραφή ζημιών ανά ομάδα. Η παραλαβής κλειδώνει με την
+  // υπογραφή· η παράδοσης αλλάζει μέχρι την ολοκλήρωση.
+  damageNotesPickup String? @db.Text
+  damageNotesReturn String? @db.Text
   // Αλλαγές οχήματος: [{ id, vehicleId, label, plate, date }].
   vehicleChanges Json    @default("[]")
   notes          String? @db.Text
@@ -630,7 +642,9 @@ model Damage {
   date        DateTime     @default(now())
   repairCost  Decimal?     @db.Decimal(10, 2)
   status      DamageStatus @default(PENDING)
-  photos      String[] // Cloudinary URLs
+  // Διαδρομές αρχείων στο ιδιωτικό bucket (tenantId/damages/damageId/…).
+  // Τιμές που ξεκινούν με http (παλιά) εμφανίζονται ως έχουν.
+  photos      String[]
   resolvedAt  DateTime?
   notes       String?
 

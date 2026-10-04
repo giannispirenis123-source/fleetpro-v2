@@ -278,9 +278,10 @@ export async function buildSnapshot(
 /** Ο κύριος οδηγός, προσυμπληρωμένος από τον πελάτη της κράτησης. */
 export async function mainDriverFromCustomer(
   tenantId: string,
-  customerId: string
+  customerId: string,
+  client: Client = db
 ): Promise<ContractDriver> {
-  const c = await db.customer.findFirst({ where: { id: customerId, tenantId } });
+  const c = await client.customer.findFirst({ where: { id: customerId, tenantId } });
   const driver = emptyDriver(randomId());
   if (!c) return driver;
 
@@ -303,6 +304,42 @@ export async function mainDriverFromCustomer(
    Δημιουργία
    ───────────────────────────────────────────── */
 
+type ContractBooking = {
+  id: string;
+  customerId: string;
+  pickupLocation: string | null;
+  returnLocation: string | null;
+  deposit: Prisma.Decimal;
+};
+
+/** Τα δεδομένα ενός νέου συμβολαίου, εκτός από τον κωδικό του. */
+async function newContractData(
+  client: Client,
+  viewer: Viewer,
+  userName: string,
+  booking: ContractBooking
+): Promise<Omit<Prisma.ContractUncheckedCreateInput, "contractNumber">> {
+  const tenantId = viewer.tenantId!;
+  const [snapshot, mainDriver] = await Promise.all([
+    buildSnapshot(tenantId, booking.id, client),
+    mainDriverFromCustomer(tenantId, booking.customerId, client),
+  ]);
+
+  const deposit = Number(booking.deposit);
+  return {
+    tenantId,
+    bookingId: booking.id,
+    customerId: booking.customerId,
+    createdById: viewer.userId,
+    createdByName: userName,
+    snapshot: (snapshot ?? {}) as unknown as Prisma.InputJsonValue,
+    drivers: [mainDriver] as unknown as Prisma.InputJsonValue,
+    pickupLocation: booking.pickupLocation,
+    returnLocation: booking.returnLocation,
+    depositAmount: deposit > 0 ? deposit : null,
+  };
+}
+
 /**
  * Νέο συμβόλαιο για κράτηση. Ο κωδικός είναι τυχαίος: σε (απίθανη)
  * σύγκρουση με υπάρχοντα, ξαναδοκιμάζουμε με νέο.
@@ -310,38 +347,14 @@ export async function mainDriverFromCustomer(
 export async function createContract(
   viewer: Viewer,
   userName: string,
-  booking: {
-    id: string;
-    customerId: string;
-    pickupLocation: string | null;
-    returnLocation: string | null;
-    deposit: Prisma.Decimal;
-  }
+  booking: ContractBooking
 ): Promise<Contract> {
-  const tenantId = viewer.tenantId!;
-  const [snapshot, mainDriver] = await Promise.all([
-    buildSnapshot(tenantId, booking.id),
-    mainDriverFromCustomer(tenantId, booking.customerId),
-  ]);
-
-  const deposit = Number(booking.deposit);
+  const data = await newContractData(db, viewer, userName, booking);
 
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const created = await db.contract.create({
-        data: {
-          tenantId,
-          bookingId: booking.id,
-          customerId: booking.customerId,
-          contractNumber: randomContractCode(),
-          createdById: viewer.userId,
-          createdByName: userName,
-          snapshot: (snapshot ?? {}) as unknown as Prisma.InputJsonValue,
-          drivers: [mainDriver] as unknown as Prisma.InputJsonValue,
-          pickupLocation: booking.pickupLocation,
-          returnLocation: booking.returnLocation,
-          depositAmount: deposit > 0 ? deposit : null,
-        },
+        data: { ...data, contractNumber: randomContractCode() },
       });
       await refreshSearchText(created.id);
       return created;
@@ -357,6 +370,35 @@ export async function createContract(
       }
       throw error;
     }
+  }
+  throw new Error("Δεν βρέθηκε ελεύθερος κωδικός συμβολαίου");
+}
+
+/**
+ * Το ίδιο, μέσα σε transaction (γρήγορο συμβόλαιο: πελάτης + κράτηση +
+ * συμβόλαιο μαζί). Σε transaction ένα σφάλμα εγγραφής την ακυρώνει
+ * ολόκληρη, οπότε ο ελεύθερος κωδικός βρίσκεται με ανάγνωση ΠΡΙΝ την
+ * εγγραφή αντί για «δοκίμασε και ξαναδοκίμασε».
+ */
+export async function createContractInTx(
+  tx: Prisma.TransactionClient,
+  viewer: Viewer,
+  userName: string,
+  booking: ContractBooking
+): Promise<Contract> {
+  const data = await newContractData(tx, viewer, userName, booking);
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const contractNumber = randomContractCode();
+    const taken = await tx.contract.findFirst({
+      where: { tenantId: data.tenantId, contractNumber },
+      select: { id: true },
+    });
+    if (taken) continue;
+
+    const created = await tx.contract.create({ data: { ...data, contractNumber } });
+    await refreshSearchText(created.id, tx);
+    return created;
   }
   throw new Error("Δεν βρέθηκε ελεύθερος κωδικός συμβολαίου");
 }

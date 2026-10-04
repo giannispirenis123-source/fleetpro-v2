@@ -26,7 +26,7 @@ import {
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
 import { discountOfBooking, priceBooking } from "@/lib/bookingPricing";
 import { applyDiscountUsage } from "@/lib/discounts";
-import { issueInvoiceForBooking } from "@/lib/invoiceIssue";
+import { issueInvoiceOnCompletion, syncVehicleStatus } from "@/lib/bookingLifecycle";
 import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
 
 const isoDate = z
@@ -75,29 +75,6 @@ const withRelations = {
           },
           createdBy: { select: { id: true, name: true } },
 } as const;
-
-/**
- * Ευθυγραμμίζει την κατάσταση του οχήματος με τις κρατήσεις του.
- * Δεσμευμένο αν υπάρχει έστω μία κράτηση σε CONFIRMED ή ACTIVE· αλλιώς
- * ελεύθερο — αλλά ποτέ δεν πειράζουμε όχημα σε συντήρηση ή ανενεργό.
- */
-async function syncVehicleStatus(vehicleId: string, tenantId: string) {
-  const vehicle = await db.vehicle.findFirst({
-    where: { id: vehicleId, tenantId },
-    select: { id: true, status: true },
-  });
-  if (!vehicle) return;
-  if (vehicle.status === "MAINTENANCE" || vehicle.status === "INACTIVE") return;
-
-  const held = await db.booking.count({
-    where: { tenantId, vehicleId, status: { in: ["CONFIRMED", "ACTIVE"] } },
-  });
-
-  const next = held > 0 ? "RENTED" : "AVAILABLE";
-  if (next !== vehicle.status) {
-    await db.vehicle.update({ where: { id: vehicle.id }, data: { status: next } });
-  }
-}
 
 // PATCH /api/bookings/[id]
 export const PATCH = withPermission(
@@ -282,25 +259,8 @@ export const PATCH = withPermission(
       let invoiceNumber = booking.invoice?.invoiceNumber ?? null;
 
       if (booking.status === "COMPLETED") {
-        const tenant = await db.tenant.findUnique({
-          where: { id: session.tenantId! },
-          select: { invoiceIssueTrigger: true },
-        });
-
-        if (tenant?.invoiceIssueTrigger === "ON_COMPLETION") {
-          const outcome = await issueInvoiceForBooking({
-            tenantId: session.tenantId!,
-            bookingId: booking.id,
-          });
-
-          // Αποτυχία έκδοσης δεν γυρίζει πίσω την ολοκλήρωση της
-          // κράτησης — καταγράφεται και το τιμολόγιο βγαίνει χειροκίνητα.
-          if (outcome.ok) {
-            invoiceNumber = outcome.invoiceNumber;
-          } else {
-            console.error("Αυτόματη έκδοση τιμολογίου:", outcome.message);
-          }
-        }
+        invoiceNumber =
+          (await issueInvoiceOnCompletion(session.tenantId!, booking.id)) ?? invoiceNumber;
       }
 
       return ok({ booking: { ...toBookingDTO(booking), invoiceNumber } });

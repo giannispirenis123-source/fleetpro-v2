@@ -87,6 +87,8 @@ export default function PhotoManager({
   onAdded,
   onRemoved,
   onNoted,
+  replace = false,
+  canDelete,
 }: {
   photos: PhotoItem[];
   /** POST multipart εδώ (πεδίο file + `fields`). */
@@ -106,6 +108,14 @@ export default function PhotoManager({
   onAdded: (photo: PhotoItem) => void;
   onRemoved: (id: string) => void;
   onNoted: (id: string, note: string) => void;
+  /**
+   * Μία θέση με αντικατάσταση (π.χ. δίπλωμα εμπρός/πίσω): ένα αρχείο τη
+   * φορά, και επιτρέπεται ανέβασμα όταν υπάρχει ήδη φωτογραφία — ο server
+   * την αντικαθιστά.
+   */
+  replace?: boolean;
+  /** Διαγραφή· αν λείπει, ακολουθεί το `editable`. */
+  canDelete?: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -127,7 +137,8 @@ export default function PhotoManager({
     update((q) => q.map((i) => (i.key === key ? { ...i, ...p } : i)));
 
   const pending = queue.filter((i) => i.status !== "error").length;
-  const room = Math.max(0, max - photos.length - pending);
+  const room = replace ? (pending > 0 ? 0 : 1) : Math.max(0, max - photos.length - pending);
+  const deletable = canDelete ?? editable;
 
   const process = async (item: QueueItem) => {
     patch(item.key, { status: "compressing", progress: 0, message: "" });
@@ -273,17 +284,19 @@ export default function PhotoManager({
             ref={galleryRef}
             type="file"
             accept="image/jpeg,image/png,image/webp,image/*"
-            multiple
+            multiple={!replace}
             hidden
             onChange={(e) => {
               pick(e.target.files);
               e.target.value = "";
             }}
           />
-          <span className="dash-form-note">{counter ?? `${photos.length}/${max}`}</span>
+          {!replace && (
+            <span className="dash-form-note">{counter ?? `${photos.length}/${max}`}</span>
+          )}
         </div>
       )}
-      {!editable && lockedText && <p className="dash-form-note">{lockedText}</p>}
+      {lockedText && (!editable || !deletable) && <p className="dash-form-note">{lockedText}</p>}
 
       {queue.length > 0 && (
         <ul className="dash-photo-queue">
@@ -356,7 +369,7 @@ export default function PhotoManager({
                   ) : (
                     p.note && <span className="dash-photo-note">{p.note}</span>
                   ))}
-                {editable && (
+                {deletable && (
                   <button
                     type="button"
                     className="dash-icon-btn dash-icon-btn--danger"

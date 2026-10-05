@@ -13,7 +13,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ok, badRequest, conflict, notFound, noContent, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { anySigned, readDrivers, readPhotos } from "@/lib/contracts";
+import { LICENSE_SIDES, anySigned, readDrivers, readPhotos } from "@/lib/contracts";
 import { removeObjects } from "@/lib/storage";
 import { readExtrasSnapshot } from "@/lib/pricing";
 import {
@@ -26,6 +26,7 @@ import {
   contractPatchSchema,
   contractScope,
   loadContract,
+  withLatestLicensePhotos,
   mergeDrivers,
   pickupChanged,
   resolveVehicleChanges,
@@ -158,8 +159,16 @@ export const PATCH = withPermission(
       // πάντα ίδιο στα δύο. Αν άλλος αποθήκευσε (ή υπέγραψε) στο μεταξύ,
       // τίποτα δεν γράφεται (αισιόδοξο κλείδωμα).
       const STALE = "STALE";
+      let orphans: string[] = [];
       try {
         await db.$transaction(async (tx) => {
+          // Οι φωτογραφίες διπλώματος: πάντα οι τρέχουσες της βάσης (όχι
+          // όσες διάβασε η φόρμα). Αφαιρεμένος οδηγός → σβήνονται τα αρχεία του.
+          if (data.drivers !== undefined) {
+            const latest = await withLatestLicensePhotos(tx, current.id, drivers);
+            data.drivers = latest.drivers as unknown as Prisma.InputJsonValue;
+            orphans = latest.orphans;
+          }
           if (bookingUpdate) {
             await tx.booking.update({ where: { id: current.bookingId }, data: bookingUpdate });
           }
@@ -182,6 +191,7 @@ export const PATCH = withPermission(
         throw error;
       }
 
+      if (orphans.length) await removeObjects(orphans);
       await refreshSearchText(current.id);
 
       const fresh = await db.contract.findUniqueOrThrow({
@@ -213,7 +223,12 @@ export const DELETE = withPermission(
 
       await db.contract.delete({ where: { id: current.id } });
       // Τα αρχεία των φωτογραφιών φεύγουν κι αυτά (best effort).
-      await removeObjects(readPhotos(current.damagePhotos).map((p) => p.path));
+      await removeObjects([
+        ...readPhotos(current.damagePhotos).map((p) => p.path),
+        ...readDrivers(current.drivers).flatMap((d) =>
+          LICENSE_SIDES.map((s) => d.licensePhotos?.[s] ?? "")
+        ),
+      ]);
       return noContent();
     } catch (error) {
       console.error(error);

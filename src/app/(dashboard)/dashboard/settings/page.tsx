@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import SettingsClient from "./SettingsClient";
+import { signUrls } from "@/lib/storage";
 import CompanyContractSettings from "./CompanyContractSettings";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +32,13 @@ export default async function SettingsPage() {
       taxOffice: true,
       contractTermsEl: true,
       contractTermsEn: true,
+      logoPath: true,
     },
   });
   if (!tenant) redirect("/dashboard");
+  const logoUrl = tenant.logoPath
+    ? ((await signUrls([tenant.logoPath])).get(tenant.logoPath) ?? null)
+    : null;
 
   return (
     <>
@@ -49,6 +54,7 @@ export default async function SettingsPage() {
       <CompanyContractSettings
         companyName={tenant.name}
         companyEmail={tenant.email}
+        initialLogoUrl={logoUrl}
         initial={{
           phone: tenant.phone ?? "",
           address: tenant.address ?? "",

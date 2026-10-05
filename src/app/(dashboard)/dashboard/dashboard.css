@@ -2264,3 +2264,54 @@
 .dash-damage-legacy { border-top: 1px solid var(--border); padding-top: 12px; }
 .dash-damage-sketch--small { max-width: 110px; }
 .dash-damage-legacy .dash-damage { grid-template-columns: 110px 1fr; }
+
+/* ---------- Συμβόλαιο: λογότυπο, διπλώματα, link πελάτη ---------- */
+.dash-contract-logo {
+  display: block;
+  max-height: 44px;
+  max-width: 140px;
+  object-fit: contain;
+}
+.dash-license { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 10px; }
+.dash-license-title { font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+.dash-license-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.dash-license-side { min-width: 0; }
+.dash-license-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.dash-license-side .dash-photo-grid { grid-template-columns: minmax(0, 220px); }
+.dash-link-url {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  margin: 6px 0 10px;
+}
+.dash-link-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.dash-section-title svg { vertical-align: -3px; }
+
+/* ---------- Ρυθμίσεις: λογότυπο ---------- */
+.dash-logo-block { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.dash-logo-title { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+.dash-logo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 8px; }
+.dash-logo-preview {
+  width: 180px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  padding: 6px;
+  background: repeating-conic-gradient(#f1f5f9 0% 25%, #fff 0% 50%) 50% / 14px 14px;
+}
+.dash-logo-preview img { display: block; max-width: 100%; max-height: 60px; object-fit: contain; }
+.dash-logo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 640px) {
+  .dash-license-sides { grid-template-columns: 1fr; }
+}

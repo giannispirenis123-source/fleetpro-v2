@@ -122,12 +122,13 @@ export function takenAtFrom(form: FormData): string {
 export const randomPhotoId = () => randomBytes(12).toString("base64url");
 
 /**
- * Ανεβάζει τη φωτογραφία στο `${prefix}/${id}.${ext}` και επιστρέφει id και
- * διαδρομή. Ρίχνει StorageError με γενικό μήνυμα (χωρίς λεπτομέρειες).
+ * Ανεβάζει τη φωτογραφία στο `${prefix}/${name}${id}.${ext}` και επιστρέφει
+ * id και διαδρομή. Ρίχνει StorageError με γενικό μήνυμα (χωρίς λεπτομέρειες).
+ * `name`: προαιρετικό πρόθεμα ονόματος (π.χ. «logo-», «<driverId>-front-»).
  */
-export async function storePhoto(prefix: string, upload: PhotoUpload) {
+export async function storePhoto(prefix: string, upload: PhotoUpload, name = "") {
   const id = randomPhotoId();
-  const path = `${prefix}/${id}.${upload.ext}`;
+  const path = `${prefix}/${name}${id}.${upload.ext}`;
   await uploadObject(path, upload.bytes, upload.type);
   return { id, path };
 }

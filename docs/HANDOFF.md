@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 04/10/2026 · **main:** το squash του PR «fix: ανεκτικός έλεγχος SUPABASE_URL» (#10), πάνω από `a2e02a8` (#9). Ένα commit δεν μπορεί να γράψει το δικό του hash· το ακριβές βγαίνει με `git log -1 origin/main`. · **Κατάσταση:** φωτογραφίες ζημιών live (bucket `fleetpro-files`, env vars, SQL `13` έγιναν). **Χωρίς SQL.**
+**Ημερομηνία:** 05/10/2026 · **main πριν από αυτή τη δουλειά:** `363f40d` (PR #10). **SQL `13` έχει τρέξει.** · **Αυτό το branch:** Φάση Β (συνέχεια) — λογότυπο, διπλώματα, link πελάτη. **Θέλει SQL `14` ΠΡΙΝ το push/merge.**
 
-> **Επόμενο βήμα:** υπόλοιπη Φάση Β (λογότυπο, δίπλωμα, link πελάτη `/c/[token]`) και Φάση Γ, §8.1. Αν το ανέβασμα φωτογραφιών αποτυγχάνει, το μήνυμα στην οθόνη και τα logs του Vercel (`Storage …`, `[FleetPro] …`) λένε ακριβώς την αιτία (§5).
+> **Επόμενο βήμα:** τρέξε το `prisma/sql/14-contract-branding-link.sql` στη Supabase (verification `1 | 2 | 1`) και μόνο τότε push/merge. Μετά: Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage (απομένει, δεν έγινε εσκεμμένα).
 
 ---
 
@@ -47,8 +47,9 @@ Push πριν το SQL = σπασμένη παραγωγή (ο κώδικας ζ
 - **Bucket:** `fleetpro-files` (το όνομα είναι σταθερά στον κώδικα: `STORAGE_BUCKET` στο `src/lib/storage.ts`).
 - **Ρυθμίσεις:** Public bucket = **OFF** (ιδιωτικό) · Restrict file size = **5 MB** · Allowed MIME types = `image/jpeg, image/png, image/webp`.
 - **Policies (RLS):** καμία. Ο server μιλά με service role, που παρακάμπτει τις policies· χωρίς policies κανείς άλλος (anon/authenticated) δεν διαβάζει ή γράφει.
-- **Διαδρομές:** `tenantId/contractId/pickup|return/<τυχαίο>.jpg` για συμβόλαια, `tenantId/damages/damageId/<τυχαίο>.jpg` για ζημιές.
-- Προβολή μόνο με **signed URLs** (1 ώρα) που βγαίνουν σε κάθε φόρτωση σελίδας.
+- **Διαδρομές:** `tenantId/contractId/pickup|return/<τυχαίο>.jpg` για συμβόλαια, `tenantId/damages/damageId/<τυχαίο>.jpg` για ζημιές, `tenantId/branding/logo-<τυχαίο>.<png|jpg|webp>` για το λογότυπο, `tenantId/contractId/licenses/<driverId>-<front|back>-<τυχαίο>.jpg` για διπλώματα.
+- Προβολή μόνο με **signed URLs** που βγαίνουν σε κάθε φόρτωση σελίδας: 1 ώρα (ζημιές/λογότυπο στο dashboard), **10 λεπτά** για διπλώματα και για ό,τι δείχνει η σελίδα πελάτη.
+- `NEXT_PUBLIC_APP_URL` (προαιρετικό): βασικό URL για το link πελάτη/QR. Αν λείπει, χρησιμοποιείται το host του αιτήματος.
 
 Τιμές: **γνωστές στον Giannis**, ποτέ στη συζήτηση ή σε αρχείο.
 
@@ -103,6 +104,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα με ΦΠΑ (ένα σύνολο με την κράτηση), κάρτα (μόνο 4 ψηφία), αναζήτηση `searchText` | ✅ |
 | Γρήγορο συμβόλαιο «walk-in» (`/dashboard/contracts/new`): πελάτης + κράτηση + συμβόλαιο σε μία transaction, κράτηση που ακολουθεί το συμβόλαιο | ✅ live (`2757fed`, PR #7) |
 | Συμβόλαια Φάση Β (1ο κομμάτι): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα (Supabase Storage), φωτογραφίες στις ζημιές της σελίδας Service, χωρίς καύσιμο επιστροφής | ✅ live (`7f8915b`, PR #8) |
+| Συμβόλαια Φάση Β (συνέχεια): λογότυπο εταιρίας, φωτογραφίες διπλώματος ανά οδηγό, link πελάτη `/c/[token]` + QR στο Α4 | ✅ στο branch, **θέλει SQL `14`** |
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
@@ -172,9 +174,28 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
     Η Supabase συχνά απαντά HTTP 400 με `statusCode` μέσα στο σώμα (π.χ. `"404"` + «Bucket not found»)· η κατάταξη κοιτά πρώτα αυτό. **Logs:** `Storage upload: HTTP 400 → BUCKET_NOT_FOUND — statusCode 404 · Bucket not found`· το κείμενο της Supabase περνά από `scrub()` (βγάζει URLs, JWT, `sb_secret_…`, `token=`/`key=`, `Bearer`), σε σφάλμα δικτύου γράφεται μόνο ο κωδικός (π.χ. `ECONNREFUSED`). Όταν η απάντηση δεν είναι JSON (π.χ. 413 του Vercel), το UI δείχνει μήνυμα ανά HTTP status. Τα ίδια ισχύουν για τις ζημιές της σελίδας Service.
 
+- **Λογότυπο εταιρίας (Φάση Β, συνέχεια):**
+  - **Ρυθμίσεις → «Στοιχεία εταιρίας»:** ανέβασμα (JPEG/PNG/WebP — όχι SVG· ο server ελέγχει τα πρώτα bytes), προεπισκόπηση, «Αλλαγή», «Αφαίρεση». Σμίκρυνση στον browser (`compressLogo` στο `src/lib/imageCompress.ts`): μέγιστη πλευρά 600px, ο τύπος μένει ίδιος (PNG/WebP κρατούν διαφάνεια, JPEG μένει JPEG).
+  - `POST/DELETE /api/settings/logo` με `settings.edit` (ίδιο κλειδί με το PATCH των Ρυθμίσεων). Στήλη `tenants."logoPath"`· η αλλαγή γίνεται με `FOR UPDATE` και **σβήνει το παλιό αρχείο** μετά την εγγραφή. Το παλιό `logoUrl` μένει αχρησιμοποίητο.
+  - **Εμφάνιση:** δεξιά στην κεφαλίδα (φόρμα, Α4, σελίδα πελάτη), σταθερό μέγιστο ύψος. Πάντα το **τρέχον** λογότυπο (`tenantLogoUrl`), όχι του snapshot — άρα και στα παλιά συμβόλαια. Χωρίς λογότυπο η θέση μένει κενή (το placeholder «Λογότυπο / Logo» του Α4 έφυγε).
+- **Φωτογραφίες διπλώματος:**
+  - Ανά οδηγό «Δίπλωμα: Εμπρός» / «Πίσω» (προαιρετικά), με το **ίδιο** `PhotoManager` (νέα props `replace` = μία θέση με αντικατάσταση, `canDelete`) και την ίδια συμπίεση με τις ζημιές. Μόνο σε αποθηκευμένο οδηγό.
+  - Διαδρομές στο JSON του οδηγού: `drivers[].licensePhotos: { front?, back? }` (χωρίς στήλη). Ο client **δεν** τις στέλνει ποτέ (το zod του οδηγού τις πετά)· το `toContractDTO` τις αφαιρεί και δίνει μόνο `licensePhotos: [{driverId, side, id, url}]` με signed URL 10′ (`loadContract`).
+  - `POST/DELETE /api/contracts/[id]/licenses` (`contracts.edit`, `contractScope` → PARTNER 404 σε ξένα). Raw SQL με `FOR UPDATE`, **χωρίς** αλλαγή `updatedAt`. Κανόνας `licenseLockOf`: ανέβασμα/αντικατάσταση μέχρι την ολοκλήρωση (και μετά τις υπογραφές), διαγραφή μόνο πριν την πρώτη υπογραφή. Η αντικατάσταση σβήνει το παλιό αρχείο.
+  - Επειδή το ανέβασμα δεν αλλάζει `updatedAt`, το PATCH και η υπογραφή που ξαναγράφουν τους οδηγούς παίρνουν τις **τρέχουσες** διαδρομές με κλείδωμα της γραμμής (`withLatestLicensePhotos`). Αφαιρεμένος οδηγός → σβήνονται τα αρχεία του. Διαγραφή πρόχειρου → σβήνονται κι αυτά.
+  - **Ποτέ** στο Α4, στη σελίδα πελάτη, στο `searchText` ή σε δημόσιο endpoint.
+- **Link πελάτη `/c/[token]`:**
+  - Στήλες `contracts."publicToken"` (UNIQUE) και `"publicTokenRevokedAt"`. Token 32 τυχαία bytes, base64url (43 χαρακτήρες) — `src/lib/contractLink.ts` (καθαρή λογική, χωρίς runtime imports, με tests).
+  - Φτιάχνεται **αυτόματα** με την υπογραφή όλων (sign route). Στη φόρμα, ενότητα «Link πελάτη» (μόνο σε SIGNED/COMPLETED): «Κοινοποίηση» (`navigator.share`, αλλιώς αντιγραφή), «Αντιγραφή link» (`contracts.view`), «Ακύρωση link» / «Νέο link» (`POST /api/contracts/[id]/link {action}`, `contracts.edit`, χωρίς αλλαγή `updatedAt`). Νέο link = νέο token → το παλιό δεν βρίσκεται πια.
+  - **Λήξη:** 90 ημέρες μετά την ημερομηνία επιστροφής (ισχύει όλη η 90ή ημέρα), υπολογίζεται (`linkStateOf`). Ληγμένο/ακυρωμένο/άγνωστο → δίγλωσση σελίδα «Το link δεν είναι πλέον διαθέσιμο / This link is no longer available» χωρίς κανένα στοιχείο.
+  - **Σελίδα:** server-rendered, χωρίς login, το **ίδιο** `ContractDocument` με `mode="public"` και δεδομένα από `toPublicContract` (ids → αύξοντες, χωρίς διπλώματα, πληρωμή/κάρτα/εγγύηση, παρατηρήσεις, αριθμό κράτησης, συντάκτη). Μικρογραφίες ζημιών με μεγέθυνση στο πάτημα (CSS `:target`, χωρίς JS). Signed URLs 10′, νέα σε κάθε φόρτωση. Αναζήτηση με το unique index (`loadPublicContract`). Κανένα API δεν δίνει δεδομένα με το token.
+  - **Ασφάλεια:** το middleware αφήνει ελεύθερη **μόνο** τη διαδρομή `/c/<ένα τμήμα base64url>` και βάζει `X-Robots-Tag: noindex`, `Cache-Control: no-store`, `Referrer-Policy: no-referrer`· επιπλέον meta robots/referrer.
+  - **Γνωστό όριο:** τα signed URLs της Supabase περιέχουν τη διαδρομή του αρχείου, άρα στα `src` των εικόνων φαίνονται `tenantId`/`contractId`. Στα δεδομένα/κείμενο της σελίδας δεν υπάρχει κανένα id.
+  - **QR στο Α4:** μικρό QR (20mm) δίπλα στις υπογραφές, μόνο με ενεργό link — SVG στον server με το πακέτο `qrcode` (`src/lib/contractQr.ts`).
+
 ## 6. Migrations
 
-Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
@@ -182,6 +203,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - **10-finance:** έχει τρέξει (verification `3 | 0`).
 - **12-contracts-update:** έχει τρέξει (verification `3 | 1 | 1`).
 - **13-contract-photos:** έχει τρέξει (verification `3 | 0`). `contracts."damagePhotos"` (JSONB, default `[]`), `"damageNotesPickup"`, `"damageNotesReturn"` (TEXT).
+- **14-contract-branding-link:** **ΔΕΝ έχει τρέξει ακόμα** — πρέπει να τρέξει πριν το push/merge αυτού του branch. `tenants."logoPath"`, `contracts."publicToken"` (UNIQUE index `contracts_publicToken_key`), `contracts."publicTokenRevokedAt"`. Αναμενόμενο verification `1 | 2 | 1`. Τοπικά (PostgreSQL 16, `01 → 14`): `prisma migrate diff` → «empty migration».
 - **Walk-in (02/10/2026): κανένα νέο SQL.** Χρησιμοποιεί την υπάρχουσα `bookings.source`. Τοπική PostgreSQL 16 με `01 → 12`: `prisma migrate diff` → «empty migration».
 - **11-contracts:** έχει τρέξει (verification `1 | 4 | 1 | 18 | 2 | 0 | 0`).
 - _(ιστορικό 11)_ Enum `ContractStatus`, 18 στήλες στο `contracts`, 4 στο `tenants`, `extras.excess`, unique `(tenantId, contractNumber)`, index `(tenantId, status)`, `contracts.sign` → `contracts.edit`, backfill STAFF. Αναμενόμενο verification `1 | 4 | 1 | 18 | 2 | 0 | 0`. Έτρεξε στο Supabase πριν το merge του PR #5.
@@ -204,7 +226,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 **Επόμενο: Συμβόλαια Φάση Β (υπόλοιπο).**
 
-1. **Συμβόλαια** — ✅ Φάση Α (§5). **Φάση Β:** ✅ ιδιωτικό bucket + φωτογραφίες ζημιών παραλαβής/παράδοσης (§5). Απομένουν: λογότυπο εταιρίας, φωτογραφία διπλώματος (μόνο εσωτερικά, signed URL), δημόσιο link πελάτη `/c/[token]` (λήξη 90 ημέρες μετά την επιστροφή, ακύρωση/επαναδημιουργία, noindex, QR στο αντίγραφο), μεταφορά υπογραφών σε Storage. **Φάση Γ:** «Συμπλήρωση από φωτογραφία» διπλώματος μέσω Anthropic API (μόνο πρόταση, ποτέ αυτόματη αποθήκευση). Επίσης εκκρεμεί το `invoiceIssueTrigger = ON_CONTRACT`.
+1. **Συμβόλαια** — ✅ Φάση Α (§5). **Φάση Β:** ✅ ιδιωτικό bucket + φωτογραφίες ζημιών παραλαβής/παράδοσης (§5). ✅ λογότυπο, διπλώματα, link πελάτη + QR (§5, θέλει SQL `14`). Απομένει: μεταφορά υπογραφών σε Storage. **Φάση Γ:** «Συμπλήρωση από φωτογραφία» διπλώματος μέσω Anthropic API (μόνο πρόταση, ποτέ αυτόματη αποθήκευση). Επίσης εκκρεμεί το `invoiceIssueTrigger = ON_CONTRACT`.
 2. ~~**Οικονομικά**~~ — ✅ ολοκληρώθηκε (§5).
 3. ~~**Αναφορές**~~ — ✅ ολοκληρώθηκε (§5).
 4. **Τιμολόγια: email** — το `invoiceSendMode = AUTO` και το πεδίο `Invoice.sentAt` υπάρχουν, η αποστολή όχι.
@@ -217,7 +239,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Ανεκτικός έλεγχος `SUPABASE_URL` (κενά, εισαγωγικά, «/», `/rest/v1` κ.λπ., διεύθυνση dashboard → `https://<ref>.supabase.co`) σε ένα σημείο, unit tests με `node:test` (`npm test`). Χωρίς SQL |
+| _(αυτό το commit)_ | Συμβόλαια Φάση Β (συνέχεια): λογότυπο εταιρίας (Ρυθμίσεις, φόρμα/Α4/σελίδα πελάτη), φωτογραφίες διπλώματος ανά οδηγό (μόνο εσωτερικά), link πελάτη `/c/[token]` (αυτόματο με την υπογραφή, ακύρωση/νέο, λήξη 90 ημέρες, noindex/no-store/no-referrer), QR στο Α4 (`qrcode`), tests. Migration `14` |
+| `363f40d` | Ανεκτικός έλεγχος `SUPABASE_URL` (κενά, εισαγωγικά, «/», `/rest/v1` κ.λπ., διεύθυνση dashboard → `https://<ref>.supabase.co`) σε ένα σημείο, unit tests με `node:test` (`npm test`). Χωρίς SQL |
 | `a2e02a8` | Φωτογραφίες (PR #9): συγκεκριμένο μήνυμα ανά αιτία σφάλματος Storage (env var, μορφή URL, κλειδί, bucket, τύπος/μέγεθος, δίκτυο), ασφαλή logs χωρίς κλειδιά/tokens/URLs, έλεγχος ρυθμίσεων στην εκκίνηση (`instrumentation.ts`). Χωρίς SQL |
 | `7f8915b` | Συμβόλαια Φάση Β (1ο κομμάτι) (PR #8, squash): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα και συμπίεση στον browser, ιδιωτικό Supabase Storage με signed URLs, ίδιο component και server κώδικας στις ζημιές της σελίδας Service, αφαίρεση καυσίμου επιστροφής, παλιό σκαρίφημα μόνο για ανάγνωση, migration `13` |
 | `2757fed` | Γρήγορο συμβόλαιο «walk-in» (PR #7, squash): `/dashboard/contracts/new`, πελάτης + κράτηση + συμβόλαιο σε μία transaction, κοινή δημιουργία κράτησης (`bookingCreate.ts`), η κράτηση ακολουθεί το συμβόλαιο (ACTIVE/COMPLETED + τιμολόγιο ON_COMPLETION), ένδειξη «Από συμβόλαιο». Χωρίς SQL |

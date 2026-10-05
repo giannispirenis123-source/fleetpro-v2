@@ -14,6 +14,8 @@ import { db } from "./db";
 import type { Viewer } from "./authz";
 import { contractScope } from "./contractForm";
 import {
+  licenseLockOf,
+  type LicenseSide,
   photoLockOf,
   readDrivers,
   readPhotos,
@@ -96,5 +98,72 @@ export async function mutateContractPhotos(
       WHERE "id" = ${scoped.id}
     `);
     return { ok: true as const, photos: result.photos };
+  });
+}
+
+/* ─────────────────────────────────────────────
+   Φωτογραφίες διπλώματος (ανά οδηγό: front / back)
+   ───────────────────────────────────────────── */
+
+const LICENSE_LOCK_MESSAGE: Record<string, string> = {
+  signed: "Η φωτογραφία διπλώματος δεν διαγράφεται μετά την πρώτη υπογραφή (μπορεί να αντικατασταθεί)",
+  completed: "Το συμβόλαιο έχει ολοκληρωθεί και δεν αλλάζει",
+};
+
+export type LicenseMutation =
+  | { ok: true; previous: string | null }
+  | { ok: false; status: 404 | 409; message: string };
+
+/**
+ * Ορίζει (path) ή σβήνει (null) τη φωτογραφία μιας πλευράς διπλώματος, ατομικά
+ * με SELECT … FOR UPDATE και ΧΩΡΙΣ αλλαγή του "updatedAt" (όπως οι ζημιές).
+ * Ο κανόνας κλειδώματος ξαναελέγχεται μέσα στο κλείδωμα. Επιστρέφει την
+ * προηγούμενη διαδρομή — ο καλών σβήνει το αρχείο ΜΕΤΑ την εγγραφή.
+ */
+export async function setLicensePhoto(
+  viewer: Viewer,
+  contractId: string,
+  driverId: string,
+  side: LicenseSide,
+  path: string | null
+): Promise<LicenseMutation> {
+  const scoped = await findScopedContract(viewer, contractId);
+  if (!scoped) return { ok: false, status: 404, message: "Το συμβόλαιο δεν βρέθηκε" };
+
+  return db.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ status: string; drivers: unknown }[]>(Prisma.sql`
+      SELECT "status"::text AS "status", "drivers"
+      FROM "contracts"
+      WHERE "id" = ${scoped.id} AND "tenantId" = ${scoped.tenantId}
+      FOR UPDATE
+    `);
+    const row = rows[0];
+    if (!row) return { ok: false as const, status: 404 as const, message: "Το συμβόλαιο δεν βρέθηκε" };
+
+    const drivers = readDrivers(row.drivers);
+    const lock = licenseLockOf(path ? "upload" : "delete", row.status, drivers);
+    if (lock) return { ok: false as const, status: 409 as const, message: LICENSE_LOCK_MESSAGE[lock] };
+
+    const index = drivers.findIndex((d) => d.id === driverId);
+    if (index < 0) {
+      return { ok: false as const, status: 404 as const, message: "Ο οδηγός δεν βρέθηκε — αποθήκευσε πρώτα το συμβόλαιο" };
+    }
+    const driver = drivers[index];
+    const previous = driver.licensePhotos?.[side] ?? null;
+    if (!path && !previous) {
+      return { ok: false as const, status: 404 as const, message: "Η φωτογραφία δεν βρέθηκε" };
+    }
+    const next = { ...(driver.licensePhotos ?? {}) };
+    if (path) next[side] = path;
+    else delete next[side];
+    const { licensePhotos: _old, ...rest } = driver;
+    drivers[index] = next.front || next.back ? { ...rest, licensePhotos: next } : rest;
+
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE "contracts"
+      SET "drivers" = ${JSON.stringify(drivers)}::jsonb
+      WHERE "id" = ${scoped.id}
+    `);
+    return { ok: true as const, previous };
   });
 }

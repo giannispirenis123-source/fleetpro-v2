@@ -120,6 +120,8 @@ export function toPublicContract(c: ContractDTO): ContractDTO {
           company: { ...s.company, logoUrl: null },
           booking: { ...s.booking, number: "" },
           vehicle: { ...s.vehicle, id: "" },
+          // Ο πελάτης βλέπει ΜΟΝΟ την τελική τιμή — όχι ποιος/γιατί/διαφορά.
+          priceOverride: s.priceOverride ? { manualTotal: s.priceOverride.manualTotal } : undefined,
         }
       : null,
     drivers,

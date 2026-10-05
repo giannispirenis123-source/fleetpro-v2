@@ -69,12 +69,19 @@ import {
 import { appBaseUrl, publicContractUrl, type PublicLinkDTO } from "@/lib/contractLink";
 import { computePrice, toDisplayBreakdown, type PricedExtraInput } from "@/lib/pricing";
 import { splitVatInclusive } from "@/lib/invoices";
+import {
+  PRICE_REASON_MAX,
+  adjustmentOf,
+  computedTotalOf,
+  validManualTotal,
+} from "@/lib/priceOverride";
 import { phoneDigits, type CustomerSearchField } from "@/lib/customerMatch";
 import type { ExtraDTO } from "@/lib/extras";
 import type { WalkInCustomer } from "@/lib/walkIn";
 import DamageSketch from "@/components/contracts/DamageSketch";
 import FuelGauge from "@/components/contracts/FuelGauge";
 import SignaturePad from "@/components/contracts/SignaturePad";
+import VehiclePicker, { type PickerVehicle } from "@/components/contracts/VehiclePicker";
 import PhotoManager, { type StagedView } from "@/components/photos/PhotoManager";
 import { MAX_CONTRACT_PHOTOS, type PhotoItem } from "@/lib/photoShared";
 import { sendPhoto, uploadErrorFor } from "@/lib/photoUpload";
@@ -108,7 +115,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export interface VehicleOption {
   id: string;
-  label: string;
+  brand: string;
+  model: string;
+  plate: string;
+  dailyRate: number;
 }
 
 /* ─────────────────────────────────────────────
@@ -137,6 +147,11 @@ interface FormState {
   depositCard: CardForm;
   gdprConsent: boolean;
   extraIds: string[];
+  /**
+   * Χειροκίνητη τελική τιμή με ΦΠΑ (contracts.price) ή null = υπολογισμένη.
+   * `base` = η υπολογισμένη τιμή όταν ορίστηκε (για την προειδοποίηση).
+   */
+  price: { total: string; reason: string; base?: number } | null;
 }
 
 /** Κάρτα στη φόρμα — ΜΟΝΟ τα 4 επιτρεπτά πεδία, ποτέ πλήρης αριθμός/CVV. */
@@ -181,6 +196,13 @@ const fromContract = (c: ContractDTO): FormState => ({
   depositCard: cardFromDTO(c.depositCard),
   gdprConsent: c.gdprConsent,
   extraIds: [...c.bookingExtraIds].sort(),
+  price: c.snapshot?.priceOverride
+    ? {
+        total: String(c.snapshot.priceOverride.manualTotal),
+        reason: c.snapshot.priceOverride.reason ?? "",
+        base: c.snapshot.priceOverride.computedTotal,
+      }
+    : null,
 });
 
 /** Νέο συμβόλαιο: προεπιλογές — μετρητά, εγγύηση χωρίς ποσό, ένας οδηγός. */
@@ -200,6 +222,7 @@ const newForm = (): FormState => ({
   depositCard: emptyCard(),
   gdprConsent: false,
   extraIds: [],
+  price: null,
 });
 
 const driverPayload = (drivers: ContractDriver[]) =>
@@ -222,6 +245,11 @@ const pickupPart = (f: FormState) =>
   });
 
 const extrasPart = (f: FormState) => f.extraIds.join(",");
+
+/** Η χειροκίνητη τιμή όπως τη στέλνει ο client: ΜΟΝΟ ποσό + λόγος. */
+const pricePayload = (f: FormState) =>
+  f.price ? { total: Number(f.price.total), reason: f.price.reason.trim() } : null;
+const pricePart = (f: FormState) => JSON.stringify(pricePayload(f));
 
 const afterPart = (f: FormState) =>
   JSON.stringify({
@@ -246,7 +274,7 @@ const pickupPayload = (f: FormState) => ({
 });
 
 /** Το σώμα του PATCH. Σε υπογεγραμμένο στέλνουμε μόνο ό,τι επιτρέπεται. */
-function toPayload(f: FormState, locked: boolean, sendExtras: boolean) {
+function toPayload(f: FormState, locked: boolean, sendExtras: boolean, sendPrice: boolean) {
   const after = {
     damageNotesReturn: f.damageNotesReturn,
     vehicleChanges: f.vehicleChanges,
@@ -257,6 +285,7 @@ function toPayload(f: FormState, locked: boolean, sendExtras: boolean) {
     ...after,
     ...pickupPayload(f),
     ...(sendExtras && { extraIds: f.extraIds }),
+    ...(sendPrice && { priceOverride: pricePayload(f) }),
   };
 }
 
@@ -270,6 +299,7 @@ function toCreatePayload(f: FormState) {
     damageNotesReturn: f.damageNotesReturn,
     vehicleChanges: f.vehicleChanges,
     notes: f.notes,
+    ...(f.price && { priceOverride: pricePayload(f) }),
   };
 }
 
@@ -313,7 +343,8 @@ export default function ContractEditor({
   extras: ExtraDTO[];
   vatRate: number;
   roundUpTotal: boolean;
-  can: { edit: boolean; delete: boolean };
+  /** price = contracts.price (αλλαγή τελικής τιμής). */
+  can: { edit: boolean; delete: boolean; price: boolean };
   /** Τρέχον λογότυπο εταιρίας (signed URL) ή null. */
   logoUrl: string | null;
   /** Μόνο στο νέο συμβόλαιο. Κενό `partners` για συνεργάτη. */
@@ -390,8 +421,9 @@ export default function ContractEditor({
 
   const pickupDirty = saved ? pickupPart(form) !== pickupPart(saved) : true;
   const extrasDirty = saved ? extrasPart(form) !== extrasPart(saved) : false;
+  const priceDirty = saved ? pricePart(form) !== pricePart(saved) : false;
   const dirty = saved
-    ? pickupDirty || extrasDirty || afterPart(form) !== afterPart(saved)
+    ? pickupDirty || extrasDirty || priceDirty || afterPart(form) !== afterPart(saved)
     : true;
   const savedDrivers = contract?.drivers ?? [];
   const hasSignatures = anySigned(savedDrivers);
@@ -412,6 +444,8 @@ export default function ContractEditor({
           .map((l) => ({ name: l.name, lineTotal: l.lineTotal, excess: null as number | null })),
         display: p.display,
         vatRate: p.vat.vatRate,
+        parts: p.parts,
+        computed: p.display.total,
       };
     }
     if (!s) return null;
@@ -425,6 +459,8 @@ export default function ContractEditor({
         insurance: s.insurance,
         display: toDisplayBreakdown(s.booking),
         vatRate: s.vatRate ?? vatRate,
+        parts: s.booking,
+        computed: computedTotalOf(s.booking, roundUpTotal),
       };
     }
     // Ο ΙΔΙΟΣ υπολογισμός με την κράτηση. Ο server ξαναϋπολογίζει στην
@@ -452,10 +488,38 @@ export default function ContractEditor({
         .map((l) => ({ name: l.name, lineTotal: l.lineTotal, excess: extraById.get(l.id)?.excess ?? null })),
       display: toDisplayBreakdown(b),
       vatRate: s.vatRate ?? vatRate,
+      parts: b,
+      computed: b.total,
     };
   }, [isNew, draft.preview, s, extras, extrasDirty, form.extraIds, roundUpTotal, vatRate]);
 
-  const vat = money ? splitVatInclusive(money.display.total, money.vatRate) : null;
+  /* ── Χειροκίνητη τιμή: οι γραμμές ως έχουν + «Προσαρμογή τιμής» ── */
+  const manualTotal =
+    form.price && validManualTotal(Number(form.price.total)) ? Number(form.price.total) : null;
+  const shown = money
+    ? manualTotal !== null
+      ? {
+          subtotal: money.parts.subtotal,
+          discountAmount: money.parts.discountAmount,
+          total: manualTotal,
+          adjustment: adjustmentOf(money.parts, manualTotal),
+        }
+      : { ...money.display, adjustment: 0 }
+    : null;
+  const savedOverride = contract?.snapshot?.priceOverride;
+  const priceStale =
+    manualTotal !== null &&
+    !!money &&
+    form.price?.base !== undefined &&
+    Math.abs(form.price.base - money.computed) > 0.004;
+  // Ίδιο κλείδωμα με τα πρόσθετα: υπογραφή / τιμολόγιο / κλειστή κράτηση.
+  const priceLock = isNew ? null : locked ? "signed" : contract?.extrasLock ?? null;
+  const canChangePrice = can.price && !readOnly && priceLock === null;
+  const [priceOpen, setPriceOpen] = useState(false);
+  const [priceDraft, setPriceDraft] = useState({ total: "", reason: "" });
+  const priceDraftValid = validManualTotal(Number(priceDraft.total)) && priceDraft.reason.length <= PRICE_REASON_MAX;
+
+  const vat = shown && money ? splitVatInclusive(shown.total, money.vatRate) : null;
   const totalChangedAfterSign =
     !!contract && hasSignatures && s !== null && Math.abs(s.booking.total - contract.bookingTotalNow) > 0.004;
   const cardsInvalid =
@@ -685,7 +749,8 @@ export default function ContractEditor({
           toPayload(
             { ...form, returnLocation: returnSame ? form.pickupLocation : form.returnLocation },
             locked,
-            extrasDirty && extrasEditable
+            extrasDirty && extrasEditable,
+            priceDirty
           )
         ),
       });
@@ -955,6 +1020,10 @@ export default function ContractEditor({
   const removeChange = (id: string) =>
     setForm((f) => ({ ...f, vehicleChanges: f.vehicleChanges.filter((c) => c.id !== id) }));
 
+  const changeVehicles: PickerVehicle[] = useMemo(
+    () => vehicles.map((v) => ({ ...v, available: true })),
+    [vehicles]
+  );
   // Στο νέο συμβόλαιο οι αλλαγές οχήματος γράφονται μαζί με την πρώτη αποθήκευση.
   const changesReadOnly = isNew ? false : readOnly;
   const returnDate = isNew ? draft.win?.returnDate ?? "" : s?.booking.returnDate ?? "";
@@ -1063,13 +1132,13 @@ export default function ContractEditor({
             {eur(contract.bookingTotalNow, locale)})
           </div>
         )}
-        {money ? (
+        {money && shown ? (
           <div className="dash-contract-money">
             <div className="dash-contract-line">
               <span>
                 {tr("contracts.rental")} · {money.totalDays} × {eur(money.dailyRate, locale)}
               </span>
-              <span>{eur(money.display.subtotal, locale)}</span>
+              <span>{eur(shown.subtotal, locale)}</span>
             </div>
             {money.extras.map((x, i) => (
               <div key={`x${i}`} className="dash-contract-line">
@@ -1091,15 +1160,30 @@ export default function ContractEditor({
                 <span>{eur(x.lineTotal, locale)}</span>
               </div>
             ))}
-            {money.display.discountAmount > 0 && (
+            {shown.discountAmount > 0 && (
               <div className="dash-contract-line">
                 <span>{tr("contracts.discount")}</span>
-                <span>−{eur(money.display.discountAmount, locale)}</span>
+                <span>−{eur(shown.discountAmount, locale)}</span>
+              </div>
+            )}
+            {/* Μόνο στη φόρμα: η διαφορά ώστε οι γραμμές = τελικό σύνολο. */}
+            {manualTotal !== null && shown.adjustment !== 0 && (
+              <div className="dash-contract-line dash-price-adjust">
+                <span>{tr("contracts.priceAdjustment")}</span>
+                <span>
+                  {shown.adjustment > 0 ? "+" : "−"}
+                  {eur(Math.abs(shown.adjustment), locale)}
+                </span>
               </div>
             )}
             <div className="dash-contract-line dash-contract-total">
-              <span>{tr("contracts.total")}</span>
-              <span>{eur(money.display.total, locale)}</span>
+              <span>
+                {tr("contracts.total")}
+                {manualTotal !== null && (
+                  <span className="dash-status dash-status--warn dash-price-tag">{tr("contracts.manualPrice")}</span>
+                )}
+              </span>
+              <span>{eur(shown.total, locale)}</span>
             </div>
             {vat && (
               <p className="dash-contract-vat">
@@ -1110,6 +1194,114 @@ export default function ContractEditor({
             <p className="dash-form-note">
               {isNew ? tr("walkIn.priceNote") : money.preview ? tr("contracts.previewNote") : tr("contracts.snapshotNote")}
             </p>
+
+            {/* ── Αλλαγή τιμής (contracts.price) ── */}
+            {manualTotal !== null && savedOverride && !priceDirty && (
+              <p className="dash-form-note dash-price-who">
+                {tr("contracts.priceSetBy")} {savedOverride.userName || "—"}
+                {savedOverride.at &&
+                  ` · ${new Date(savedOverride.at).toLocaleString(INTL[locale] ?? "el-GR", { timeZone: "Europe/Athens" })}`}
+                {savedOverride.computedTotal !== undefined &&
+                  ` · ${tr("contracts.priceComputedWas")} ${eur(savedOverride.computedTotal, locale)}`}
+                {savedOverride.reason && ` · ${savedOverride.reason}`}
+              </p>
+            )}
+            {priceStale && (
+              <div className="dash-contract-warn">
+                <AlertTriangle size={15} /> {tr("contracts.priceStale")} ({eur(money.computed, locale)})
+                {canChangePrice && (
+                  <button type="button" className="dash-link-btn" onClick={() => set("price", null)}>
+                    {tr("contracts.priceReset")}
+                  </button>
+                )}
+              </div>
+            )}
+            {can.price && priceLock && (
+              <p className="dash-form-note">
+                <Lock size={13} /> {tr(`contracts.priceLock_${priceLock}`)}
+              </p>
+            )}
+            {canChangePrice && !priceOpen && (
+              <div className="dash-price-actions">
+                <button
+                  type="button"
+                  className="dash-btn dash-btn--sm"
+                  onClick={() => {
+                    setPriceDraft({
+                      total: form.price?.total ?? shown.total.toFixed(2),
+                      reason: form.price?.reason ?? "",
+                    });
+                    setPriceOpen(true);
+                  }}
+                >
+                  {tr("contracts.priceChange")}
+                </button>
+                {form.price && (
+                  <button type="button" className="dash-link-btn" onClick={() => set("price", null)}>
+                    {tr("contracts.priceReset")}
+                  </button>
+                )}
+              </div>
+            )}
+            {canChangePrice && priceOpen && (
+              <div className="dash-card-box dash-price-box">
+                <div className="dash-form-grid">
+                  <label className="dash-field">
+                    {tr("contracts.priceFinal")}
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0.01"
+                      step="0.01"
+                      value={priceDraft.total}
+                      onChange={(e) => setPriceDraft((d) => ({ ...d, total: e.target.value }))}
+                    />
+                  </label>
+                  <label className="dash-field dash-field--wide">
+                    {tr("contracts.priceReason")}
+                    <input
+                      maxLength={PRICE_REASON_MAX}
+                      value={priceDraft.reason}
+                      onChange={(e) => setPriceDraft((d) => ({ ...d, reason: e.target.value }))}
+                    />
+                  </label>
+                </div>
+                {priceDraft.total !== "" && !validManualTotal(Number(priceDraft.total)) && (
+                  <span className="dash-field-error">{tr("contracts.priceInvalid")}</span>
+                )}
+                <div className="dash-price-actions">
+                  <button
+                    type="button"
+                    className="dash-btn dash-btn--primary"
+                    disabled={!priceDraftValid}
+                    onClick={() => {
+                      set("price", {
+                        total: Number(priceDraft.total).toFixed(2),
+                        reason: priceDraft.reason.trim(),
+                        base: money.computed,
+                      });
+                      setPriceOpen(false);
+                    }}
+                  >
+                    {tr("contracts.priceApply")}
+                  </button>
+                  <button
+                    type="button"
+                    className="dash-btn"
+                    onClick={() => {
+                      set("price", null);
+                      setPriceOpen(false);
+                    }}
+                  >
+                    {tr("contracts.priceReset")}
+                  </button>
+                  <button type="button" className="dash-btn" onClick={() => setPriceOpen(false)}>
+                    {tr("contracts.cancel")}
+                  </button>
+                </div>
+                <p className="dash-form-note">{tr("contracts.priceHelp")}</p>
+              </div>
+            )}
           </div>
         ) : (
           <p className="dash-form-note">
@@ -1501,17 +1693,16 @@ export default function ContractEditor({
         {form.vehicleChanges.length === 0 && <p className="dash-form-note">{tr("contracts.noVehicleChanges")}</p>}
         {form.vehicleChanges.map((c) => (
           <div key={c.id} className="dash-change-row">
-            <label className="dash-field">
+            <div className="dash-field">
               {tr("contracts.newVehicle")}
-              <select value={c.vehicleId} disabled={changesReadOnly} onChange={(e) => setChange(c.id, "vehicleId", e.target.value)}>
-                <option value="">—</option>
-                {vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              {/* Ίδιο component με την επιλογή οχήματος· ίδια διαθεσιμότητα με πριν (όλα τα ενεργά). */}
+              <VehiclePicker
+                vehicles={changeVehicles}
+                value={c.vehicleId}
+                disabled={changesReadOnly}
+                onChange={(id) => setChange(c.id, "vehicleId", id)}
+              />
+            </div>
             <label className="dash-field">
               {tr("contracts.changeDate")}
               <input

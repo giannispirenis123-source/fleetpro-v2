@@ -116,7 +116,13 @@ export default function ContractDocument({
   const s = contract.snapshot;
   // Η στρογγυλοποίηση απορροφάται στις γραμμές, όπως στις κρατήσεις: οι
   // γραμμές αθροίζουν ΑΚΡΙΒΩΣ στο σύνολο.
-  const money = s ? toDisplayBreakdown(s.booking) : null;
+  // Χειροκίνητη τιμή: οι γραμμές ως έχουν και το τελικό σύνολο όπως ορίστηκε.
+  // Η «Προσαρμογή τιμής» και ποιος/γιατί ΔΕΝ τυπώνονται (μόνο στη φόρμα).
+  const money = s
+    ? s.priceOverride
+      ? { ...s.booking, total: s.booking.total, subtotalAdjusted: false }
+      : toDisplayBreakdown(s.booking)
+    : null;
   const vatRate = s?.vatRate ?? fallbackVatRate;
   const vat = money && vatRate !== undefined ? splitVatInclusive(money.total, vatRate) : null;
   const [main, ...others] = contract.drivers;

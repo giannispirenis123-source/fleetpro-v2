@@ -29,7 +29,7 @@ export default async function NewContractPage() {
     db.vehicle.findMany({
       where: { tenantId: session.tenantId, isActive: true },
       orderBy: [{ brand: "asc" }, { model: "asc" }],
-      select: { id: true, brand: true, model: true, plate: true },
+      select: { id: true, brand: true, model: true, plate: true, dailyRate: true },
     }),
     db.tenant.findUnique({
       where: { id: session.tenantId },
@@ -41,7 +41,13 @@ export default async function NewContractPage() {
   return (
     <ContractEditor
       initialContract={null}
-      vehicles={vehicles.map((v) => ({ id: v.id, label: `${v.brand} ${v.model} · ${v.plate}` }))}
+      vehicles={vehicles.map((v) => ({
+        id: v.id,
+        brand: v.brand,
+        model: v.model,
+        plate: v.plate,
+        dailyRate: Number(v.dailyRate),
+      }))}
       extras={extras.map(toExtraDTO)}
       vatRate={Number(tenant?.vatRate ?? 24)}
       roundUpTotal={tenant?.roundUpTotal ?? false}
@@ -49,6 +55,7 @@ export default async function NewContractPage() {
       can={{
         edit: viewerCan(viewer, "contracts.edit"),
         delete: viewerCan(viewer, "contracts.delete"),
+        price: viewerCan(viewer, "contracts.price"),
       }}
       walkIn={{
         partners: partners.map((p) => ({ id: p.id, name: p.name })),

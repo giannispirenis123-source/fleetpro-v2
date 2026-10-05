@@ -2389,3 +2389,86 @@
   .dash-driver-grid .dash-field select { min-width: 0; width: 100%; }
   .dash-driver { padding: 12px; }
 }
+
+/* ---------- Επιλογή οχήματος (αναζήτηση, μαζεμένη γραμμή) ---------- */
+.dash-vpick-label { margin-top: 4px; }
+.dash-vpick { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; min-width: 0; }
+.dash-vpick-bar { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.dash-vpick-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text-3);
+}
+.dash-vpick-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.dash-vpick-bar .dash-btn { white-space: nowrap; min-height: 44px; }
+.dash-vpick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  max-height: 290px;
+  overflow-y: auto;
+}
+.dash-vpick-item,
+.dash-vpick-chosen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--text);
+  text-align: left;
+}
+.dash-vpick-item { width: 100%; border: none; background: none; font: inherit; font-size: 13.5px; cursor: pointer; }
+.dash-vpick-item:hover:not(:disabled),
+.dash-vpick-item:focus-visible { background: var(--hover); }
+.dash-vpick-item.on { background: rgba(99, 102, 241, 0.08); }
+.dash-vpick-item.busy { opacity: 0.5; cursor: not-allowed; }
+.dash-vpick-busy { color: var(--bad-fg); font-weight: 600; }
+.dash-vpick-name { flex: 1; min-width: 0; overflow-wrap: break-word; line-height: 1.3; }
+.dash-vpick-price { white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums; }
+.dash-vpick-price small { color: var(--text-3); font-weight: 500; }
+.dash-vpick-chosen {
+  border: 1px solid var(--primary-soft);
+  background: rgba(99, 102, 241, 0.06);
+  margin-bottom: 10px;
+}
+.dash-vpick-chosen.busy { border-color: var(--bad-fg); }
+.dash-vpick-chosen .dash-btn { flex-shrink: 0; }
+.dash-change-row .dash-vpick-chosen,
+.dash-change-row .dash-vpick { margin-bottom: 0; }
+
+/* ---------- Χειροκίνητη τιμή ---------- */
+.dash-price-adjust span:first-child { color: var(--text-3); font-style: italic; }
+.dash-price-tag { margin-left: 8px; font-size: 11px; vertical-align: 1px; }
+.dash-price-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.dash-price-box { margin-top: 8px; }
+.dash-price-who { margin-top: 6px; }
+
+@media (max-width: 640px) {
+  .dash-vpick-bar .dash-btn { padding-left: 10px; padding-right: 10px; }
+  .dash-change-row { grid-template-columns: 1fr; }
+}
+.dash-btn--sm { padding: 5px 10px; font-size: 12.5px; min-height: 32px; }

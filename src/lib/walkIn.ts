@@ -282,6 +282,8 @@ export interface WalkInPreview {
   dailyRate: number;
   lines: { name: string; type: string; lineTotal: number }[];
   display: DisplayBreakdown;
+  /** Οι ακριβείς γραμμές (για τη χειροκίνητη τιμή: «Προσαρμογή τιμής»). */
+  parts: { subtotal: number; extrasTotal: number; insuranceCost: number; discountAmount: number };
   vat: VatSplit;
   discountCode: string | null;
   conflicts: unknown[];
@@ -307,6 +309,12 @@ export async function toWalkInPreview(
       lineTotal: l.lineTotal,
     })),
     display,
+    parts: {
+      subtotal: priced.breakdown.subtotal,
+      extrasTotal: priced.breakdown.extrasTotal,
+      insuranceCost: priced.breakdown.insuranceCost,
+      discountAmount: priced.breakdown.discountAmount,
+    },
     vat: splitVatInclusive(display.total, Number(tenant?.vatRate ?? 0)),
     discountCode: priced.discountCode,
     conflicts,

@@ -2372,3 +2372,20 @@
   .dash-fold-summary { max-width: 40%; }
   .dash-walkin-vehicles { max-height: none; }
 }
+
+/* ---------- Νέο συμβόλαιο: φωτογραφίες πριν την αποθήκευση ---------- */
+.dash-photo--staged img { opacity: 0.85; }
+.dash-photo-pending { font-size: 11.5px; font-weight: 600; color: var(--warn-fg); overflow-wrap: anywhere; }
+.dash-photo-pending.error { color: var(--bad-fg); }
+.dash-photo-pending.uploading { color: var(--info-fg); }
+.dash-photo--staged.error { outline: 1px solid var(--bad-fg); outline-offset: -1px; border-radius: 10px; }
+.dash-upload-progress { justify-content: center; }
+
+/* Οδηγός: όλα τα πεδία ορατά — σε κινητό 2 στήλες για να μη μακραίνει η φόρμα. */
+@media (max-width: 640px) {
+  .dash-form-grid.dash-driver-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .dash-driver-grid .dash-field { min-width: 0; font-size: 12.5px; }
+  .dash-driver-grid .dash-field input,
+  .dash-driver-grid .dash-field select { min-width: 0; width: 100%; }
+  .dash-driver { padding: 12px; }
+}

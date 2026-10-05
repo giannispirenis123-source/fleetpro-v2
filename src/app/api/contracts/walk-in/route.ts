@@ -18,7 +18,12 @@ import { ok, created, badRequest, conflict, serverError } from "@/lib/api";
 import { viewerCan, withPermission } from "@/lib/authz";
 import { TIME_RE } from "@/lib/bookings";
 import { prepareBooking, writeBooking } from "@/lib/bookingCreate";
-import { createContractInTx, initialContractData, loadContract } from "@/lib/contractForm";
+import {
+  createContractInTx,
+  initialContractData,
+  loadContract,
+  resolveVehicleChanges,
+} from "@/lib/contractForm";
 import { customerFromDriver, missingCustomerFields } from "@/lib/customerMatch";
 import {
   findDuplicateCustomers,
@@ -85,6 +90,10 @@ export const POST = withPermission(
       // Ο πελάτης βγαίνει από τον κύριο οδηγό (μόνο πεδία του μοντέλου Customer).
       const form = data.contract!;
       const fromDriver = customerFromDriver(form.drivers[0]);
+
+      // Αλλαγές οχήματος: μοντέλο/πινακίδα από τον Στόλο, ποτέ από τον client.
+      const changes = await resolveVehicleChanges(tenantId, form.vehicleChanges ?? []);
+      if (!changes.ok) return badRequest(changes.message);
 
       // Νέος πελάτης με τηλέφωνο/email που ήδη υπάρχει: προτείνουμε τον
       // υπάρχοντα, εκτός αν ο χρήστης επιμένει ρητά.
@@ -164,7 +173,7 @@ export const POST = withPermission(
               returnLocation: booking.returnLocation,
               deposit: booking.deposit,
             },
-            initialContractData(form)
+            initialContractData(form, changes.changes)
           );
           return { bookingId: booking.id, contractId: contract.id };
         },

@@ -1455,7 +1455,7 @@ function CreateTenantModal({
               <input
                 value={form.name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="π.χ. P Rentals Χανιά"
+                placeholder="π.χ. Fleet-Pro Car Rental"
               />
             </label>
             <label>
@@ -1602,10 +1602,18 @@ function EditTenantModal({
   const handleSubmit = async () => {
     setLoading(true);
     try {
+      // Τα website/customDomain δεν φορτώνονται στη φόρμα: κενά = «δεν
+      // αλλάζουν» (αλλιώς θα σβήνονταν, και το customDomain είναι UNIQUE).
+      const { website, customDomain, ...rest } = form;
+      const payload = {
+        ...rest,
+        ...(website.trim() && { website: website.trim() }),
+        ...(customDomain.trim() && { customDomain: customDomain.trim() }),
+      };
       const res = await fetch(`/api/tenants/${tenant.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {

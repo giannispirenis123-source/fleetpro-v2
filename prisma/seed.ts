@@ -33,7 +33,7 @@ async function main() {
     console.log(`ℹ️  Super Admin υπάρχει ήδη: ${superAdminEmail}`);
   }
 
-  // ── 2. Demo Tenant: P Rentals ──────────
+  // ── 2. Demo Tenant: Fleet-Pro Car Rental ──────────
   const existingTenant = await prisma.tenant.findUnique({
     where: { slug: "p-rentals" },
   });
@@ -41,7 +41,7 @@ async function main() {
   if (!existingTenant) {
     const tenant = await prisma.tenant.create({
       data: {
-        name: "P Rentals Χανιά",
+        name: "Fleet-Pro Car Rental",
         slug: "p-rentals",
         email: "info@prentals.gr",
         phone: "2821055555",
@@ -184,7 +184,7 @@ async function main() {
       ],
     });
 
-    console.log(`✅ Demo Tenant: P Rentals (${tenant.id})`);
+    console.log(`✅ Demo Tenant: Fleet-Pro Car Rental (${tenant.id})`);
     console.log(`   👤 Admin: admin@prentals.gr / Admin2025!`);
     console.log(`   👤 Staff: staff@prentals.gr / Staff2025!`);
     console.log(`   👤 Partner: partner@prentals.gr / Partner2025!`);

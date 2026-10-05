@@ -16,6 +16,21 @@ import {
   getPagination,
 } from "@/lib/api";
 
+/**
+ * Ο ρόλος στο JWT μένει ίδιος μέχρι τη λήξη του (7 ημέρες). Αφού πλέον
+ * διαχειριστής μπορεί να υποβιβαστεί, ελέγχουμε ΚΑΙ τη βάση: μόνο ενεργός
+ * COMPANY_ADMIN της ίδιας εταιρίας περνά.
+ */
+async function stillCompanyAdmin(session: { userId: string; role: string; tenantId: string | null }) {
+  if (session.role !== "COMPANY_ADMIN") return true;
+  if (!session.tenantId) return false;
+  const u = await db.user.findFirst({
+    where: { id: session.userId, tenantId: session.tenantId, role: "COMPANY_ADMIN", isActive: true },
+    select: { id: true },
+  });
+  return Boolean(u);
+}
+
 const createUserSchema = z.object({
   name: z.string().min(2, "Απαιτείται όνομα"),
   email: z.string().email("Μη έγκυρο email"),
@@ -50,6 +65,7 @@ const createUserSchema = z.object({
 export const GET = withAuth(
   async (req, session) => {
     try {
+      if (!(await stillCompanyAdmin(session))) return forbidden();
       const { skip, limit } = getPagination(req);
 
       // Ο Super Admin μπορεί να περιορίσει τη λίστα σε μία εταιρία.
@@ -102,6 +118,7 @@ export const GET = withAuth(
 export const POST = withAuth(
   async (req, session) => {
     try {
+      if (!(await stillCompanyAdmin(session))) return forbidden();
       const body = await req.json();
       const parsed = createUserSchema.safeParse(body);
 

@@ -9,18 +9,19 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { ok, created, badRequest, serverError } from "@/lib/api";
+import { ok, created, badRequest, forbidden, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { MANAGED_ROLES, USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
+import { USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
+import { ASSIGNABLE_ROLES, canCreateWithRole } from "@/lib/adminRole";
 import { defaultsForRole, permissionsFromKeys } from "@/lib/permissions";
 
 const createUserSchema = z.object({
   name: z.string().min(2, "Απαιτείται όνομα"),
   email: z.string().email("Μη έγκυρο email"),
   password: z.string().min(8, "Τουλάχιστον 8 χαρακτήρες"),
-  // Μόνο Προσωπικό ή Συνεργάτης: δεύτερος διαχειριστής δεν φτιάχνεται
-  // από εδώ, ώστε να μη γίνεται αθόρυβη αναβάθμιση δικαιωμάτων.
-  role: z.enum(MANAGED_ROLES),
+  // Και Διαχειριστής (πολλοί ανά εταιρία) — αλλά ΜΟΝΟ από διαχειριστή
+  // (canCreateWithRole, με τον ρόλο από τη βάση, όχι από το JWT).
+  role: z.enum(ASSIGNABLE_ROLES),
   phone: z.union([z.string(), z.null()]).optional(),
   /** Κλειδιά δικαιωμάτων. Αν λείπουν, μπαίνουν οι προεπιλογές της κατηγορίας. */
   permissions: z.array(z.string()).optional(),
@@ -52,14 +53,23 @@ export const GET = withPermission(
 
 // POST /api/company-users
 export const POST = withPermission(
-  async (req, session) => {
+  async (req, session, _params, viewer) => {
     try {
+      // Χρήστης εταιρίας φτιάχνεται μόνο μέσα σε εταιρία (όχι Super Admin).
+      if (!viewer?.tenantId || viewer.role === "SUPER_ADMIN") return forbidden();
       const parsed = createUserSchema.safeParse(await req.json());
       if (!parsed.success) {
         return badRequest("Μη έγκυρα δεδομένα", parsed.error.errors);
       }
 
       const data = parsed.data;
+      const allowed = canCreateWithRole(
+        { id: viewer.userId, role: viewer.role, tenantId: viewer.tenantId },
+        data.role
+      );
+      if (!allowed.ok) {
+        return allowed.status === 403 ? forbidden(allowed.message) : badRequest(allowed.message);
+      }
       const email = data.email.trim().toLowerCase();
 
       const existing = await db.user.findUnique({
@@ -68,13 +78,17 @@ export const POST = withPermission(
       });
       if (existing) return badRequest("Το email χρησιμοποιείται ήδη");
 
-      const permissions = data.permissions
-        ? permissionsFromKeys(data.permissions)
-        : defaultsForRole(data.role);
+      // Ο διαχειριστής δεν κρατά λίστα δικαιωμάτων: τα έχει όλα.
+      const permissions =
+        data.role === "COMPANY_ADMIN"
+          ? {}
+          : data.permissions
+            ? permissionsFromKeys(data.permissions)
+            : defaultsForRole(data.role);
 
       const user = await db.user.create({
         data: {
-          tenantId: session.tenantId!,
+          tenantId: viewer.tenantId,
           name: data.name.trim(),
           email,
           phone: data.phone?.trim() || null,

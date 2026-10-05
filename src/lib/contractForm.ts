@@ -55,7 +55,7 @@ import {
   type ContractStatusValue,
   type DepositMethod,
   type LicensePhotoDTO,
-  LICENSE_SIDES,
+  licensePathsOf,
   type ExtrasLock,
   type PaymentMethod,
 } from "./contracts";
@@ -160,6 +160,48 @@ export const contractPatchSchema = z.object({
 });
 
 export type ContractPatch = z.infer<typeof contractPatchSchema>;
+
+/**
+ * Νέο συμβόλαιο κατευθείαν από τη φόρμα (walk-in): τα ίδια πεδία με το
+ * PATCH, χωρίς πρόσθετα (πάνε στην κράτηση) και αλλαγές οχήματος (δεν
+ * έχουν νόημα πριν την παραλαβή). Ο κύριος οδηγός είναι υποχρεωτικός.
+ */
+export const contractCreateSchema = contractPatchSchema
+  .omit({ extraIds: true, vehicleChanges: true })
+  .extend({
+    drivers: z.array(driverSchema).min(1, "Χρειάζεται τουλάχιστον ένας οδηγός").max(20),
+  });
+
+export type ContractCreate = z.infer<typeof contractCreateSchema>;
+
+/** Τα πεδία ενός νέου συμβολαίου από τη φόρμα — όπως θα τα έγραφε το PATCH. */
+export function initialContractData(
+  c: ContractCreate
+): Partial<Prisma.ContractUncheckedCreateInput> {
+  const payment = c.paymentMethod ?? null;
+  const depositMethod = c.depositMethod ?? null;
+  const cards = {
+    paymentCard: paymentUsesCard(payment) && c.paymentCard ? c.paymentCard : null,
+    depositCard: depositUsesCard(depositMethod) && c.depositCard ? c.depositCard : null,
+  };
+  return {
+    // Νέοι οδηγοί: χωρίς υπογραφές και χωρίς φωτογραφίες (ανεβαίνουν μετά).
+    drivers: c.drivers.map((d) => ({ ...d, signature: null, signedAt: null })) as unknown as Prisma.InputJsonValue,
+    ...(c.pickupLocation !== undefined && { pickupLocation: c.pickupLocation || null }),
+    ...(c.returnLocation !== undefined && { returnLocation: c.returnLocation || null }),
+    ...(c.fuelPickup !== undefined && { fuelPickup: c.fuelPickup }),
+    ...(c.damageNotesPickup !== undefined && { damageNotesPickup: c.damageNotesPickup || null }),
+    ...(c.damageNotesReturn !== undefined && { damageNotesReturn: c.damageNotesReturn || null }),
+    ...(c.notes !== undefined && { notes: c.notes || null }),
+    ...(c.paymentMethod !== undefined && { paymentMethod: payment }),
+    ...(c.depositAmount !== undefined && { depositAmount: c.depositAmount }),
+    ...(c.depositMethod !== undefined && { depositMethod }),
+    // ΜΟΝΟ τα 4 πεδία του strict schema.
+    paymentCard: cards.paymentCard ? ({ ...cards.paymentCard } as Prisma.InputJsonObject) : Prisma.DbNull,
+    depositCard: cards.depositCard ? ({ ...cards.depositCard } as Prisma.InputJsonObject) : Prisma.DbNull,
+    ...(c.gdprConsent && { gdprConsent: true, gdprConsentAt: new Date() }),
+  };
+}
 
 /** Τα πεδία που επιτρέπονται και μετά την υπογραφή όλων. */
 // (Το καύσιμο παράδοσης και το σκαρίφημα δεν αλλάζουν πια — μόνο ανάγνωση.)
@@ -392,9 +434,11 @@ export async function createContractInTx(
   tx: Prisma.TransactionClient,
   viewer: Viewer,
   userName: string,
-  booking: ContractBooking
+  booking: ContractBooking,
+  /** Τα στοιχεία της φόρμας (walk-in): υπερισχύουν της προσυμπλήρωσης. */
+  initial?: Partial<Prisma.ContractUncheckedCreateInput>
 ): Promise<Contract> {
-  const data = await newContractData(tx, viewer, userName, booking);
+  const data = { ...(await newContractData(tx, viewer, userName, booking)), ...initial };
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const contractNumber = randomContractCode();
@@ -493,7 +537,7 @@ export async function withLatestLicensePhotos(
   const keep = new Set(next.map((d) => d.id));
   const orphans = Array.from(latest.entries())
     .filter(([id]) => !keep.has(id))
-    .flatMap(([, lp]) => LICENSE_SIDES.map((s) => lp?.[s]).filter((p): p is string => !!p));
+    .flatMap(([, lp]) => lp ?? []);
   const drivers = next.map((d) => {
     const { licensePhotos: _ignored, ...rest } = d;
     const lp = latest.get(d.id);
@@ -564,12 +608,11 @@ function licensePhotoDTOs(
   urls?: Map<string, string>
 ): LicensePhotoDTO[] {
   return drivers.flatMap((d) =>
-    LICENSE_SIDES.flatMap((side) => {
-      const path = d.licensePhotos?.[side];
-      return path
-        ? [{ driverId: d.id, side, id: photoIdOf(path), url: urls?.get(path) ?? null }]
-        : [];
-    })
+    (d.licensePhotos ?? []).map((path) => ({
+      driverId: d.id,
+      id: photoIdOf(path),
+      url: urls?.get(path) ?? null,
+    }))
   );
 }
 
@@ -657,10 +700,7 @@ export async function loadContract(
   const byId = new Map(readPhotos(c.damagePhotos).map((p) => [p.id, urls.get(p.path) ?? null]));
   // Διπλώματα: σύντομα URLs (ευαίσθητο έγγραφο).
   const stored = readDrivers(c.drivers);
-  const licenseUrls = await signUrls(
-    stored.flatMap((d) => LICENSE_SIDES.map((s) => d.licensePhotos?.[s]).filter((p): p is string => !!p)),
-    PUBLIC_SIGNED_URL_SECONDS
-  );
+  const licenseUrls = await signUrls(licensePathsOf(stored), PUBLIC_SIGNED_URL_SECONDS);
   return {
     ...dto,
     damagePhotos: dto.damagePhotos.map((p) => ({ ...p, url: byId.get(p.id) ?? null })),

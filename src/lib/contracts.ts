@@ -226,22 +226,28 @@ export interface ContractDriver {
    Φωτογραφίες διπλώματος
    ───────────────────────────────────────────── */
 
-export const LICENSE_SIDES = ["front", "back"] as const;
-export type LicenseSide = (typeof LICENSE_SIDES)[number];
-export type LicensePhotoPaths = Partial<Record<LicenseSide, string>>;
+/** Όριο φωτογραφιών διπλώματος ανά οδηγό (μπροστά, πίσω, δεύτερη λήψη…). */
+export const MAX_LICENSE_PHOTOS = 4;
+
+/**
+ * Διαδρομές στο Storage, με τη σειρά λήψης. Νέα μορφή: πίνακας. Η παλιά
+ * μορφή `{ front, back }` διαβάζεται και γίνεται `[front, back]` (πρώτες
+ * στη λίστα) — μετατροπή ΚΑΤΑ ΤΗΝ ΑΝΑΓΝΩΣΗ, χωρίς μαζική αλλαγή στη βάση.
+ * Η επόμενη εγγραφή του οδηγού την αποθηκεύει ως πίνακα.
+ */
+export type LicensePhotoPaths = string[];
 
 /** Μία φωτογραφία διπλώματος όπως τη βλέπει η φόρμα (ποτέ διαδρομή). */
 export interface LicensePhotoDTO {
   driverId: string;
-  side: LicenseSide;
   id: string;
   url: string | null;
 }
 
 /**
- * Ο ΙΔΙΟΣ κανόνας για UI και server. Ανέβασμα/αντικατάσταση: μέχρι την
- * ολοκλήρωση (και μετά τις υπογραφές — είναι αποδεικτικό). Διαγραφή: μόνο
- * πριν την πρώτη υπογραφή.
+ * Ο ΙΔΙΟΣ κανόνας για UI και server. Ανέβασμα: μέχρι την ολοκλήρωση (και
+ * μετά τις υπογραφές — είναι αποδεικτικό). Διαγραφή: μόνο πριν την πρώτη
+ * υπογραφή.
  */
 export function licenseLockOf(
   action: "upload" | "delete",
@@ -253,15 +259,22 @@ export function licenseLockOf(
   return null;
 }
 
-function readLicensePhotos(v: unknown): LicensePhotoPaths | undefined {
-  if (!v || typeof v !== "object") return undefined;
-  const o = v as Record<string, unknown>;
-  const out: LicensePhotoPaths = {};
-  for (const side of LICENSE_SIDES) {
-    if (typeof o[side] === "string" && o[side]) out[side] = o[side] as string;
+/** Παλιά `{ front, back }` ή νέα `[…]` → πίνακας διαδρομών (κενός = undefined). */
+export function readLicensePhotos(v: unknown): LicensePhotoPaths | undefined {
+  let out: string[] = [];
+  if (Array.isArray(v)) {
+    out = v.filter((p): p is string => typeof p === "string" && p !== "");
+  } else if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    out = [o.front, o.back].filter((p): p is string => typeof p === "string" && p !== "");
   }
-  return out.front || out.back ? out : undefined;
+  out = Array.from(new Set(out));
+  return out.length ? out : undefined;
 }
+
+/** Όλες οι διαδρομές διπλωμάτων των οδηγών (για signed URLs / διαγραφή). */
+export const licensePathsOf = (drivers: ContractDriver[]): string[] =>
+  drivers.flatMap((d) => d.licensePhotos ?? []);
 
 export const emptyDriver = (id: string): ContractDriver => ({
   id,
@@ -404,6 +417,7 @@ export function readDrivers(value: unknown): ContractDriver[] {
     if (!raw || typeof raw !== "object") return [];
     const o = raw as Record<string, unknown>;
     if (typeof o.id !== "string") return [];
+    const lp = readLicensePhotos(o.licensePhotos);
     return [
       {
         id: o.id,
@@ -419,7 +433,7 @@ export function readDrivers(value: unknown): ContractDriver[] {
         address: str(o.address),
         signature: typeof o.signature === "string" ? o.signature : null,
         signedAt: typeof o.signedAt === "string" ? o.signedAt : null,
-        ...(readLicensePhotos(o.licensePhotos) ? { licensePhotos: readLicensePhotos(o.licensePhotos) } : {}),
+        ...(lp ? { licensePhotos: lp } : {}),
       },
     ];
   });

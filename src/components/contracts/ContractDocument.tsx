@@ -123,7 +123,7 @@ export default function ContractDocument({
   const electric = s?.vehicle.fuel === "ELECTRIC";
   const fuelTitle = electric ? BI.battery : BI.fuel;
 
-  // Οι ομάδες ζημιών τυπώνονται ΜΟΝΟ αν έχουν φωτογραφίες ή περιγραφή.
+  // Ομάδες ζημιών: πλέγμα μόνο με φωτογραφίες· σκέτη περιγραφή = μία γραμμή.
   const damageGroups = [
     { group: "PICKUP", label: BI.damagesPickup, notes: contract.damageNotesPickup.trim() },
     { group: "RETURN", label: BI.damagesReturn, notes: contract.damageNotesReturn.trim() },
@@ -246,47 +246,53 @@ export default function ContractDocument({
         </div>
       </section>
 
-      {/* ── Ζημιές: φωτογραφίες ανά ομάδα (μόνο όσες έχουν κάτι) ── */}
+      {/* ── Ζημιές: πλέγμα ΜΟΝΟ για ομάδες με φωτογραφίες. Χωρίς τίποτα: μία γραμμή. ── */}
+      {damageGroups.length === 0 && contract.damageMarks.length === 0 ? (
+        <p className="cdoc-inline">
+          <strong>{BI.damagesTitle}:</strong> {BI.noDamages}
+        </p>
+      ) : (
       <section className="cdoc-section">
         <h2>{BI.damagesTitle}</h2>
-        {damageGroups.length === 0 && contract.damageMarks.length === 0 ? (
-          <p className="cdoc-muted">{BI.noDamages}</p>
-        ) : (
-          damageGroups.map((g) => (
+        {damageGroups.map((g) =>
+          g.photos.length === 0 ? (
+            // Μόνο περιγραφή: μία γραμμή, χωρίς πλέγμα.
+            <p key={g.group} className="cdoc-pre cdoc-damage-line">
+              <strong>{g.label}:</strong> {g.notes}
+            </p>
+          ) : (
             <div key={g.group} className="cdoc-photo-group">
               <h3>{g.label}</h3>
               {g.notes && <p className="cdoc-pre">{g.notes}</p>}
-              {g.photos.length > 0 && (
-                <div className="cdoc-photos">
-                  {g.photos.map((p) => (
-                    <figure key={p.id}>
-                      {p.url && pub ? (
-                        <>
-                          <a href={`#zoom-${p.id}`} className="cdoc-zoom-thumb">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.url} alt={p.note || g.label} loading="lazy" />
-                          </a>
-                          <a href="#_" id={`zoom-${p.id}`} className="cdoc-zoom">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.url} alt={p.note || g.label} loading="lazy" />
-                          </a>
-                        </>
-                      ) : p.url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.url} alt={p.note || g.label} loading="eager" />
-                      ) : (
-                        <span className="cdoc-photo-missing">—</span>
-                      )}
-                      <figcaption>
-                        {p.takenAt ? stamp(p.takenAt) : ""}
-                        {p.note ? ` · ${p.note}` : ""}
-                      </figcaption>
-                    </figure>
-                  ))}
-                </div>
-              )}
+              <div className="cdoc-photos">
+                {g.photos.map((p) => (
+                  <figure key={p.id}>
+                    {p.url && pub ? (
+                      <>
+                        <a href={`#zoom-${p.id}`} className="cdoc-zoom-thumb">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={p.url} alt={p.note || g.label} loading="lazy" />
+                        </a>
+                        <a href="#_" id={`zoom-${p.id}`} className="cdoc-zoom">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={p.url} alt={p.note || g.label} loading="lazy" />
+                        </a>
+                      </>
+                    ) : p.url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.url} alt={p.note || g.label} loading="eager" />
+                    ) : (
+                      <span className="cdoc-photo-missing">—</span>
+                    )}
+                    <figcaption>
+                      {p.takenAt ? stamp(p.takenAt) : ""}
+                      {p.note ? ` · ${p.note}` : ""}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
             </div>
-          ))
+          )
         )}
         {/* Παλιά συμβόλαια: το σκαρίφημα, μικρό και μόνο αν υπάρχει. */}
         {contract.damageMarks.length > 0 && (
@@ -303,6 +309,7 @@ export default function ContractDocument({
           </div>
         )}
       </section>
+      )}
 
       {contract.vehicleChanges.length > 0 && (
         <section className="cdoc-section">

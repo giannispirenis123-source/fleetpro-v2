@@ -11,6 +11,20 @@ import { Prisma } from "@prisma/client";
 import { db } from "./db";
 import type { Viewer } from "./authz";
 import { bookingFields } from "./bookingCreate";
+import { contractCreateSchema, mainDriverFromCustomer } from "./contractForm";
+import {
+  FOLD_FROM,
+  FOLD_TO,
+  MIN_DIGITS,
+  customerMatches,
+  duplicateKeys,
+  isDuplicateOf,
+  phoneDigits,
+  searchQueryFor,
+  type CustomerSearchField,
+  type MatchableCustomer,
+  type SearchQuery,
+} from "./customerMatch";
 import { CONFLICT_STATUSES, findConflicts } from "./bookings";
 import { splitVatInclusive, type VatSplit } from "./invoices";
 import { toDisplayBreakdown, type DisplayBreakdown, type PriceBreakdown } from "./pricing";
@@ -19,29 +33,30 @@ import { toDisplayBreakdown, type DisplayBreakdown, type PriceBreakdown } from "
    Zod
    ───────────────────────────────────────────── */
 
-const newCustomerSchema = z
-  .object({
-    firstName: z.string().trim().min(1, "Απαιτείται όνομα").max(100),
-    lastName: z.string().trim().min(1, "Απαιτείται επώνυμο").max(100),
-    phone: z.string().trim().min(5, "Απαιτείται τηλέφωνο").max(40),
-    email: z.union([z.string().trim().email("Μη έγκυρο email").max(200), z.literal("")]).optional(),
-  })
-  .strict();
-
 export const walkInSchema = z
   .object({
+    /** Υπάρχων πελάτης (επιλογή από τη λίστα)· αλλιώς νέος από τον κύριο οδηγό. */
     customerId: z.string().min(1).optional(),
-    newCustomer: newCustomerSchema.optional(),
     /** Ο χρήστης είδε τον πιθανό διπλότυπο και θέλει ΟΝΤΩΣ νέο πελάτη. */
     allowDuplicate: z.boolean().optional(),
     /** Μόνο προεπισκόπηση τιμής/σύγκρουσης — καμία εγγραφή. */
     preview: z.boolean().optional(),
+    /** Τα στοιχεία του συμβολαίου (οδηγοί, πληρωμή, GDPR κ.λπ.). */
+    contract: contractCreateSchema.optional(),
     ...bookingFields,
   })
-  // Στην προεπισκόπηση ο πελάτης μπορεί να μην έχει οριστεί ακόμα.
-  .refine((d) => (d.preview && !(d.customerId && d.newCustomer)) || Boolean(d.customerId) !== Boolean(d.newCustomer), {
-    message: "Διάλεξε υπάρχοντα πελάτη ή συμπλήρωσε νέο",
-    path: ["customerId"],
+  // Εγγραφή: χρειάζεται κύριος οδηγός με όνομα και τηλέφωνο.
+  .refine((d) => d.preview || !!d.contract, {
+    message: "Λείπουν τα στοιχεία του συμβολαίου",
+    path: ["contract"],
+  })
+  .refine((d) => d.preview || (d.contract?.drivers[0]?.fullName ?? "").length > 0, {
+    message: "Συμπλήρωσε το ονοματεπώνυμο του κύριου οδηγού",
+    path: ["contract", "drivers", 0, "fullName"],
+  })
+  .refine((d) => d.preview || phoneDigits(d.contract?.drivers[0]?.phone ?? "").length >= 5, {
+    message: "Συμπλήρωσε το τηλέφωνο του κύριου οδηγού",
+    path: ["contract", "drivers", 0, "phone"],
   });
 
 export type WalkInInput = z.infer<typeof walkInSchema>;
@@ -50,96 +65,92 @@ export type WalkInInput = z.infer<typeof walkInSchema>;
    Πελάτες: αναζήτηση και διπλότυπα
    ───────────────────────────────────────────── */
 
+/**
+ * Ό,τι χρειάζεται η λίστα — ΤΙΠΟΤΑ παραπάνω (όχι email, έγγραφα,
+ * διεύθυνση): όνομα, τηλέφωνο, πλήθος κρατήσεων.
+ */
 export interface WalkInCustomer {
   id: string;
   name: string;
   phone: string | null;
-  email: string | null;
+  bookings: number;
   isBlacklisted: boolean;
 }
 
-const toWalkInCustomer = (c: {
+type CustomerRow = MatchableCustomer & {
   id: string;
-  firstName: string;
-  lastName: string;
-  phone: string | null;
-  email: string | null;
   isBlacklisted: boolean;
-}): WalkInCustomer => ({
+  bookings: number;
+};
+
+const toWalkInCustomer = (c: CustomerRow): WalkInCustomer => ({
   id: c.id,
   name: `${c.firstName} ${c.lastName}`.trim(),
   phone: c.phone,
-  email: c.email,
+  bookings: Number(c.bookings),
   isBlacklisted: c.isBlacklisted,
 });
 
-const CUSTOMER_SELECT = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  phone: true,
-  email: true,
-  isBlacklisted: true,
-} as const;
+/** LIKE με ασφαλή χαρακτήρες: τα % _ \ του χρήστη μετρούν κυριολεκτικά. */
+const like = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+/** Η στήλη κανονικοποιημένη όπως το foldText (ίδιος χάρτης χαρακτήρων). */
+const folded = (column: Prisma.Sql) =>
+  Prisma.sql`translate(lower(coalesce(${column}, '')), ${FOLD_FROM}, ${FOLD_TO})`;
+
+const digitsOf = (column: Prisma.Sql) =>
+  Prisma.sql`regexp_replace(coalesce(${column}, ''), '\\D', '', 'g')`;
+
+/** Ευρύ φίλτρο σε SQL· η τελική απόφαση είναι του customerMatches. */
+function prefilter(field: CustomerSearchField, q: SearchQuery): Prisma.Sql {
+  const col = (name: string) => Prisma.raw(`"${name}"`);
+  if (q.kind === "digits") {
+    return Prisma.sql`(${digitsOf(col("phone"))} LIKE ${like(q.digits)} OR ${digitsOf(col("phone2"))} LIKE ${like(q.digits)})`;
+  }
+  if (q.kind === "doc") {
+    const c = col(field === "idNumber" ? "idNumber" : "licenseNumber");
+    return q.digits.length >= MIN_DIGITS
+      ? Prisma.sql`${digitsOf(c)} LIKE ${like(q.digits)}`
+      : Prisma.sql`coalesce(${c}, '') <> ''`;
+  }
+  const words = q.words.map((w) => {
+    if (field === "email") return Prisma.sql`${folded(col("email"))} LIKE ${like(w)}`;
+    if (field === "address") {
+      return Prisma.sql`(${folded(col("address"))} LIKE ${like(w)} OR ${folded(col("city"))} LIKE ${like(w)})`;
+    }
+    return Prisma.sql`(${folded(col("firstName"))} LIKE ${like(w)} OR ${folded(col("lastName"))} LIKE ${like(w)})`;
+  });
+  return Prisma.join(words, " AND ");
+}
+
+async function customerRows(tenantId: string, where: Prisma.Sql, limit: number) {
+  return db.$queryRaw<CustomerRow[]>(Prisma.sql`
+    SELECT c."id", c."firstName", c."lastName", c."phone", c."phone2", c."email",
+           c."idNumber", c."licenseNumber", c."address", c."city", c."isBlacklisted",
+           (SELECT count(*) FROM "bookings" b WHERE b."customerId" = c."id")::int AS "bookings"
+    FROM "customers" c
+    WHERE c."tenantId" = ${tenantId} AND ${where}
+    ORDER BY c."lastName" ASC, c."firstName" ASC
+    LIMIT ${limit}
+  `);
+}
 
 /**
- * Τα ψηφία ενός τηλεφώνου χωρίς κενά/σύμβολα και χωρίς το +30/0030,
- * ώστε «+30 694 123 4567» = «6941234567».
+ * Πελάτες που ταιριάζουν σε ένα πεδίο του κύριου οδηγού (όνομα,
+ * τηλέφωνο, email, ταυτότητα, δίπλωμα, διεύθυνση). Tenant-scoped, έως 8.
  */
-export function phoneDigits(phone: string): string {
-  let d = phone.replace(/\D/g, "");
-  if (d.startsWith("00")) d = d.slice(2);
-  if (d.startsWith("30") && d.length === 12) d = d.slice(2);
-  return d;
-}
-
-/** Ids πελατών της εταιρίας που το τηλέφωνό τους τελειώνει σε αυτά τα ψηφία. */
-async function idsByPhoneDigits(tenantId: string, digits: string, anywhere: boolean) {
-  const pattern = anywhere ? `%${digits}%` : `%${digits}`;
-  const rows = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
-    SELECT "id" FROM "customers"
-    WHERE "tenantId" = ${tenantId}
-      AND (regexp_replace(coalesce("phone", ''), '\\D', '', 'g') LIKE ${pattern}
-        OR regexp_replace(coalesce("phone2", ''), '\\D', '', 'g') LIKE ${pattern})
-    LIMIT 10
-  `);
-  return rows.map((r) => r.id);
-}
-
-/** Αναζήτηση με όνομα, επώνυμο, email ή τηλέφωνο (και χωρίς κενά/+30). */
 export async function searchWalkInCustomers(
   tenantId: string,
-  q: string
+  field: CustomerSearchField,
+  raw: string
 ): Promise<WalkInCustomer[]> {
-  const term = q.trim();
-  if (term.length < 2) return [];
-
-  const words = term.split(/\s+/).filter(Boolean).slice(0, 4);
-  const digits = phoneDigits(term);
-  const phoneIds = digits.length >= 3 ? await idsByPhoneDigits(tenantId, digits, true) : [];
-
-  const rows = await db.customer.findMany({
-    where: {
-      tenantId,
-      OR: [
-        // Κάθε λέξη σε όνομα, επώνυμο ή email («Γιάννης Παπ» βρίσκει).
-        {
-          AND: words.map((w) => ({
-            OR: [
-              { firstName: { contains: w, mode: "insensitive" as const } },
-              { lastName: { contains: w, mode: "insensitive" as const } },
-              { email: { contains: w, mode: "insensitive" as const } },
-            ],
-          })),
-        },
-        ...(phoneIds.length ? [{ id: { in: phoneIds } }] : []),
-      ],
-    },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    take: 10,
-    select: CUSTOMER_SELECT,
-  });
-  return rows.map(toWalkInCustomer);
+  const q = searchQueryFor(field, raw);
+  if (!q) return [];
+  const rows = await customerRows(tenantId, prefilter(field, q), 200);
+  return rows
+    .filter((r) => customerMatches(r, field, q))
+    .slice(0, 8)
+    .map(toWalkInCustomer);
 }
 
 /** Υπάρχοντες πελάτες με το ίδιο τηλέφωνο ή email — υποψήφιοι διπλότυποι. */
@@ -148,26 +159,31 @@ export async function findDuplicateCustomers(
   phone: string,
   email: string
 ): Promise<WalkInCustomer[]> {
-  const digits = phoneDigits(phone);
-  // Ταίριασμα στα τελευταία 10 ψηφία: αρκετά για να μη μπερδεύει ξένους.
-  const key = digits.length > 10 ? digits.slice(-10) : digits;
-  const phoneIds = key.length >= 7 ? await idsByPhoneDigits(tenantId, key, false) : [];
-  const mail = email.trim();
+  const keys = duplicateKeys(phone, email);
+  if (!keys.phone && !keys.email) return [];
 
-  if (!phoneIds.length && !mail) return [];
+  const conditions: Prisma.Sql[] = [];
+  if (keys.phone) {
+    const end = `%${keys.phone}`;
+    conditions.push(
+      Prisma.sql`(${digitsOf(Prisma.raw('c."phone"'))} LIKE ${end} OR ${digitsOf(Prisma.raw('c."phone2"'))} LIKE ${end})`
+    );
+  }
+  if (keys.email) conditions.push(Prisma.sql`lower(trim(c."email")) = ${keys.email}`);
 
-  const rows = await db.customer.findMany({
-    where: {
-      tenantId,
-      OR: [
-        ...(phoneIds.length ? [{ id: { in: phoneIds } }] : []),
-        ...(mail ? [{ email: { equals: mail, mode: "insensitive" as const } }] : []),
-      ],
-    },
-    take: 5,
-    select: CUSTOMER_SELECT,
-  });
-  return rows.map(toWalkInCustomer);
+  const rows = await customerRows(tenantId, Prisma.sql`(${Prisma.join(conditions, " OR ")})`, 20);
+  return rows
+    .filter((r) => isDuplicateOf(r, { phone, email }))
+    .slice(0, 5)
+    .map(toWalkInCustomer);
+}
+
+/** Όλα τα στοιχεία ενός πελάτη για τον κύριο οδηγό (μετά από επιλογή). */
+export async function customerAsDriver(tenantId: string, id: string) {
+  const c = await db.customer.findFirst({ where: { id, tenantId }, select: { id: true } });
+  if (!c) return null;
+  const { signature: _s, signedAt: _a, id: _id, ...driver } = await mainDriverFromCustomer(tenantId, c.id);
+  return driver;
 }
 
 /* ─────────────────────────────────────────────

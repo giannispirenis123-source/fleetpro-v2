@@ -9,8 +9,12 @@
 //   (υπογραφές/φωτογραφίες ενεργοποιούνται) χωρίς να αλλάξει σελίδα.
 // · Ελάχιστα υποχρεωτικά: κύριος οδηγός (όνομα, τηλέφωνο), όχημα,
 //   ημερομηνίες, GDPR, υπογραφή. Όλα τα άλλα σε κλειστές ενότητες.
+// · Στο νέο συμβόλαιο συμπληρώνονται ΟΛΑ πριν την πρώτη αποθήκευση εκτός
+//   από τις υπογραφές. Οι φωτογραφίες (ζημιές, διπλώματα) μένουν ΜΟΝΟ στη
+//   μνήμη του browser (stagedPhotos.ts) και ανεβαίνουν μία-μία με τα
+//   υπάρχοντα endpoints αμέσως μετά την αποθήκευση.
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -71,8 +75,19 @@ import type { WalkInCustomer } from "@/lib/walkIn";
 import DamageSketch from "@/components/contracts/DamageSketch";
 import FuelGauge from "@/components/contracts/FuelGauge";
 import SignaturePad from "@/components/contracts/SignaturePad";
-import PhotoManager from "@/components/photos/PhotoManager";
+import PhotoManager, { type StagedView } from "@/components/photos/PhotoManager";
 import { MAX_CONTRACT_PHOTOS, type PhotoItem } from "@/lib/photoShared";
+import { sendPhoto, uploadErrorFor } from "@/lib/photoUpload";
+import {
+  pruneForDrivers,
+  roomFor,
+  sameTarget,
+  stagedFor,
+  uploadAll,
+  uploadRequest,
+  type StageTarget,
+  type StagedPhoto,
+} from "@/lib/stagedPhotos";
 import NewContractModal from "../NewContractModal";
 import { WalkInSection, eur, useWalkInDraft, windowValid } from "./WalkInSection";
 import { SuggestList, useCustomerSuggest } from "./CustomerSuggest";
@@ -253,9 +268,19 @@ function toCreatePayload(f: FormState) {
     // Εγγύηση χωρίς ποσό: δεν στέλνεται, ισχύει ό,τι έχει η κράτηση.
     depositAmount: p.depositAmount ?? undefined,
     damageNotesReturn: f.damageNotesReturn,
+    vehicleChanges: f.vehicleChanges,
     notes: f.notes,
   };
 }
+
+const toView = (p: StagedPhoto): StagedView => ({
+  key: p.key,
+  previewUrl: p.previewUrl,
+  takenAt: p.takenAt,
+  note: p.note,
+  status: p.status,
+  message: p.message,
+});
 
 /** Πεδία του κύριου οδηγού με αναγνώριση πελάτη. */
 const SUGGEST_FIELD: Partial<Record<keyof ContractDriver, CustomerSearchField>> = {
@@ -326,6 +351,25 @@ export default function ContractEditor({
     () => !initialContract || initialContract.returnLocation === initialContract.pickupLocation
   );
   const [fromBooking, setFromBooking] = useState(false);
+
+  /* ── Φωτογραφίες που περιμένουν την αποθήκευση (μόνο στη μνήμη) ── */
+  const [staged, setStaged] = useState<StagedPhoto[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const stagedRef = useRef<StagedPhoto[]>([]);
+  stagedRef.current = staged;
+  // Τα object URLs ελευθερώνονται όταν φεύγει η σελίδα.
+  useEffect(() => () => stagedRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl)), []);
+  // Μη ανεβασμένες φωτογραφίες → προειδοποίηση πριν φύγει ο χρήστης.
+  const hasPending = staged.length > 0;
+  useEffect(() => {
+    if (!hasPending) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasPending]);
 
   /* ── Νέο συμβόλαιο: πελάτης, όχημα, ημερομηνίες ── */
   const [linked, setLinked] = useState<{ id: string; name: string } | null>(null);
@@ -489,8 +533,85 @@ export default function ContractEditor({
         !draft.vehicleId && tr("contracts.missing_vehicle"),
       ].filter((x): x is string => !!x)
     : [];
+  const changesIncomplete = form.vehicleChanges.some((c) => !c.vehicleId || !c.date);
   const canCreate =
-    isNew && missing.length === 0 && draft.ready && !cardsInvalid && (!draft.hasConflict || canOverride);
+    isNew &&
+    missing.length === 0 &&
+    draft.ready &&
+    !cardsInvalid &&
+    !changesIncomplete &&
+    (!draft.hasConflict || canOverride);
+
+  /* ── Staged φωτογραφίες: προσθήκη/αφαίρεση πριν την αποθήκευση ── */
+  const stage = (target: StageTarget) => (blob: Blob, takenAt: string) =>
+    setStaged((list) => [
+      ...list,
+      {
+        key: randomId(),
+        target,
+        blob,
+        previewUrl: URL.createObjectURL(blob),
+        takenAt,
+        note: "",
+        status: "staged",
+        message: "",
+      },
+    ]);
+  const unstage = (key: string) =>
+    setStaged((list) => {
+      list.filter((p) => p.key === key).forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      return list.filter((p) => p.key !== key);
+    });
+  const noteStaged = (key: string, note: string) =>
+    setStaged((list) => list.map((p) => (p.key === key ? { ...p, note } : p)));
+
+  /** Ανεβάζει ΜΙΑ staged φωτογραφία με το υπάρχον endpoint (ίδιοι κανόνες/μηνύματα). */
+  const uploadOne = async (contractId: string, p: StagedPhoto) => {
+    setStaged((list) => list.map((x) => (x.key === p.key ? { ...x, status: "uploading", message: "" } : x)));
+    const { url, fields } = uploadRequest(contractId, p);
+    const form = new FormData();
+    form.append("file", p.blob, "photo.jpg");
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    let outcome: { ok: true; result: PhotoItem } | { ok: false; message: string };
+    try {
+      const res = await sendPhoto(url, form, () => undefined);
+      outcome =
+        res.status >= 200 && res.status < 300 && res.body.data?.photo
+          ? { ok: true, result: res.body.data.photo }
+          : { ok: false, message: res.body.message || uploadErrorFor(res.status, tr) };
+    } catch {
+      outcome = { ok: false, message: tr("photos.errorConnection") };
+    }
+    if (outcome.ok) {
+      const photo = outcome.result;
+      if (p.target.kind === "damage") {
+        const group = p.target.group;
+        setPhotos((list) => [...list, { ...photo, group }]);
+      } else {
+        const driverId = p.target.driverId;
+        setLicenses((list) => [...list, { driverId, id: photo.id, url: photo.url }]);
+      }
+      URL.revokeObjectURL(p.previewUrl);
+      setStaged((list) => list.filter((x) => x.key !== p.key));
+    } else {
+      const message = outcome.message;
+      setStaged((list) => list.map((x) => (x.key === p.key ? { ...x, status: "error", message } : x)));
+    }
+    return outcome;
+  };
+
+  /** Μετά την πρώτη αποθήκευση: όλες οι staged, μία-μία, με πρόοδο. */
+  const uploadStaged = async (contractId: string, items: StagedPhoto[]) => {
+    if (items.length === 0) return 0;
+    setUploadProgress({ done: 0, total: items.length });
+    const result = await uploadAll(
+      items,
+      (p) => uploadOne(contractId, p),
+      (done, total) => setUploadProgress({ done, total })
+    );
+    setUploadProgress(null);
+    return result.failed.length;
+  };
 
   const create = async (opts: { override?: boolean; allowDuplicate?: boolean } = {}) => {
     if (busy || !isNew) return;
@@ -531,7 +652,12 @@ export default function ContractEditor({
       setDuplicates(null);
       // Η ίδια φόρμα μένει ανοιχτή· μόνο η διεύθυνση γίνεται του συμβολαίου.
       window.history.replaceState(null, "", `/dashboard/contracts/${next.id}`);
-      setNotice(tr("contracts.createdNotice"));
+      // Οι φωτογραφίες ανεβαίνουν ΤΩΡΑ (υπάρχει contractId). Οδηγοί που δεν
+      // αποθηκεύτηκαν δεν έχουν πια φωτογραφίες εδώ (pruneForDrivers).
+      const pending = pruneForDrivers(stagedRef.current, next.drivers.map((d) => d.id));
+      setBusy(false);
+      const failed = await uploadStaged(next.id, pending);
+      setNotice(failed > 0 ? tr("contracts.uploadsFailed") : tr("contracts.createdNotice"));
     } catch {
       setError(tr("contracts.errorConnection"));
     } finally {
@@ -657,61 +783,95 @@ export default function ContractEditor({
     setForm((f) => ({ ...f, drivers: [...f.drivers, emptyDriver(randomId())] }));
     setOpen((o) => ({ ...o, drivers: true }));
   };
-  const removeDriver = (id: string) =>
+  const removeDriver = (id: string) => {
     setForm((f) => ({ ...f, drivers: f.drivers.filter((d) => d.id !== id) }));
+    // Οι staged φωτογραφίες διπλώματος του οδηγού φεύγουν μαζί του.
+    setStaged((list) => {
+      list
+        .filter((p) => p.target.kind === "license" && p.target.driverId === id)
+        .forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      return list.filter((p) => !(p.target.kind === "license" && p.target.driverId === id));
+    });
+  };
+
+  /* ── Φωτογραφίες: κοινά για staged (νέο) και ανεβασμένες ── */
+  const uploadedCount = {
+    damages: photos.length,
+    licensesOf: (id: string) => licenses.filter((l) => l.driverId === id).length,
+  };
+  /** Τα props των staged φωτογραφιών ενός στόχου (πριν ή μετά την αποθήκευση). */
+  const stagedProps = (target: StageTarget, staging: boolean) => ({
+    staged: stagedFor(staged, target).map(toView),
+    onStagedRemove: unstage,
+    onStagedNote: noteStaged,
+    onStagedRetry: (key: string) => {
+      const p = staged.find((x) => x.key === key && sameTarget(x.target, target));
+      if (p && contract) void uploadOne(contract.id, p);
+    },
+    ...(staging && { onStage: stage(target) }),
+  });
 
   /* ── Φωτογραφίες ζημιών ── */
-  const photoProps = (c: ContractDTO, group: PhotoGroup) => {
-    const lock = photoLockOf(group, c.status, c.drivers);
+  const photoProps = (group: PhotoGroup) => {
+    const target: StageTarget = { kind: "damage", group };
+    const lock = contract ? photoLockOf(group, contract.status, contract.drivers) : null;
+    const inGroup = photos.filter((p) => p.group === group);
+    const total = photos.length + staged.filter((p) => p.target.kind === "damage").length;
     return {
-      photos: photos.filter((p) => p.group === group),
-      uploadUrl: `/api/contracts/${c.id}/photos`,
+      photos: inGroup,
+      uploadUrl: contract ? `/api/contracts/${contract.id}/photos` : "",
       fields: { group },
-      itemUrl: (id: string) => `/api/contracts/${c.id}/photos/${id}`,
+      itemUrl: (id: string) => (contract ? `/api/contracts/${contract.id}/photos/${id}` : ""),
       editable: can.edit && lock === null,
       withNotes: true,
-      // Το όριο είναι ανά συμβόλαιο: όσες χωράνε ακόμα συνολικά.
-      max: MAX_CONTRACT_PHOTOS - photos.length + photos.filter((p) => p.group === group).length,
+      // Όριο ανά συμβόλαιο: όσες χωράνε ακόμα, με τις staged όλων των ομάδων.
+      max: roomFor(target, staged, uploadedCount) + inGroup.length + stagedFor(staged, target).length,
       lockedText: lock ? tr(`contracts.photosLock_${lock}`) : undefined,
-      counter: `${photos.length}/${MAX_CONTRACT_PHOTOS}`,
+      counter: `${total}/${MAX_CONTRACT_PHOTOS}`,
       onAdded: (p: PhotoItem) => setPhotos((list) => [...list, { ...p, group }]),
       onRemoved: (id: string) => setPhotos((list) => list.filter((p) => p.id !== id)),
       onNoted: (id: string, note: string) =>
         setPhotos((list) => list.map((p) => (p.id === id ? { ...p, note } : p))),
+      ...stagedProps(target, !contract),
     };
   };
 
   /* ── Φωτογραφίες διπλώματος (ΜΟΝΟ εσωτερικά) ── */
   const savedDriverIds = new Set(savedDrivers.map((d) => d.id));
-  const licenseProps = (c: ContractDTO, driverId: string) => {
-    const uploadLock = licenseLockOf("upload", c.status, c.drivers);
-    const deleteLock = licenseLockOf("delete", c.status, c.drivers);
+  const licenseProps = (driverId: string) => {
+    const target: StageTarget = { kind: "license", driverId };
+    const uploadLock = contract ? licenseLockOf("upload", contract.status, contract.drivers) : null;
+    const deleteLock = contract ? licenseLockOf("delete", contract.status, contract.drivers) : null;
     const lock = uploadLock ?? deleteLock;
     const mine = licenses.filter((l) => l.driverId === driverId);
     return {
       photos: mine.map((l) => ({ id: l.id, url: l.url, takenAt: null, note: "" })),
-      uploadUrl: `/api/contracts/${c.id}/licenses`,
+      uploadUrl: contract ? `/api/contracts/${contract.id}/licenses` : "",
       fields: { driverId },
       itemUrl: (id: string) =>
-        `/api/contracts/${c.id}/licenses?driverId=${encodeURIComponent(driverId)}&photoId=${encodeURIComponent(id)}`,
+        contract
+          ? `/api/contracts/${contract.id}/licenses?driverId=${encodeURIComponent(driverId)}&photoId=${encodeURIComponent(id)}`
+          : "",
       editable: can.edit && uploadLock === null,
       canDelete: can.edit && deleteLock === null,
       withNotes: false,
       max: MAX_LICENSE_PHOTOS,
       lockedText: can.edit && lock ? tr(`contracts.licenseLock_${lock}`) : undefined,
-      onAdded: (p: PhotoItem) =>
-        setLicenses((list) => [...list, { driverId, id: p.id, url: p.url }]),
+      onAdded: (p: PhotoItem) => setLicenses((list) => [...list, { driverId, id: p.id, url: p.url }]),
       onRemoved: (id: string) =>
         setLicenses((list) => list.filter((l) => !(l.driverId === driverId && l.id === id))),
       onNoted: () => undefined,
+      ...stagedProps(target, !contract),
     };
   };
 
   const licenseBlock = (driverId: string) => (
     <div className="dash-license">
       <h3 className="dash-license-title">{tr("contracts.license")}</h3>
-      {contract && savedDriverIds.has(driverId) ? (
-        <PhotoManager {...licenseProps(contract, driverId)} />
+      {/* Νέο συμβόλαιο: staged. Αποθηκευμένο: άμεσο ανέβασμα. Νέος οδηγός σε
+          ΗΔΗ αποθηκευμένο συμβόλαιο: πρώτα αποθήκευση (υπάρχει contractId). */}
+      {!contract || savedDriverIds.has(driverId) ? (
+        <PhotoManager {...licenseProps(driverId)} />
       ) : (
         <p className="dash-form-note">{tr("contracts.saveFirstPhotos")}</p>
       )}
@@ -795,7 +955,8 @@ export default function ContractEditor({
   const removeChange = (id: string) =>
     setForm((f) => ({ ...f, vehicleChanges: f.vehicleChanges.filter((c) => c.id !== id) }));
 
-  const changesIncomplete = form.vehicleChanges.some((c) => !c.vehicleId || !c.date);
+  // Στο νέο συμβόλαιο οι αλλαγές οχήματος γράφονται μαζί με την πρώτη αποθήκευση.
+  const changesReadOnly = isNew ? false : readOnly;
   const returnDate = isNew ? draft.win?.returnDate ?? "" : s?.booking.returnDate ?? "";
   const signedCount = savedDrivers.filter((d) => d.signature).length;
   const canSignNow = !isNew && !readOnly && !locked && !dirty && form.gdprConsent;
@@ -815,7 +976,14 @@ export default function ContractEditor({
       {/* ── Κεφαλίδα ── */}
       <div className="dash-page-head dash-head-row">
         <div>
-          <Link href="/dashboard/contracts" className="dash-back">
+          <Link
+            href="/dashboard/contracts"
+            className="dash-back"
+            onClick={(e) => {
+              // Μη ανεβασμένες φωτογραφίες χάνονται αν φύγεις.
+              if (hasPending && !window.confirm(tr("contracts.photosPendingLeave"))) e.preventDefault();
+            }}
+          >
             <ArrowLeft size={15} /> {tr("contracts.backToList")}
           </Link>
           {contract ? (
@@ -1266,19 +1434,15 @@ export default function ContractEditor({
       {/* ── 📷 Ζημιές: φωτογραφίες παραλαβής / παράδοσης (κλειστή) ── */}
       <Collapsible
         title={`📷 ${tr("contracts.damagesTitle")}`}
-        count={photos.length}
+        count={photos.length + staged.filter((p) => p.target.kind === "damage").length}
         showZero
         open={!!open.damages}
         onToggle={() => toggle("damages")}
       >
-        {contract ? (
-          <p className="dash-form-note">{tr("contracts.photosHelp")}</p>
-        ) : (
-          <p className="dash-form-note">{tr("contracts.saveFirstPhotos")}</p>
-        )}
+        <p className="dash-form-note">{contract ? tr("contracts.photosHelp") : tr("contracts.photosStagedHelp")}</p>
         <div className="dash-damage-group">
           <h3 className="dash-contract-sub">{tr("contracts.damagesPickup")}</h3>
-          {contract && <PhotoManager {...photoProps(contract, "PICKUP")} />}
+          <PhotoManager {...photoProps("PICKUP")} />
           <label className="dash-field">
             {tr("contracts.damageDescription")}
             <textarea
@@ -1294,7 +1458,7 @@ export default function ContractEditor({
         </div>
         <div className="dash-damage-group">
           <h3 className="dash-contract-sub">{tr("contracts.damagesReturn")}</h3>
-          {contract && <PhotoManager {...photoProps(contract, "RETURN")} />}
+          <PhotoManager {...photoProps("RETURN")} />
           <label className="dash-field">
             {tr("contracts.damageDescription")}
             <textarea
@@ -1327,51 +1491,49 @@ export default function ContractEditor({
         )}
       </Collapsible>
 
-      {/* ── Αλλαγή οχήματος (κλειστή· μόνο σε αποθηκευμένο) ── */}
-      {contract && (
-        <Collapsible
-          title={tr("contracts.vehicleChanges")}
-          count={form.vehicleChanges.length}
-          open={!!open.changes}
-          onToggle={() => toggle("changes")}
-        >
-          {form.vehicleChanges.length === 0 && <p className="dash-form-note">{tr("contracts.noVehicleChanges")}</p>}
-          {form.vehicleChanges.map((c) => (
-            <div key={c.id} className="dash-change-row">
-              <label className="dash-field">
-                {tr("contracts.newVehicle")}
-                <select value={c.vehicleId} disabled={readOnly} onChange={(e) => setChange(c.id, "vehicleId", e.target.value)}>
-                  <option value="">—</option>
-                  {vehicles.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="dash-field">
-                {tr("contracts.changeDate")}
-                <input
-                  type="date"
-                  value={c.date}
-                  disabled={readOnly}
-                  onChange={(e) => setChange(c.id, "date", e.target.value)}
-                />
-              </label>
-              {!readOnly && (
-                <button className="dash-icon-btn" onClick={() => removeChange(c.id)} aria-label={tr("contracts.removeChange")}>
-                  <Trash2 size={15} />
-                </button>
-              )}
-            </div>
-          ))}
-          {!readOnly && (
-            <button className="dash-btn" onClick={addChange}>
-              <Plus size={16} /> {tr("contracts.addVehicleChange")}
-            </button>
-          )}
-        </Collapsible>
-      )}
+      {/* ── Αλλαγή οχήματος (κλειστή) ── */}
+      <Collapsible
+        title={tr("contracts.vehicleChanges")}
+        count={form.vehicleChanges.length}
+        open={!!open.changes}
+        onToggle={() => toggle("changes")}
+      >
+        {form.vehicleChanges.length === 0 && <p className="dash-form-note">{tr("contracts.noVehicleChanges")}</p>}
+        {form.vehicleChanges.map((c) => (
+          <div key={c.id} className="dash-change-row">
+            <label className="dash-field">
+              {tr("contracts.newVehicle")}
+              <select value={c.vehicleId} disabled={changesReadOnly} onChange={(e) => setChange(c.id, "vehicleId", e.target.value)}>
+                <option value="">—</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="dash-field">
+              {tr("contracts.changeDate")}
+              <input
+                type="date"
+                value={c.date}
+                disabled={changesReadOnly}
+                onChange={(e) => setChange(c.id, "date", e.target.value)}
+              />
+            </label>
+            {!changesReadOnly && (
+              <button className="dash-icon-btn" onClick={() => removeChange(c.id)} aria-label={tr("contracts.removeChange")}>
+                <Trash2 size={15} />
+              </button>
+            )}
+          </div>
+        ))}
+        {!changesReadOnly && (
+          <button className="dash-btn" onClick={addChange}>
+            <Plus size={16} /> {tr("contracts.addVehicleChange")}
+          </button>
+        )}
+      </Collapsible>
 
       {/* ── Παρατηρήσεις (κλειστή) ── */}
       <Collapsible
@@ -1530,6 +1692,13 @@ export default function ContractEditor({
 
       {error && <div className="dash-form-error">{error}</div>}
       {notice && <div className="dash-alert-ok">{notice}</div>}
+      {uploadProgress && (
+        <div className="dash-savebar dash-upload-progress" role="status">
+          <span>
+            {tr("contracts.uploadingPhotos")} {uploadProgress.done}/{uploadProgress.total}
+          </span>
+        </div>
+      )}
 
       {/* ── Μπάρα αποθήκευσης ── */}
       {isNew ? (
@@ -1716,15 +1885,14 @@ function DriverCard({
 }) {
   const tr = useT();
   const locale = useLocale();
-  // Τα σπάνια πεδία κρυμμένα· ανοιχτά αν έχουν ήδη τιμή όταν ανοίγει η φόρμα.
-  const [more, setMore] = useState(() => !!(d.country || d.birthDate || d.licenseExpiry));
   const expiring = licenseExpiresBeforeReturn(d.licenseExpiry, returnDate);
+  // Υποχρεωτικά ΜΟΝΟ όνομα και τηλέφωνο του κύριου οδηγού.
   const required = index === 0;
 
   const input = (
     key: "fullName" | "phone" | "email" | "idNumber" | "licenseNumber" | "address" | "country",
     label: string,
-    extra: { type?: string; wide?: boolean; req?: boolean; max?: number; inputMode?: "tel" | "email" } = {}
+    extra: { type?: string; wide?: boolean; req?: boolean; max?: number } = {}
   ) => (
     <label className={`dash-field dash-suggest-anchor ${extra.wide ? "dash-field--wide" : ""}`}>
       {label}
@@ -1746,25 +1914,44 @@ function DriverCard({
     <div className="dash-driver">
       {/* Ο κύριος οδηγός έχει ήδη τον τίτλο της ενότητας. */}
       {(index > 0 || signed) && (
-      <div className="dash-driver-head">
-        <strong>{index === 0 ? tr("contracts.mainDriver") : `${tr("contracts.driver")} ${index + 1}`}</strong>
-        {signed && <span className="dash-status dash-status--ok">{tr("contracts.signed")}</span>}
-        {canRemove && (
-          <button
-            className="dash-icon-btn"
-            onClick={onRemove}
-            aria-label={tr("contracts.removeDriver")}
-            title={tr("contracts.removeDriver")}
-          >
-            <X size={16} />
-          </button>
-        )}
-      </div>
+        <div className="dash-driver-head">
+          <strong>{index === 0 ? tr("contracts.mainDriver") : `${tr("contracts.driver")} ${index + 1}`}</strong>
+          {signed && <span className="dash-status dash-status--ok">{tr("contracts.signed")}</span>}
+          {canRemove && (
+            <button
+              className="dash-icon-btn"
+              onClick={onRemove}
+              aria-label={tr("contracts.removeDriver")}
+              title={tr("contracts.removeDriver")}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
       )}
-      <div className="dash-form-grid">
-        {input("fullName", tr("contracts.fullName"), { req: true })}
-        {input("phone", tr("contracts.phone"), { type: "tel", req: required, max: 50 })}
-        {input("email", tr("contracts.email"), { type: "email" })}
+      {/* ΟΛΑ τα πεδία πάντα ορατά· σε κινητό συμπαγές πλέγμα 2 στηλών. */}
+      <div className="dash-form-grid dash-driver-grid">
+        {input("fullName", tr("contracts.fullName"), { req: required, wide: true })}
+        {input("country", tr("contracts.country"), { max: 100 })}
+        {input("licenseNumber", tr("contracts.licenseNumber"), { max: 100 })}
+        <label className="dash-field">
+          {tr("contracts.licenseExpiry")}
+          <input
+            type="date"
+            value={d.licenseExpiry}
+            disabled={disabled}
+            onChange={(e) => onChange("licenseExpiry", e.target.value)}
+          />
+        </label>
+        <label className="dash-field">
+          {tr("contracts.birthDate")}
+          <input
+            type="date"
+            value={d.birthDate}
+            disabled={disabled}
+            onChange={(e) => onChange("birthDate", e.target.value)}
+          />
+        </label>
         <label className="dash-field">
           {tr("contracts.idType")}
           <select value={d.idType} disabled={disabled} onChange={(e) => onChange("idType", e.target.value)}>
@@ -1776,35 +1963,10 @@ function DriverCard({
           </select>
         </label>
         {input("idNumber", tr("contracts.idNumber"), { max: 100 })}
-        {input("licenseNumber", tr("contracts.licenseNumber"), { max: 100 })}
+        {input("phone", tr("contracts.phone"), { type: "tel", req: required, max: 50 })}
+        {input("email", tr("contracts.email"), { type: "email", wide: true })}
         {input("address", tr("contracts.address"), { wide: true, max: 500 })}
       </div>
-      <button type="button" className="dash-link-btn" onClick={() => setMore((m) => !m)} aria-expanded={more}>
-        {more ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {tr("contracts.moreDetails")}
-      </button>
-      {more && (
-        <div className="dash-form-grid dash-driver-more">
-          <label className="dash-field">
-            {tr("contracts.licenseExpiry")}
-            <input
-              type="date"
-              value={d.licenseExpiry}
-              disabled={disabled}
-              onChange={(e) => onChange("licenseExpiry", e.target.value)}
-            />
-          </label>
-          <label className="dash-field">
-            {tr("contracts.birthDate")}
-            <input
-              type="date"
-              value={d.birthDate}
-              disabled={disabled}
-              onChange={(e) => onChange("birthDate", e.target.value)}
-            />
-          </label>
-          {input("country", tr("contracts.country"), { max: 100 })}
-        </div>
-      )}
       {expiring && (
         <div className="dash-contract-warn">
           <AlertTriangle size={15} /> {tr("contracts.licenseExpiresWarn")} ({shortDate(returnDate, locale)})

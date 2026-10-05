@@ -58,6 +58,7 @@ import {
   licensePathsOf,
   type ExtrasLock,
   type PaymentMethod,
+  type VehicleChange,
 } from "./contracts";
 
 /** Ο client της βάσης: το κοινό `db` ή μια transaction. */
@@ -162,21 +163,30 @@ export const contractPatchSchema = z.object({
 export type ContractPatch = z.infer<typeof contractPatchSchema>;
 
 /**
- * Νέο συμβόλαιο κατευθείαν από τη φόρμα (walk-in): τα ίδια πεδία με το
- * PATCH, χωρίς πρόσθετα (πάνε στην κράτηση) και αλλαγές οχήματος (δεν
- * έχουν νόημα πριν την παραλαβή). Ο κύριος οδηγός είναι υποχρεωτικός.
+ * Νέο συμβόλαιο κατευθείαν από τη φόρμα (walk-in): ΟΛΑ τα πεδία του PATCH
+ * εκτός από τα πρόσθετα (πάνε στην κράτηση και τιμολογούνται από ids). Οι
+ * οδηγοί κρατούν τα ids του client (σε αυτά δένονται οι φωτογραφίες
+ * διπλώματος που ανεβαίνουν αμέσως μετά). Ο κύριος οδηγός είναι υποχρεωτικός.
  */
 export const contractCreateSchema = contractPatchSchema
-  .omit({ extraIds: true, vehicleChanges: true })
+  .omit({ extraIds: true })
   .extend({
-    drivers: z.array(driverSchema).min(1, "Χρειάζεται τουλάχιστον ένας οδηγός").max(20),
+    drivers: z
+      .array(driverSchema)
+      .min(1, "Χρειάζεται τουλάχιστον ένας οδηγός")
+      .max(20)
+      // Σε αυτά τα ids δένονται οι φωτογραφίες διπλώματος: πρέπει να είναι μοναδικά.
+      .refine((list) => new Set(list.map((d) => d.id)).size === list.length, "Διπλό id οδηγού")
+      .refine((list) => list.every((d) => /^[A-Za-z0-9_-]{1,40}$/.test(d.id)), "Μη έγκυρο id οδηγού"),
   });
 
 export type ContractCreate = z.infer<typeof contractCreateSchema>;
 
 /** Τα πεδία ενός νέου συμβολαίου από τη φόρμα — όπως θα τα έγραφε το PATCH. */
 export function initialContractData(
-  c: ContractCreate
+  c: ContractCreate,
+  /** Οι αλλαγές οχήματος με μοντέλο/πινακίδα από τον Στόλο (resolveVehicleChanges). */
+  vehicleChanges: VehicleChange[] = []
 ): Partial<Prisma.ContractUncheckedCreateInput> {
   const payment = c.paymentMethod ?? null;
   const depositMethod = c.depositMethod ?? null;
@@ -193,6 +203,9 @@ export function initialContractData(
     ...(c.damageNotesPickup !== undefined && { damageNotesPickup: c.damageNotesPickup || null }),
     ...(c.damageNotesReturn !== undefined && { damageNotesReturn: c.damageNotesReturn || null }),
     ...(c.notes !== undefined && { notes: c.notes || null }),
+    ...(vehicleChanges.length > 0 && {
+      vehicleChanges: vehicleChanges as unknown as Prisma.InputJsonValue,
+    }),
     ...(c.paymentMethod !== undefined && { paymentMethod: payment }),
     ...(c.depositAmount !== undefined && { depositAmount: c.depositAmount }),
     ...(c.depositMethod !== undefined && { depositMethod }),

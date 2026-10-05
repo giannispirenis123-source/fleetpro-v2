@@ -14,6 +14,17 @@ import { ImagePlus, RotateCcw, Trash2, X, ImageOff } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import { compressImage } from "@/lib/imageCompress";
 import { PHOTO_NOTE_MAX, type PhotoItem } from "@/lib/photoShared";
+import { sendPhoto, uploadErrorFor } from "@/lib/photoUpload";
+
+/** Φωτογραφία που περιμένει την αποθήκευση (μόνο στη μνήμη του browser). */
+export interface StagedView {
+  key: string;
+  previewUrl: string;
+  takenAt: string;
+  note: string;
+  status: "staged" | "uploading" | "error";
+  message: string;
+}
 
 const INTL: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
@@ -36,44 +47,6 @@ interface QueueItem {
   message: string;
 }
 
-/** Ανέβασμα με XHR για να έχουμε πρόοδο (το fetch δεν δίνει upload progress). */
-function send(
-  url: string,
-  form: FormData,
-  onProgress: (p: number) => void
-): Promise<{ status: number; body: { message?: string; data?: { photo: PhotoItem } } }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
-    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-    xhr.onload = () => {
-      let body = {};
-      try {
-        body = JSON.parse(xhr.responseText);
-      } catch {
-        /* κενό ή μη JSON */
-      }
-      resolve({ status: xhr.status, body });
-    };
-    xhr.onerror = () => reject(new Error("network"));
-    xhr.send(form);
-  });
-}
-
-/**
- * Μήνυμα όταν ο server δεν έδωσε δικό του (π.χ. το Vercel κόβει μεγάλο
- * αίτημα με 413 σε HTML, ή timeout). Με μήνυμα από τον server, δείχνεται
- * εκείνο — είναι πάντα συγκεκριμένο και ασφαλές.
- */
-function uploadErrorFor(status: number, tr: (k: string) => string): string {
-  if (status === 401) return tr("photos.errorSession");
-  if (status === 403) return tr("photos.errorPermission");
-  if (status === 413) return tr("photos.errorTooLarge");
-  if (status === 415 || status === 400) return tr("photos.errorType");
-  if (status === 0 || status === 502 || status === 504) return tr("photos.errorConnection");
-  return `${tr("photos.errorUpload")} (HTTP ${status})`;
-}
-
 export default function PhotoManager({
   photos,
   uploadUrl,
@@ -89,6 +62,11 @@ export default function PhotoManager({
   onNoted,
   replace = false,
   canDelete,
+  staged = [],
+  onStage,
+  onStagedRemove,
+  onStagedNote,
+  onStagedRetry,
 }: {
   photos: PhotoItem[];
   /** POST multipart εδώ (πεδίο file + `fields`). */
@@ -116,6 +94,16 @@ export default function PhotoManager({
   replace?: boolean;
   /** Διαγραφή· αν λείπει, ακολουθεί το `editable`. */
   canDelete?: boolean;
+  /** Φωτογραφίες που περιμένουν την αποθήκευση (νέο συμβόλαιο). */
+  staged?: StagedView[];
+  /**
+   * Νέο συμβόλαιο (χωρίς contractId): η συμπιεσμένη φωτογραφία ΔΕΝ ανεβαίνει·
+   * δίνεται εδώ και μένει στη μνήμη του browser μέχρι την αποθήκευση.
+   */
+  onStage?: (blob: Blob, takenAt: string) => void;
+  onStagedRemove?: (key: string) => void;
+  onStagedNote?: (key: string, note: string) => void;
+  onStagedRetry?: (key: string) => void;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -137,7 +125,11 @@ export default function PhotoManager({
     update((q) => q.map((i) => (i.key === key ? { ...i, ...p } : i)));
 
   const pending = queue.filter((i) => i.status !== "error").length;
-  const room = replace ? (pending > 0 ? 0 : 1) : Math.max(0, max - photos.length - pending);
+  const room = replace
+    ? pending > 0
+      ? 0
+      : 1
+    : Math.max(0, max - photos.length - staged.length - pending);
   const deletable = canDelete ?? editable;
 
   const process = async (item: QueueItem) => {
@@ -149,13 +141,20 @@ export default function PhotoManager({
       patch(item.key, { status: "error", message: tr("photos.errorRead") });
       return;
     }
+    const takenAt = new Date(item.file.lastModified || Date.now()).toISOString();
+    if (onStage) {
+      // Πριν την αποθήκευση: τίποτα στο δίκτυο, μόνο στη μνήμη.
+      update((q) => q.filter((i) => i.key !== item.key));
+      onStage(blob, takenAt);
+      return;
+    }
     patch(item.key, { status: "uploading" });
     const form = new FormData();
     form.append("file", blob, "photo.jpg");
-    form.append("takenAt", new Date(item.file.lastModified || Date.now()).toISOString());
+    form.append("takenAt", takenAt);
     for (const [k, v] of Object.entries(fields ?? {})) form.append(k, v);
     try {
-      const res = await send(uploadUrl, form, (p) => patch(item.key, { progress: p }));
+      const res = await sendPhoto(uploadUrl, form, (p) => patch(item.key, { progress: p }));
       if (res.status >= 200 && res.status < 300 && res.body.data?.photo) {
         update((q) => q.filter((i) => i.key !== item.key));
         onAdded(res.body.data.photo);
@@ -339,7 +338,7 @@ export default function PhotoManager({
 
       {error && <div className="dash-form-error">{error}</div>}
 
-      {photos.length === 0 && queue.length === 0 ? (
+      {photos.length === 0 && queue.length === 0 && staged.length === 0 ? (
         <p className="dash-form-note">{tr("photos.none")}</p>
       ) : (
         <div className="dash-photo-grid">
@@ -375,6 +374,45 @@ export default function PhotoManager({
                     className="dash-icon-btn dash-icon-btn--danger"
                     disabled={busyId === p.id}
                     onClick={() => remove(p.id)}
+                    aria-label={tr("photos.delete")}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </figcaption>
+            </figure>
+          ))}
+          {staged.map((p) => (
+            <figure key={p.key} className={`dash-photo dash-photo--staged ${p.status}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p.previewUrl} alt={p.note || tr("photos.photo")} />
+              <figcaption>
+                <span className="dash-photo-time">{stamp(p.takenAt, locale)}</span>
+                <span className={`dash-photo-pending ${p.status}`}>
+                  {p.status === "uploading"
+                    ? tr("photos.uploading")
+                    : p.status === "error"
+                      ? p.message || tr("photos.errorUpload")
+                      : tr("photos.willUpload")}
+                </span>
+                {withNotes && p.status !== "uploading" && onStagedNote && (
+                  <input
+                    value={p.note}
+                    maxLength={PHOTO_NOTE_MAX}
+                    placeholder={tr("photos.notePlaceholder")}
+                    onChange={(e) => onStagedNote(p.key, e.target.value)}
+                  />
+                )}
+                {p.status === "error" && onStagedRetry && (
+                  <button type="button" className="dash-btn" onClick={() => onStagedRetry(p.key)}>
+                    <RotateCcw size={14} /> {tr("photos.retry")}
+                  </button>
+                )}
+                {p.status !== "uploading" && onStagedRemove && (
+                  <button
+                    type="button"
+                    className="dash-icon-btn dash-icon-btn--danger"
+                    onClick={() => onStagedRemove(p.key)}
                     aria-label={tr("photos.delete")}
                   >
                     <Trash2 size={14} />

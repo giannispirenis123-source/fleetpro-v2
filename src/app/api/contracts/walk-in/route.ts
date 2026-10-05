@@ -4,8 +4,10 @@ export const dynamic = "force-dynamic";
 //
 // GET  → τα διαθέσιμα οχήματα για το διάστημα.
 // POST → { preview: true } μόνο τιμή/σύγκρουση· αλλιώς σε ΜΙΑ transaction
-//        νέος πελάτης (αν χρειάζεται) + κράτηση + συμβόλαιο. Αν αποτύχει
-//        οτιδήποτε, δεν γράφεται τίποτα.
+//        πελάτης (νέος από τον κύριο οδηγό, ή ο υπάρχων με συμπλήρωση των
+//        κενών του) + κράτηση + συμβόλαιο με τα στοιχεία της φόρμας. Αν
+//        αποτύχει οτιδήποτε, δεν γράφεται τίποτα. Επιστρέφει το συμβόλαιο
+//        (η φόρμα μένει ανοιχτή και συνεχίζει με υπογραφές/φωτογραφίες).
 //
 // Απαιτεί contracts.create ΚΑΙ bookings.create. Ο συνεργάτης κλειδώνεται
 // στον εαυτό του (resolvePartnerId). Ο server υπολογίζει τα πάντα.
@@ -16,7 +18,8 @@ import { ok, created, badRequest, conflict, serverError } from "@/lib/api";
 import { viewerCan, withPermission } from "@/lib/authz";
 import { TIME_RE } from "@/lib/bookings";
 import { prepareBooking, writeBooking } from "@/lib/bookingCreate";
-import { createContractInTx } from "@/lib/contractForm";
+import { createContractInTx, initialContractData, loadContract } from "@/lib/contractForm";
+import { customerFromDriver, missingCustomerFields } from "@/lib/customerMatch";
 import {
   findDuplicateCustomers,
   loadWalkInVehicles,
@@ -79,11 +82,18 @@ export const POST = withPermission(
         return ok({ preview: await toWalkInPreview(viewer!, plan, conflicts) });
       }
 
+      // Ο πελάτης βγαίνει από τον κύριο οδηγό (μόνο πεδία του μοντέλου Customer).
+      const form = data.contract!;
+      const fromDriver = customerFromDriver(form.drivers[0]);
+
       // Νέος πελάτης με τηλέφωνο/email που ήδη υπάρχει: προτείνουμε τον
       // υπάρχοντα, εκτός αν ο χρήστης επιμένει ρητά.
-      const fresh = data.newCustomer;
-      if (fresh && !data.allowDuplicate) {
-        const duplicates = await findDuplicateCustomers(tenantId, fresh.phone, fresh.email ?? "");
+      if (!plan.customerId && !data.allowDuplicate) {
+        const duplicates = await findDuplicateCustomers(
+          tenantId,
+          fromDriver.phone ?? "",
+          fromDriver.email ?? ""
+        );
         if (duplicates.length > 0) {
           return conflict("Υπάρχει ήδη πελάτης με αυτό το τηλέφωνο ή email", {
             duplicates,
@@ -94,34 +104,75 @@ export const POST = withPermission(
       const result = await db.$transaction(
         async (tx) => {
           let customerId = plan.customerId;
+          const dates = (v: string | null) => (v ? new Date(`${v}T00:00:00.000Z`) : null);
           if (!customerId) {
             const customer = await tx.customer.create({
               data: {
                 tenantId,
-                firstName: fresh!.firstName,
-                lastName: fresh!.lastName,
-                phone: fresh!.phone,
-                email: fresh!.email || null,
+                ...fromDriver,
+                licenseExpiry: dates(fromDriver.licenseExpiry),
+                dateOfBirth: dates(fromDriver.dateOfBirth),
+                licenseCountry: fromDriver.licenseCountry ?? undefined,
               },
               select: { id: true },
             });
             customerId = customer.id;
+          } else {
+            // Υπάρχων πελάτης: ΜΟΝΟ τα κενά του πεδία, ποτέ αντικατάσταση.
+            const existing = await tx.customer.findFirstOrThrow({
+              where: { id: customerId, tenantId },
+              select: {
+                phone: true,
+                email: true,
+                idNumber: true,
+                licenseNumber: true,
+                licenseExpiry: true,
+                dateOfBirth: true,
+                address: true,
+              },
+            });
+            const missing = missingCustomerFields(
+              {
+                ...existing,
+                licenseExpiry: existing.licenseExpiry?.toISOString() ?? null,
+                dateOfBirth: existing.dateOfBirth?.toISOString() ?? null,
+              },
+              fromDriver
+            );
+            if (Object.keys(missing).length > 0) {
+              await tx.customer.update({
+                where: { id: customerId },
+                data: {
+                  ...missing,
+                  ...(missing.licenseExpiry && { licenseExpiry: dates(missing.licenseExpiry) }),
+                  ...(missing.dateOfBirth && { dateOfBirth: dates(missing.dateOfBirth) }),
+                },
+                select: { id: true },
+              });
+            }
           }
 
           const booking = await writeBooking(tx, plan, customerId);
-          const contract = await createContractInTx(tx, viewer!, session.name, {
-            id: booking.id,
-            customerId,
-            pickupLocation: booking.pickupLocation,
-            returnLocation: booking.returnLocation,
-            deposit: booking.deposit,
-          });
+          const contract = await createContractInTx(
+            tx,
+            viewer!,
+            session.name,
+            {
+              id: booking.id,
+              customerId,
+              pickupLocation: booking.pickupLocation,
+              returnLocation: booking.returnLocation,
+              deposit: booking.deposit,
+            },
+            initialContractData(form)
+          );
           return { bookingId: booking.id, contractId: contract.id };
         },
         { maxWait: 10000, timeout: 20000 }
       );
 
-      return created({ id: result.contractId, bookingId: result.bookingId });
+      const contract = await loadContract(viewer!, result.contractId);
+      return created({ id: result.contractId, bookingId: result.bookingId, contract });
     } catch (error) {
       console.error(error);
       return serverError();

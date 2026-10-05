@@ -13,7 +13,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ok, badRequest, conflict, notFound, noContent, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { LICENSE_SIDES, anySigned, readDrivers, readPhotos } from "@/lib/contracts";
+import { anySigned, licensePathsOf, readDrivers, readPhotos } from "@/lib/contracts";
 import { removeObjects } from "@/lib/storage";
 import { readExtrasSnapshot } from "@/lib/pricing";
 import {
@@ -225,9 +225,7 @@ export const DELETE = withPermission(
       // Τα αρχεία των φωτογραφιών φεύγουν κι αυτά (best effort).
       await removeObjects([
         ...readPhotos(current.damagePhotos).map((p) => p.path),
-        ...readDrivers(current.drivers).flatMap((d) =>
-          LICENSE_SIDES.map((s) => d.licensePhotos?.[s] ?? "")
-        ),
+        ...licensePathsOf(readDrivers(current.drivers)),
       ]);
       return noContent();
     } catch (error) {

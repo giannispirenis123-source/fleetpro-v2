@@ -14,8 +14,8 @@ import { db } from "./db";
 import type { Viewer } from "./authz";
 import { contractScope } from "./contractForm";
 import {
+  MAX_LICENSE_PHOTOS,
   licenseLockOf,
-  type LicenseSide,
   photoLockOf,
   readDrivers,
   readPhotos,
@@ -24,6 +24,7 @@ import {
   type PhotoGroup,
 } from "./contracts";
 import { signUrls } from "./storage";
+import { photoIdOf } from "./photoShared";
 
 /** Το συμβόλαιο, αν το βλέπει ο χρήστης (tenant + στεγανότητα συνεργάτη). */
 export const findScopedContract = (viewer: Viewer, id: string) =>
@@ -102,30 +103,31 @@ export async function mutateContractPhotos(
 }
 
 /* ─────────────────────────────────────────────
-   Φωτογραφίες διπλώματος (ανά οδηγό: front / back)
+   Φωτογραφίες διπλώματος (ανά οδηγό, έως MAX_LICENSE_PHOTOS)
    ───────────────────────────────────────────── */
 
 const LICENSE_LOCK_MESSAGE: Record<string, string> = {
-  signed: "Η φωτογραφία διπλώματος δεν διαγράφεται μετά την πρώτη υπογραφή (μπορεί να αντικατασταθεί)",
+  signed: "Η φωτογραφία διπλώματος δεν διαγράφεται μετά την πρώτη υπογραφή",
   completed: "Το συμβόλαιο έχει ολοκληρωθεί και δεν αλλάζει",
 };
 
 export type LicenseMutation =
-  | { ok: true; previous: string | null }
+  | { ok: true; removed: string | null }
   | { ok: false; status: 404 | 409; message: string };
 
 /**
- * Ορίζει (path) ή σβήνει (null) τη φωτογραφία μιας πλευράς διπλώματος, ατομικά
- * με SELECT … FOR UPDATE και ΧΩΡΙΣ αλλαγή του "updatedAt" (όπως οι ζημιές).
- * Ο κανόνας κλειδώματος ξαναελέγχεται μέσα στο κλείδωμα. Επιστρέφει την
- * προηγούμενη διαδρομή — ο καλών σβήνει το αρχείο ΜΕΤΑ την εγγραφή.
+ * Προσθέτει (`add` = διαδρομή) ή αφαιρεί (`removeId` = id φωτογραφίας) μία
+ * φωτογραφία διπλώματος, ατομικά με SELECT … FOR UPDATE και ΧΩΡΙΣ αλλαγή
+ * του "updatedAt" (όπως οι ζημιές). Ο κανόνας κλειδώματος και το όριο
+ * ξαναελέγχονται μέσα στο κλείδωμα. Η εγγραφή είναι πάντα στη νέα μορφή
+ * (πίνακας)· τα παλιά front/back έχουν ήδη γίνει πίνακας στην ανάγνωση.
+ * Επιστρέφει τη διαδρομή που αφαιρέθηκε — ο καλών σβήνει το αρχείο ΜΕΤΑ.
  */
-export async function setLicensePhoto(
+export async function mutateLicensePhotos(
   viewer: Viewer,
   contractId: string,
   driverId: string,
-  side: LicenseSide,
-  path: string | null
+  change: { add: string } | { removeId: string }
 ): Promise<LicenseMutation> {
   const scoped = await findScopedContract(viewer, contractId);
   if (!scoped) return { ok: false, status: 404, message: "Το συμβόλαιο δεν βρέθηκε" };
@@ -141,7 +143,7 @@ export async function setLicensePhoto(
     if (!row) return { ok: false as const, status: 404 as const, message: "Το συμβόλαιο δεν βρέθηκε" };
 
     const drivers = readDrivers(row.drivers);
-    const lock = licenseLockOf(path ? "upload" : "delete", row.status, drivers);
+    const lock = licenseLockOf("add" in change ? "upload" : "delete", row.status, drivers);
     if (lock) return { ok: false as const, status: 409 as const, message: LICENSE_LOCK_MESSAGE[lock] };
 
     const index = drivers.findIndex((d) => d.id === driverId);
@@ -149,21 +151,27 @@ export async function setLicensePhoto(
       return { ok: false as const, status: 404 as const, message: "Ο οδηγός δεν βρέθηκε — αποθήκευσε πρώτα το συμβόλαιο" };
     }
     const driver = drivers[index];
-    const previous = driver.licensePhotos?.[side] ?? null;
-    if (!path && !previous) {
-      return { ok: false as const, status: 404 as const, message: "Η φωτογραφία δεν βρέθηκε" };
+    const current = driver.licensePhotos ?? [];
+    let next: string[];
+    let removed: string | null = null;
+    if ("add" in change) {
+      if (current.length >= MAX_LICENSE_PHOTOS) {
+        return { ok: false as const, status: 409 as const, message: `Έως ${MAX_LICENSE_PHOTOS} φωτογραφίες διπλώματος ανά οδηγό` };
+      }
+      next = [...current, change.add];
+    } else {
+      removed = current.find((p) => photoIdOf(p) === change.removeId) ?? null;
+      if (!removed) return { ok: false as const, status: 404 as const, message: "Η φωτογραφία δεν βρέθηκε" };
+      next = current.filter((p) => p !== removed);
     }
-    const next = { ...(driver.licensePhotos ?? {}) };
-    if (path) next[side] = path;
-    else delete next[side];
     const { licensePhotos: _old, ...rest } = driver;
-    drivers[index] = next.front || next.back ? { ...rest, licensePhotos: next } : rest;
+    drivers[index] = next.length ? { ...rest, licensePhotos: next } : rest;
 
     await tx.$executeRaw(Prisma.sql`
       UPDATE "contracts"
       SET "drivers" = ${JSON.stringify(drivers)}::jsonb
       WHERE "id" = ${scoped.id}
     `);
-    return { ok: true as const, previous };
+    return { ok: true as const, removed };
   });
 }

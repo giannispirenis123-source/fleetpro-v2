@@ -6,9 +6,9 @@
 
 BEGIN;
 
--- ── Εταιρία (tenant): P Rentals Χανιά ──
+-- ── Εταιρία (tenant) δοκιμών / demo: Fleet-Pro Car Rental ──
 INSERT INTO "tenants" ("id","name","slug","email","phone","address","brandColor","plan","status","updatedAt")
-VALUES ('seed_tenant_prentals', 'P Rentals Χανιά', 'p-rentals', 'info@prentals.gr', '2821055555', 'Χανιά, Κρήτη', '#2563EB', 'PRO', 'ACTIVE', CURRENT_TIMESTAMP)
+VALUES ('seed_tenant_prentals', 'Fleet-Pro Car Rental', 'p-rentals', 'info@prentals.gr', '2821055555', 'Χανιά, Κρήτη', '#2563EB', 'PRO', 'ACTIVE', CURRENT_TIMESTAMP)
 ON CONFLICT ("slug") DO NOTHING;
 
 -- ── Χρήστες ──

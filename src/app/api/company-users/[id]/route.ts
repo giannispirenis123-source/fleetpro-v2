@@ -8,6 +8,10 @@ export const dynamic = "force-dynamic";
 //  3. Ο ΤΕΛΕΥΤΑΙΟΣ ενεργός διαχειριστής δεν υποβιβάζεται, δεν
 //     απενεργοποιείται και δεν σβήνεται — η εταιρία μένει πάντα με ≥1.
 //  4. Ο SUPER_ADMIN δεν αγγίζεται από εδώ (δεν έχει καν tenantId).
+//  5. Πολλοί διαχειριστές επιτρέπονται, αλλά τον ρόλο τον δίνει/αφαιρεί
+//     ΜΟΝΟ ενεργός διαχειριστής της ίδιας εταιρίας (ρόλος από τη βάση)·
+//     και μόνο διαχειριστής αγγίζει λογαριασμό διαχειριστή (στοιχεία,
+//     κωδικό, απενεργοποίηση). Κανόνες: src/lib/adminRole.ts.
 
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -20,15 +24,25 @@ import {
   serverError,
 } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { MANAGED_ROLES, USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
-import { permissionsFromKeys } from "@/lib/permissions";
+import { Prisma } from "@prisma/client";
+import { USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
+import { defaultsForRole, permissionsFromKeys } from "@/lib/permissions";
+import {
+  ASSIGNABLE_ROLES,
+  MSG,
+  canChangeRole,
+  canDeactivate,
+  isCompanyAdmin,
+  type RoleActor,
+  type RoleDecision,
+} from "@/lib/adminRole";
 
 const updateUserSchema = z
   .object({
     name: z.string().min(2, "Απαιτείται όνομα").optional(),
     email: z.string().email("Μη έγκυρο email").optional(),
     phone: z.union([z.string(), z.null()]).optional(),
-    role: z.enum(MANAGED_ROLES).optional(),
+    role: z.enum(ASSIGNABLE_ROLES).optional(),
     isActive: z.boolean().optional(),
     permissions: z.array(z.string()).optional(),
     /** Νέος κωδικός — ίδιος μηχανισμός hash με παντού αλλού. */
@@ -48,17 +62,33 @@ const updateUserSchema = z
     message: "Δεν δόθηκε καμία αλλαγή",
   });
 
-/** Πόσοι ενεργοί διαχειριστές μένουν στην εταιρία, εκτός από αυτόν. */
-async function otherActiveAdmins(tenantId: string, exceptId: string) {
-  return db.user.count({
-    where: {
-      tenantId,
-      role: "COMPANY_ADMIN",
-      isActive: true,
-      NOT: { id: exceptId },
-    },
-  });
+/**
+ * Πόσοι ΑΛΛΟΙ ενεργοί διαχειριστές έχει η εταιρία — μέσα σε transaction,
+ * με κλείδωμα των γραμμών τους, ώστε δύο ταυτόχρονοι υποβιβασμοί να μην
+ * αφήσουν την εταιρία χωρίς διαχειριστή.
+ */
+async function lockedOtherAdmins(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  exceptId: string
+): Promise<number> {
+  const rows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+    SELECT "id" FROM "users"
+    WHERE "tenantId" = ${tenantId} AND "role" = 'COMPANY_ADMIN'::"UserRole" AND "isActive" = true
+    FOR UPDATE
+  `);
+  return rows.filter((r) => r.id !== exceptId).length;
 }
+
+const REJECT = "REJECT";
+class Rejected extends Error {
+  constructor(readonly decision: Extract<RoleDecision, { ok: false }>) {
+    super(REJECT);
+  }
+}
+
+const respond = (d: Extract<RoleDecision, { ok: false }>) =>
+  d.status === 404 ? notFound(d.message) : d.status === 403 ? forbidden(d.message) : badRequest(d.message);
 
 /** Ο χρήστης-στόχος, μόνο αν ανήκει στην εταιρία του αιτούντος. */
 async function loadTarget(id: string, tenantId: string) {
@@ -70,10 +100,16 @@ async function loadTarget(id: string, tenantId: string) {
 
 // PATCH /api/company-users/[id]
 export const PATCH = withPermission(
-  async (req, session, params) => {
+  async (req, session, params, viewer) => {
     try {
-      const target = await loadTarget(params!.id, session.tenantId!);
+      if (!viewer?.tenantId || viewer.role === "SUPER_ADMIN") return forbidden();
+      const actor: RoleActor = { id: viewer.userId, role: viewer.role, tenantId: viewer.tenantId };
+      const target = await loadTarget(params!.id, viewer.tenantId);
       if (!target) return notFound("Ο χρήστης δεν βρέθηκε");
+      // Λογαριασμό διαχειριστή (στοιχεία, κωδικό, ρόλο) αγγίζει μόνο διαχειριστής.
+      if (target.role === "COMPANY_ADMIN" && !isCompanyAdmin(actor)) {
+        return forbidden(MSG.adminAccount);
+      }
 
       const parsed = updateUserSchema.safeParse(await req.json());
       if (!parsed.success) {
@@ -99,19 +135,14 @@ export const PATCH = withPermission(
         );
       }
 
-      // Ο τελευταίος διαχειριστής μένει διαχειριστής και μένει ενεργός.
-      const losesAdmin =
-        target.role === "COMPANY_ADMIN" &&
-        (data.role !== undefined || data.isActive === false);
+      // Ρόλος / ενεργός: πρώτος έλεγχος εδώ (χωρίς κλείδωμα) για γρήγορη
+      // απάντηση· ο οριστικός γίνεται μέσα στην transaction παρακάτω.
+      const change = { role: data.role, isActive: data.isActive };
+      const first = canChangeRole(actor, target, change, Number.MAX_SAFE_INTEGER);
+      if (!first.ok) return respond(first);
 
-      if (losesAdmin) {
-        const others = await otherActiveAdmins(session.tenantId!, target.id);
-        if (others === 0) {
-          return badRequest(
-            "Η εταιρία πρέπει να έχει τουλάχιστον έναν ενεργό διαχειριστή"
-          );
-        }
-      }
+      const passwordHash =
+        data.password !== undefined ? await bcrypt.hash(data.password, BCRYPT_ROUNDS) : undefined;
 
       if (data.email && data.email.toLowerCase() !== target.email) {
         const clash = await db.user.findUnique({
@@ -123,14 +154,31 @@ export const PATCH = withPermission(
 
       // Ο διαχειριστής δεν κρατά λίστα δικαιωμάτων: τα έχει όλα.
       const nextRole = data.role ?? target.role;
+      const roleChanges = data.role !== undefined && data.role !== target.role;
       const nextPermissions =
-        data.permissions !== undefined
-          ? nextRole === "COMPANY_ADMIN"
+        nextRole === "COMPANY_ADMIN"
+          ? roleChanges || data.permissions !== undefined
             ? {}
-            : permissionsFromKeys(data.permissions)
-          : undefined;
+            : undefined
+          : data.permissions !== undefined
+            ? permissionsFromKeys(data.permissions)
+            : roleChanges && target.role === "COMPANY_ADMIN"
+              ? // Ο υποβιβασμένος διαχειριστής παίρνει τις προεπιλογές του
+                // νέου ρόλου — αλλιώς θα έμενε χωρίς καμία πρόσβαση.
+                defaultsForRole(nextRole)
+              : undefined;
 
-      const user = await db.user.update({
+      const touchesAdmin =
+        target.role === "COMPANY_ADMIN" || nextRole === "COMPANY_ADMIN";
+      let user;
+      try {
+        user = await db.$transaction(async (tx) => {
+          if (touchesAdmin && (roleChanges || data.isActive !== undefined)) {
+            const others = await lockedOtherAdmins(tx, viewer.tenantId!, target.id);
+            const final = canChangeRole(actor, target, change, others);
+            if (!final.ok) throw new Rejected(final);
+          }
+          return tx.user.update({
         where: { id: target.id },
         data: {
           ...(data.name !== undefined && { name: data.name.trim() }),
@@ -153,20 +201,15 @@ export const PATCH = withPermission(
             commissionOnInsurance: data.commissionOnInsurance,
           }),
           ...(nextPermissions !== undefined && { permissions: nextPermissions }),
-          ...(data.password !== undefined && {
-            passwordHash: await bcrypt.hash(data.password, BCRYPT_ROUNDS),
-          }),
-          // Ο υποβιβασμός διαχειριστή του δίνει τα δικαιώματα που πλέον
-          // χρειάζεται ρητά — αλλιώς θα έμενε με άδειο πεδίο και καμία
-          // πρόσβαση, χωρίς να το ζητήσει κανείς.
-          ...(data.role !== undefined &&
-            target.role === "COMPANY_ADMIN" &&
-            data.permissions === undefined && {
-              permissions: permissionsFromKeys([]),
-            }),
+          ...(passwordHash !== undefined && { passwordHash }),
         },
         select: USER_SELECT,
-      });
+          });
+        });
+      } catch (error) {
+        if (error instanceof Rejected) return respond(error.decision);
+        throw error;
+      }
 
       return ok({ user: toUserDTO(user) });
     } catch (error) {
@@ -180,29 +223,32 @@ export const PATCH = withPermission(
 // DELETE /api/company-users/[id] — ήπια διαγραφή (απενεργοποίηση).
 // Ο χρήστης κρατά το ιστορικό του· απλώς δεν μπορεί να συνδεθεί.
 export const DELETE = withPermission(
-  async (_req, session, params) => {
+  async (_req, _session, params, viewer) => {
     try {
-      const target = await loadTarget(params!.id, session.tenantId!);
-      if (!target) return notFound("Ο χρήστης δεν βρέθηκε");
+      if (!viewer?.tenantId || viewer.role === "SUPER_ADMIN") return forbidden();
+      const actor: RoleActor = { id: viewer.userId, role: viewer.role, tenantId: viewer.tenantId };
+      const target = await loadTarget(params!.id, viewer.tenantId);
+      const first = canDeactivate(actor, target, Number.MAX_SAFE_INTEGER);
+      if (!first.ok) return respond(first);
 
-      if (target.id === session.userId) {
-        return forbidden("Δεν μπορείτε να διαγράψετε τον εαυτό σας");
+      let user;
+      try {
+        user = await db.$transaction(async (tx) => {
+          if (target!.role === "COMPANY_ADMIN") {
+            const others = await lockedOtherAdmins(tx, viewer.tenantId!, target!.id);
+            const final = canDeactivate(actor, target, others);
+            if (!final.ok) throw new Rejected(final);
+          }
+          return tx.user.update({
+            where: { id: target!.id },
+            data: { isActive: false },
+            select: USER_SELECT,
+          });
+        });
+      } catch (error) {
+        if (error instanceof Rejected) return respond(error.decision);
+        throw error;
       }
-
-      if (target.role === "COMPANY_ADMIN") {
-        const others = await otherActiveAdmins(session.tenantId!, target.id);
-        if (others === 0) {
-          return badRequest(
-            "Η εταιρία πρέπει να έχει τουλάχιστον έναν ενεργό διαχειριστή"
-          );
-        }
-      }
-
-      const user = await db.user.update({
-        where: { id: target.id },
-        data: { isActive: false },
-        select: USER_SELECT,
-      });
 
       return ok({ user: toUserDTO(user) });
     } catch (error) {

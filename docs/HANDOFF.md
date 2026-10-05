@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 05/10/2026 · **main πριν από αυτή τη δουλειά:** `363f40d` (PR #10). **SQL `13` έχει τρέξει.** · **Αυτό το branch:** Φάση Β (συνέχεια) — λογότυπο, διπλώματα, link πελάτη. **Θέλει SQL `14` ΠΡΙΝ το push/merge.**
+**Ημερομηνία:** 05/10/2026 · **main:** `d30c20d` (PR #11, squash — λογότυπο, διπλώματα, link πελάτη). **SQL `13` και `14` έχουν τρέξει.** · **Αυτό το branch:** μετονομασία εταιρίας δοκιμών + πολλοί Διαχειριστές. **Χωρίς SQL.**
 
-> **Επόμενο βήμα:** τρέξε το `prisma/sql/14-contract-branding-link.sql` στη Supabase (verification `1 | 2 | 1`) και μόνο τότε push/merge. Μετά: Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage (απομένει, δεν έγινε εσκεμμένα).
+> **Επόμενο βήμα:** Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
 ---
 
@@ -94,6 +94,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Τιμολόγια: έκδοση, ΦΠΑ inclusive, εκτύπωση | ✅ |
 | Ημερολόγιο: μηνιαίο + timeline ανά όχημα | ✅ |
 | Δικαιώματα ανά χρήστη + σελίδα Χρήστες | ✅ |
+| Πολλοί Διαχειριστές εταιρίας (δημιουργία, προαγωγή Προσωπικού, υποβιβασμός) | ✅ στο branch, χωρίς SQL |
 | Συνεργάτες: στεγανότητα + προμήθεια με 3 διακόπτες βάσης | ✅ |
 | Service & Ζημιές | ✅ |
 | Super Admin: εταιρίες, στατιστικά, reset κωδικού | ✅ |
@@ -104,7 +105,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Συμβόλαια Φάση Α+: «+ Νέο συμβόλαιο», πρόσθετα με ΦΠΑ (ένα σύνολο με την κράτηση), κάρτα (μόνο 4 ψηφία), αναζήτηση `searchText` | ✅ |
 | Γρήγορο συμβόλαιο «walk-in» (`/dashboard/contracts/new`): πελάτης + κράτηση + συμβόλαιο σε μία transaction, κράτηση που ακολουθεί το συμβόλαιο | ✅ live (`2757fed`, PR #7) |
 | Συμβόλαια Φάση Β (1ο κομμάτι): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα (Supabase Storage), φωτογραφίες στις ζημιές της σελίδας Service, χωρίς καύσιμο επιστροφής | ✅ live (`7f8915b`, PR #8) |
-| Συμβόλαια Φάση Β (συνέχεια): λογότυπο εταιρίας, φωτογραφίες διπλώματος ανά οδηγό, link πελάτη `/c/[token]` + QR στο Α4 | ✅ στο branch, **θέλει SQL `14`** |
+| Συμβόλαια Φάση Β (συνέχεια): λογότυπο εταιρίας, φωτογραφίες διπλώματος ανά οδηγό, link πελάτη `/c/[token]` + QR στο Α4 | ✅ live (`d30c20d`, PR #11) |
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
@@ -174,6 +175,17 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
     Η Supabase συχνά απαντά HTTP 400 με `statusCode` μέσα στο σώμα (π.χ. `"404"` + «Bucket not found»)· η κατάταξη κοιτά πρώτα αυτό. **Logs:** `Storage upload: HTTP 400 → BUCKET_NOT_FOUND — statusCode 404 · Bucket not found`· το κείμενο της Supabase περνά από `scrub()` (βγάζει URLs, JWT, `sb_secret_…`, `token=`/`key=`, `Bearer`), σε σφάλμα δικτύου γράφεται μόνο ο κωδικός (π.χ. `ECONNREFUSED`). Όταν η απάντηση δεν είναι JSON (π.χ. 413 του Vercel), το UI δείχνει μήνυμα ανά HTTP status. Τα ίδια ισχύουν για τις ζημιές της σελίδας Service.
 
+- **Εταιρία δοκιμών / demo: «Fleet-Pro Car Rental»** (πρώην «P Rentals Χανιά», id `seed_tenant_prentals`):
+  - Μετονομάζεται από τον Super Admin: `/super-admin` → «Εταιρίες» → ⋮ στη γραμμή της εταιρίας → «Επεξεργασία» → «Επωνυμία» → «Αποθήκευση» (`PATCH /api/tenants/[id]`). Το modal δεν σβήνει πια τα `website`/`customDomain` όταν μένουν κενά (πριν τα έγραφε `""`).
+  - Seed (`prisma/seed.ts`, `prisma/sql/02-seed.sql`) βγάζει πλέον το νέο όνομα· idempotent όπως πριν (`ON CONFLICT ("slug")` / `findUnique` με slug).
+  - **Το slug `p-rentals` ΔΕΝ άλλαξε**: χρησιμοποιείται (JWT `tenantSlug` στο login και στην αλλαγή γλώσσας, «Προβολή Dashboard» και ένδειξη `<slug>.fleetpro.gr` στο Super Admin, εύρεση του demo στο `prisma/seed.ts`, `ON CONFLICT` στο `02-seed.sql`).
+  - Τα emails των demo λογαριασμών (`…@prentals.gr`) και οι κωδικοί μένουν ως έχουν. Τα στοιχεία της εταιρίας (email `info@prentals.gr`, τηλέφωνο, διεύθυνση από το seed) τα αλλάζει ο Giannis: email από τον Super Admin, τα υπόλοιπα από τις Ρυθμίσεις.
+- **Πολλοί Διαχειριστές εταιρίας:**
+  - Σελίδα Χρήστες: ο COMPANY_ADMIN δίνει ρόλο «Διαχειριστής» (α) σε νέο χρήστη, (β) με «Προαγωγή σε Διαχειριστή» σε μέλος του **Προσωπικού** (όχι Συνεργάτη)· «Υποβιβασμός σε Προσωπικό» για Διαχειριστή. Πάντα με παράθυρο επιβεβαίωσης («Θα έχει πλήρη πρόσβαση σε οικονομικά, χρήστες και ρυθμίσεις»). Τρίτη ομάδα «Διαχειριστές». Στο «Δικαιώματα» Διαχειριστή μόνο η σημείωση «Έχει πλήρη πρόσβαση, τα δικαιώματα δεν παραμετροποιούνται» (χωρίς checkbox). Προμήθεια όπως πριν.
+  - Κανόνες (καθαρή λογική με tests: `src/lib/adminRole.ts`), εφαρμόζονται στον server (`/api/company-users[/id]`), με τον ρόλο **από τη βάση** (όχι το JWT): ρόλο Διαχειριστή δίνει/αφαιρεί **μόνο ενεργός COMPANY_ADMIN της ίδιας εταιρίας** (ποτέ SUPER_ADMIN, ποτέ STAFF/PARTNER ακόμη κι αν έχουν `users.*`)· λογαριασμό διαχειριστή (στοιχεία, κωδικό, απενεργοποίηση) αλλάζει μόνο διαχειριστής· ξένη εταιρία → 404· κανείς δεν αλλάζει τον δικό του ρόλο/δικαιώματα ούτε σβήνει τον εαυτό του· ο **τελευταίος** ενεργός Διαχειριστής δεν υποβιβάζεται/απενεργοποιείται (έλεγχος μέσα σε transaction με `FOR UPDATE` στους διαχειριστές).
+  - Διαχειριστής = `permissions: {}` (τα έχει όλα). Υποβιβασμός → οι **προεπιλογές** του νέου ρόλου (πριν: κενά δικαιώματα).
+  - Το παλιό `/api/users` (GET/POST) ελέγχει πλέον και τη βάση για COMPANY_ADMIN, ώστε υποβιβασμένος διαχειριστής να μην κρατά πρόσβαση με το παλιό JWT (ισχύει 7 ημέρες).
+  - Δεν υπάρχει όριο χρηστών ανά πλάνο (κανένας έλεγχος στον κώδικα) — δεν προστέθηκε. Middleware: τα `/dashboard/users` και `/dashboard/settings` κόβουν μόνο τον PARTNER· κάθε COMPANY_ADMIN περνά και ο έλεγχος γίνεται με `pageGuard` (δικαιώματα από τη βάση).
 - **Λογότυπο εταιρίας (Φάση Β, συνέχεια):**
   - **Ρυθμίσεις → «Στοιχεία εταιρίας»:** ανέβασμα (JPEG/PNG/WebP — όχι SVG· ο server ελέγχει τα πρώτα bytes), προεπισκόπηση, «Αλλαγή», «Αφαίρεση». Σμίκρυνση στον browser (`compressLogo` στο `src/lib/imageCompress.ts`): μέγιστη πλευρά 600px, ο τύπος μένει ίδιος (PNG/WebP κρατούν διαφάνεια, JPEG μένει JPEG).
   - `POST/DELETE /api/settings/logo` με `settings.edit` (ίδιο κλειδί με το PATCH των Ρυθμίσεων). Στήλη `tenants."logoPath"`· η αλλαγή γίνεται με `FOR UPDATE` και **σβήνει το παλιό αρχείο** μετά την εγγραφή. Το παλιό `logoUrl` μένει αχρησιμοποίητο.
@@ -203,7 +215,9 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - **10-finance:** έχει τρέξει (verification `3 | 0`).
 - **12-contracts-update:** έχει τρέξει (verification `3 | 1 | 1`).
 - **13-contract-photos:** έχει τρέξει (verification `3 | 0`). `contracts."damagePhotos"` (JSONB, default `[]`), `"damageNotesPickup"`, `"damageNotesReturn"` (TEXT).
-- **14-contract-branding-link:** **ΔΕΝ έχει τρέξει ακόμα** — πρέπει να τρέξει πριν το push/merge αυτού του branch. `tenants."logoPath"`, `contracts."publicToken"` (UNIQUE index `contracts_publicToken_key`), `contracts."publicTokenRevokedAt"`. Αναμενόμενο verification `1 | 2 | 1`. Τοπικά (PostgreSQL 16, `01 → 14`): `prisma migrate diff` → «empty migration».
+- **14-contract-branding-link:** έχει τρέξει (verification `1 | 2 | 1`).
+- **Μετονομασία demo / πολλοί Διαχειριστές: κανένα νέο SQL** (η μετονομασία έγινε από το panel· ο ρόλος COMPANY_ADMIN υπήρχε ήδη). Επόμενος ελεύθερος αριθμός: `15`.
+- _(ιστορικό 14)_ `tenants."logoPath"`, `contracts."publicToken"` (UNIQUE index `contracts_publicToken_key`), `contracts."publicTokenRevokedAt"`. Αναμενόμενο verification `1 | 2 | 1`. Τοπικά (PostgreSQL 16, `01 → 14`): `prisma migrate diff` → «empty migration».
 - **Walk-in (02/10/2026): κανένα νέο SQL.** Χρησιμοποιεί την υπάρχουσα `bookings.source`. Τοπική PostgreSQL 16 με `01 → 12`: `prisma migrate diff` → «empty migration».
 - **11-contracts:** έχει τρέξει (verification `1 | 4 | 1 | 18 | 2 | 0 | 0`).
 - _(ιστορικό 11)_ Enum `ContractStatus`, 18 στήλες στο `contracts`, 4 στο `tenants`, `extras.excess`, unique `(tenantId, contractNumber)`, index `(tenantId, status)`, `contracts.sign` → `contracts.edit`, backfill STAFF. Αναμενόμενο verification `1 | 4 | 1 | 18 | 2 | 0 | 0`. Έτρεξε στο Supabase πριν το merge του PR #5.
@@ -239,7 +253,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(αυτό το commit)_ | Συμβόλαια Φάση Β (συνέχεια): λογότυπο εταιρίας (Ρυθμίσεις, φόρμα/Α4/σελίδα πελάτη), φωτογραφίες διπλώματος ανά οδηγό (μόνο εσωτερικά), link πελάτη `/c/[token]` (αυτόματο με την υπογραφή, ακύρωση/νέο, λήξη 90 ημέρες, noindex/no-store/no-referrer), QR στο Α4 (`qrcode`), tests. Migration `14` |
+| _(αυτό το commit)_ | Εταιρία δοκιμών «Fleet-Pro Car Rental» (seed/placeholder· μετονομασία από Super Admin, το modal δεν σβήνει website/customDomain), πολλοί Διαχειριστές εταιρίας με δικλείδες στον server (`adminRole.ts` + tests), έλεγχος βάσης στο παλιό `/api/users`. Χωρίς SQL |
+| `d30c20d` | Συμβόλαια Φάση Β (συνέχεια): λογότυπο εταιρίας (Ρυθμίσεις, φόρμα/Α4/σελίδα πελάτη), φωτογραφίες διπλώματος ανά οδηγό (μόνο εσωτερικά), link πελάτη `/c/[token]` (αυτόματο με την υπογραφή, ακύρωση/νέο, λήξη 90 ημέρες, noindex/no-store/no-referrer), QR στο Α4 (`qrcode`), tests. Migration `14` |
 | `363f40d` | Ανεκτικός έλεγχος `SUPABASE_URL` (κενά, εισαγωγικά, «/», `/rest/v1` κ.λπ., διεύθυνση dashboard → `https://<ref>.supabase.co`) σε ένα σημείο, unit tests με `node:test` (`npm test`). Χωρίς SQL |
 | `a2e02a8` | Φωτογραφίες (PR #9): συγκεκριμένο μήνυμα ανά αιτία σφάλματος Storage (env var, μορφή URL, κλειδί, bucket, τύπος/μέγεθος, δίκτυο), ασφαλή logs χωρίς κλειδιά/tokens/URLs, έλεγχος ρυθμίσεων στην εκκίνηση (`instrumentation.ts`). Χωρίς SQL |
 | `7f8915b` | Συμβόλαια Φάση Β (1ο κομμάτι) (PR #8, squash): φωτογραφίες ζημιών παραλαβής/παράδοσης με κάμερα και συμπίεση στον browser, ιδιωτικό Supabase Storage με signed URLs, ίδιο component και server κώδικας στις ζημιές της σελίδας Service, αφαίρεση καυσίμου επιστροφής, παλιό σκαρίφημα μόνο για ανάγνωση, migration `13` |

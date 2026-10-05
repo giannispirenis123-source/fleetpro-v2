@@ -12,6 +12,9 @@ import {
   UserCog,
   Users as UsersIcon,
   Handshake,
+  ArrowUpCircle,
+  ArrowDownCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -19,7 +22,8 @@ import {
   type PermissionGroup,
   type PermissionMap,
 } from "@/lib/permissions";
-import { MANAGED_ROLES, type UserDTO } from "@/lib/users";
+import { type UserDTO } from "@/lib/users";
+import { ADMIN_ROLE } from "@/lib/adminRole";
 import { baseLabels } from "@/lib/commission";
 
 const ROLE_ICON: Record<string, typeof UsersIcon> = {
@@ -86,6 +90,8 @@ export default function UsersClient({
   const [editing, setEditing] = useState<UserDTO | null>(null);
   const [permissionsFor, setPermissionsFor] = useState<UserDTO | null>(null);
   const [deactivating, setDeactivating] = useState<UserDTO | null>(null);
+  /** Προαγωγή σε / υποβιβασμός από Διαχειριστή — πάντα με επιβεβαίωση. */
+  const [roleChange, setRoleChange] = useState<{ user: UserDTO; to: string } | null>(null);
   const [error, setError] = useState("");
 
   const visible = useMemo(() => {
@@ -169,9 +175,26 @@ export default function UsersClient({
               onEdit={() => setEditing(u)}
               onPermissions={() => setPermissionsFor(u)}
               onDeactivate={() => setDeactivating(u)}
+              onPromote={() => setRoleChange({ user: u, to: ADMIN_ROLE })}
+              onDemote={() => setRoleChange({ user: u, to: "STAFF" })}
+              lastAdmin={countOf("COMPANY_ADMIN") <= 1}
             />
           ))}
         </div>
+      )}
+
+      {roleChange && (
+        <RoleChangeModal
+          user={roleChange.user}
+          to={roleChange.to}
+          tr={tr}
+          onClose={() => setRoleChange(null)}
+          onDone={(u) => {
+            upsert(u);
+            setTab(u.role as Tab);
+            setRoleChange(null);
+          }}
+        />
       )}
 
       {showCreate && (
@@ -191,6 +214,7 @@ export default function UsersClient({
         <UserModal
           mode="edit"
           user={editing}
+          isSelf={editing.id === currentUserId}
           tr={tr}
           onClose={() => setEditing(null)}
           onSaved={(u) => {
@@ -241,6 +265,9 @@ function UserCard({
   onEdit,
   onPermissions,
   onDeactivate,
+  onPromote,
+  onDemote,
+  lastAdmin,
 }: {
   user: UserDTO;
   tr: (key: string) => string;
@@ -250,6 +277,10 @@ function UserCard({
   onEdit: () => void;
   onPermissions: () => void;
   onDeactivate: () => void;
+  onPromote: () => void;
+  onDemote: () => void;
+  /** Μόνο ένας ενεργός διαχειριστής: δεν υποβιβάζεται (και ο server το κόβει). */
+  lastAdmin: boolean;
 }) {
   const Icon = ROLE_ICON[u.role] ?? UsersIcon;
   const isAdmin = u.role === "COMPANY_ADMIN";
@@ -303,16 +334,36 @@ function UserCard({
         </div>
       </div>
 
-      {canManage && !isAdmin && (
+      {canManage && (
         <div className="dash-user-card-actions">
+          {isAdmin && (
+            <span className="dash-badge dash-badge--ok">
+              <ShieldCheck size={13} /> {tr("users.fullAccess")}
+            </span>
+          )}
           <button
             className="dash-btn"
             onClick={onPermissions}
-            disabled={isSelf}
-            title={isSelf ? tr("users.notYourself") : tr("users.permissions")}
+            disabled={isSelf && !isAdmin}
+            title={isSelf && !isAdmin ? tr("users.notYourself") : tr("users.permissions")}
           >
             <ShieldCheck size={16} /> {tr("users.permissions")}
           </button>
+          {u.role === "STAFF" && u.isActive && !isSelf && (
+            <button className="dash-btn" onClick={onPromote} title={tr("users.promote")}>
+              <ArrowUpCircle size={16} /> {tr("users.promote")}
+            </button>
+          )}
+          {isAdmin && u.isActive && !isSelf && (
+            <button
+              className="dash-btn"
+              onClick={onDemote}
+              disabled={lastAdmin}
+              title={lastAdmin ? tr("users.lastAdminNote") : tr("users.demote")}
+            >
+              <ArrowDownCircle size={16} /> {tr("users.demote")}
+            </button>
+          )}
           <button
             className="dash-icon-btn"
             onClick={onEdit}
@@ -334,14 +385,6 @@ function UserCard({
           )}
         </div>
       )}
-
-      {canManage && isAdmin && (
-        <div className="dash-user-card-actions">
-          <span className="dash-badge dash-badge--ok">
-            <ShieldCheck size={13} /> {tr("users.fullAccess")}
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -353,12 +396,15 @@ function UserCard({
 function UserModal({
   mode,
   user,
+  isSelf = false,
   tr,
   onClose,
   onSaved,
 }: {
   mode: "create" | "edit";
   user?: UserDTO;
+  /** Ο ίδιος ο χρήστης: δεν αλλάζει ρόλο ούτε προμήθεια. */
+  isSelf?: boolean;
   tr: (key: string) => string;
   onClose: () => void;
   onSaved: (u: UserDTO) => void;
@@ -368,12 +414,30 @@ function UserModal({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  /** Αλλαγή που αφορά Διαχειριστή: ζητά ρητή επιβεβαίωση πριν σταλεί. */
+  const [confirming, setConfirming] = useState(false);
 
-  const set = (patch: Partial<FormState>) =>
+  const set = (patch: Partial<FormState>) => {
     setForm((prev) => ({ ...prev, ...patch }));
+    setConfirming(false);
+  };
+
+  const originalRole = user?.role ?? null;
+  const roleChanged = mode === "create" ? true : form.role !== originalRole;
+  const adminChange =
+    roleChanged && (form.role === ADMIN_ROLE || originalRole === ADMIN_ROLE);
+  // Διαχειριστής γίνεται μόνο Προσωπικό (ή νέος χρήστης)· ο Συνεργάτης όχι.
+  const roleOptions =
+    mode === "create" || originalRole === "STAFF" || originalRole === ADMIN_ROLE
+      ? [ADMIN_ROLE, "STAFF", "PARTNER"]
+      : ["STAFF", "PARTNER"];
 
   const save = async () => {
     if (saving) return;
+    if (adminChange && !confirming) {
+      setConfirming(true);
+      return;
+    }
 
     if (!form.name.trim() || !form.email.trim()) {
       setError(tr("users.errorMissing"));
@@ -396,16 +460,25 @@ function UserModal({
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim() || null,
-        role: form.role,
       };
+      // Ρόλος και προμήθεια στέλνονται μόνο όταν αλλάζουν (ο server
+      // απορρίπτει κάθε αλλαγή τους στον εαυτό σου).
+      if (roleChanged) payload.role = form.role;
       if (form.password) payload.password = form.password;
-      payload.commissionRate = Math.min(
-        100,
-        Math.max(0, Number(form.commissionRate) || 0)
-      );
-      payload.commissionOnRental = form.commissionOnRental;
-      payload.commissionOnExtras = form.commissionOnExtras;
-      payload.commissionOnInsurance = form.commissionOnInsurance;
+      const rate = Math.min(100, Math.max(0, Number(form.commissionRate) || 0));
+      const commission = {
+        commissionRate: rate,
+        commissionOnRental: form.commissionOnRental,
+        commissionOnExtras: form.commissionOnExtras,
+        commissionOnInsurance: form.commissionOnInsurance,
+      };
+      const commissionChanged =
+        !user ||
+        rate !== user.commissionRate ||
+        form.commissionOnRental !== user.commissionOnRental ||
+        form.commissionOnExtras !== user.commissionOnExtras ||
+        form.commissionOnInsurance !== user.commissionOnInsurance;
+      if (commissionChanged) Object.assign(payload, commission);
 
       const res = await fetch(
         mode === "create"
@@ -474,11 +547,12 @@ function UserModal({
               {tr("users.category")}
               <select
                 value={form.role}
+                disabled={isSelf}
                 onChange={(e) => set({ role: e.target.value })}
               >
-                {MANAGED_ROLES.map((r) => (
+                {roleOptions.map((r) => (
                   <option key={r} value={r}>
-                    {tr(`users.tab${r}`)}
+                    {tr(`users.role${r}`)}
                   </option>
                 ))}
               </select>
@@ -491,6 +565,7 @@ function UserModal({
                 max={100}
                 step={0.5}
                 inputMode="decimal"
+                disabled={isSelf}
                 value={form.commissionRate}
                 onChange={(e) => set({ commissionRate: e.target.value })}
               />
@@ -525,6 +600,7 @@ function UserModal({
               <label key={key} className="dash-comm-base">
                 <input
                   type="checkbox"
+                  disabled={isSelf}
                   checked={form[field]}
                   onChange={(e) => set({ [field]: e.target.checked })}
                 />
@@ -543,7 +619,15 @@ function UserModal({
             )}
 
           <p className="dash-form-note">{tr("users.commissionNote")}</p>
-          <p className="dash-form-note">{tr("users.defaultsNote")}</p>
+          <p className="dash-form-note">
+            {form.role === ADMIN_ROLE ? tr("users.adminFixedNote") : tr("users.defaultsNote")}
+          </p>
+          {confirming && (
+            <div className="dash-contract-warn" role="alert">
+              <AlertTriangle size={15} />{" "}
+              {form.role === ADMIN_ROLE ? tr("users.promoteWarn") : tr("users.demoteWarn")}
+            </div>
+          )}
           {error && <div className="dash-form-error">{error}</div>}
         </div>
 
@@ -556,7 +640,88 @@ function UserModal({
             onClick={save}
             disabled={saving}
           >
-            {saving ? tr("users.saving") : tr("users.save")}
+            {saving
+              ? tr("users.saving")
+              : confirming
+                ? tr("users.confirmRoleChange")
+                : tr("users.save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Προαγωγή / υποβιβασμός Διαχειριστή
+   ───────────────────────────────────────────── */
+
+function RoleChangeModal({
+  user,
+  to,
+  tr,
+  onClose,
+  onDone,
+}: {
+  user: UserDTO;
+  to: string;
+  tr: (key: string) => string;
+  onClose: () => void;
+  onDone: (u: UserDTO) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const promote = to === ADMIN_ROLE;
+
+  const run = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/company-users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: to }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || tr("users.errorSave"));
+        return;
+      }
+      onDone(data.data.user);
+    } catch {
+      setError(tr("users.errorConnection"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="dash-modal-overlay" onClick={onClose}>
+      <div className="dash-modal dash-modal--sm" onClick={(e) => e.stopPropagation()}>
+        <div className="dash-modal-header">
+          <h2>{tr(promote ? "users.promoteTitle" : "users.demoteTitle")}</h2>
+          <button className="dash-modal-close" onClick={onClose} aria-label={tr("users.cancel")}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="dash-modal-body">
+          <p className="dash-confirm-vehicle">{user.name}</p>
+          <div className="dash-contract-warn" role="alert">
+            <AlertTriangle size={15} /> {tr(promote ? "users.promoteWarn" : "users.demoteWarn")}
+          </div>
+          {error && <div className="dash-form-error">{error}</div>}
+        </div>
+        <div className="dash-modal-footer">
+          <button className="dash-btn" onClick={onClose}>
+            {tr("users.cancel")}
+          </button>
+          <button
+            className={`dash-btn ${promote ? "dash-btn--primary" : "dash-btn--danger"}`}
+            onClick={run}
+            disabled={busy}
+          >
+            {busy ? tr("users.saving") : tr(promote ? "users.promote" : "users.demote")}
           </button>
         </div>
       </div>
@@ -637,6 +802,8 @@ function PermissionsModal({
   };
 
   const total = Object.keys(granted).length;
+  // Ο Διαχειριστής έχει ΠΑΝΤΑ όλα τα δικαιώματα: μόνο σημείωση, χωρίς checkbox.
+  const isAdmin = user.role === ADMIN_ROLE;
 
   return (
     <div className="dash-modal-overlay" onClick={onClose}>
@@ -655,6 +822,10 @@ function PermissionsModal({
         </div>
 
         <div className="dash-modal-body">
+          {isAdmin ? (
+            <p className="dash-form-note dash-settings-lead">{tr("users.adminFixedNote")}</p>
+          ) : (
+          <>
           <p className="dash-form-note dash-settings-lead">
             {tr("users.permissionsHelp")}
           </p>
@@ -700,17 +871,22 @@ function PermissionsModal({
               </div>
             );
           })}
+          </>
+          )}
 
           {error && <div className="dash-form-error">{error}</div>}
         </div>
 
         <div className="dash-modal-footer">
-          <span className="dash-perm-count">
-            {total} {tr("users.permissionsCount")}
-          </span>
+          {!isAdmin && (
+            <span className="dash-perm-count">
+              {total} {tr("users.permissionsCount")}
+            </span>
+          )}
           <button className="dash-btn" onClick={onClose}>
-            {tr("users.cancel")}
+            {tr(isAdmin ? "users.close" : "users.cancel")}
           </button>
+          {!isAdmin && (
           <button
             className="dash-btn dash-btn--primary"
             onClick={save}
@@ -719,6 +895,7 @@ function PermissionsModal({
             <Check size={16} />{" "}
             {saving ? tr("users.saving") : tr("users.save")}
           </button>
+          )}
         </div>
       </div>
     </div>

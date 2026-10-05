@@ -20,7 +20,7 @@ export default async function ContractPage({ params }: { params: { id: string } 
     db.vehicle.findMany({
       where: { tenantId: session.tenantId, isActive: true },
       orderBy: [{ brand: "asc" }, { model: "asc" }],
-      select: { id: true, brand: true, model: true, plate: true },
+      select: { id: true, brand: true, model: true, plate: true, dailyRate: true },
     }),
     // Τα πρόσθετα της εταιρίας για την ενότητα «Πρόσθετα / Extras».
     db.extra.findMany({
@@ -40,7 +40,10 @@ export default async function ContractPage({ params }: { params: { id: string } 
       initialContract={contract}
       vehicles={vehicles.map((v) => ({
         id: v.id,
-        label: `${v.brand} ${v.model} · ${v.plate}`,
+        brand: v.brand,
+        model: v.model,
+        plate: v.plate,
+        dailyRate: Number(v.dailyRate),
       }))}
       extras={extras.map(toExtraDTO)}
       vatRate={Number(tenant?.vatRate ?? 24)}
@@ -49,6 +52,7 @@ export default async function ContractPage({ params }: { params: { id: string } 
       can={{
         edit: viewerCan(viewer, "contracts.edit"),
         delete: viewerCan(viewer, "contracts.delete"),
+        price: viewerCan(viewer, "contracts.price"),
       }}
     />
   );

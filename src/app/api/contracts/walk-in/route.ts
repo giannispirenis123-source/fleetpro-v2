@@ -14,7 +14,9 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ok, created, badRequest, conflict, serverError } from "@/lib/api";
+import { Prisma } from "@prisma/client";
+import { ok, created, badRequest, conflict, forbidden, serverError } from "@/lib/api";
+import { decidePriceOverride, type PriceOverride } from "@/lib/priceOverride";
 import { viewerCan, withPermission } from "@/lib/authz";
 import { TIME_RE } from "@/lib/bookings";
 import { prepareBooking, writeBooking } from "@/lib/bookingCreate";
@@ -49,8 +51,8 @@ export const GET = withPermission(
       const parsed = windowSchema.safeParse(Object.fromEntries(sp));
       if (!parsed.success) return badRequest("Μη έγκυρο διάστημα", parsed.error.errors);
 
-      // Τα μη διαθέσιμα τα βλέπει μόνο όποιος μπορεί να κάνει override.
-      const all = sp.get("all") === "1" && viewerCan(viewer!, "bookings.override");
+      // «Όλα τα οχήματα»: τα μη διαθέσιμα φαίνονται γκρι και δεν επιλέγονται.
+      const all = sp.get("all") === "1";
       const vehicles = await loadWalkInVehicles(viewer!.tenantId!, parsed.data, all);
       return ok({ vehicles });
     } catch (error) {
@@ -81,7 +83,8 @@ export const POST = withPermission(
       });
       if (!prepared.ok) return prepared.response;
 
-      const { plan, conflicts } = prepared;
+      const { conflicts } = prepared;
+      let { plan } = prepared;
 
       if (data.preview) {
         return ok({ preview: await toWalkInPreview(viewer!, plan, conflicts) });
@@ -90,6 +93,36 @@ export const POST = withPermission(
       // Ο πελάτης βγαίνει από τον κύριο οδηγό (μόνο πεδία του μοντέλου Customer).
       const form = data.contract!;
       const fromDriver = customerFromDriver(form.drivers[0]);
+
+      // Χειροκίνητη τελική τιμή (contracts.price): ΜΟΝΟ ποσό + λόγος από τον
+      // client· ισχύει από την πρώτη αποθήκευση. Η κράτηση γράφεται με αυτήν.
+      let priceOverride: PriceOverride | null = null;
+      if (form.priceOverride) {
+        const tenant = await db.tenant.findUnique({
+          where: { id: tenantId },
+          select: { roundUpTotal: true },
+        });
+        const b = plan.breakdown;
+        const decision = decidePriceOverride({
+          requested: form.priceOverride,
+          canPrice: viewerCan(viewer!, "contracts.price"),
+          lock: null,
+          parts: {
+            subtotal: b.subtotal,
+            extrasTotal: b.extrasTotal,
+            insuranceCost: b.insuranceCost,
+            discountAmount: b.discountAmount,
+          },
+          roundUpTotal: tenant?.roundUpTotal ?? false,
+          actor: { userId: viewer!.userId, userName: session.name },
+          now: new Date(),
+        });
+        if (!decision.ok) {
+          return decision.status === 403 ? forbidden(decision.message) : badRequest(decision.message);
+        }
+        priceOverride = decision.override;
+        plan = { ...plan, breakdown: { ...b, total: decision.total, roundingAdjustment: 0 } };
+      }
 
       // Αλλαγές οχήματος: μοντέλο/πινακίδα από τον Στόλο, ποτέ από τον client.
       const changes = await resolveVehicleChanges(tenantId, form.vehicleChanges ?? []);
@@ -175,6 +208,19 @@ export const POST = withPermission(
             },
             initialContractData(form, changes.changes)
           );
+          if (priceOverride) {
+            // Το ιστορικό της χειροκίνητης τιμής ζει στο snapshot του συμβολαίου.
+            await tx.contract.update({
+              where: { id: contract.id },
+              data: {
+                snapshot: {
+                  ...((contract.snapshot as Record<string, unknown>) ?? {}),
+                  priceOverride,
+                } as unknown as Prisma.InputJsonValue,
+              },
+              select: { id: true },
+            });
+          }
           return { bookingId: booking.id, contractId: contract.id };
         },
         { maxWait: 10000, timeout: 20000 }

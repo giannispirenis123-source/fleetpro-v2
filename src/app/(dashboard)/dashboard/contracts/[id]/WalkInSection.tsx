@@ -6,7 +6,8 @@
 // ξαναϋπολογίζεται στην αποθήκευση.
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Car } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import VehiclePicker from "@/components/contracts/VehiclePicker";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import type { BookingConflict } from "@/lib/bookings";
 import type { WalkInPreview, WalkInVehicle } from "@/lib/walkIn";
@@ -69,8 +70,8 @@ export function useWalkInDraft(active: boolean, extraIds: string[], customerId: 
 
   // Η «τώρα» μπαίνει μετά το mount: ο server δεν ξέρει την ώρα του χρήστη.
   const [win, setWin] = useState<RentalWindow | null>(null);
+  // ΟΛΑ τα ενεργά οχήματα με τη διαθεσιμότητά τους για το διάστημα.
   const [vehicles, setVehicles] = useState<WalkInVehicle[] | null>(null);
-  const [showAll, setShowAll] = useState(false);
   const [vehicleId, setVehicleId] = useState("");
   const [codeInput, setCodeInput] = useState("");
   const [appliedCode, setAppliedCode] = useState("");
@@ -96,20 +97,21 @@ export function useWalkInDraft(active: boolean, extraIds: string[], customerId: 
     const mine = ++vehSeq.current;
     const timer = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ ...win, ...(showAll ? { all: "1" } : {}) });
+        const params = new URLSearchParams({ ...win, all: "1" });
         const res = await fetch(`/api/contracts/walk-in?${params}`, { cache: "no-store" });
         const body = await res.json().catch(() => ({}));
         if (mine !== vehSeq.current) return;
         const list: WalkInVehicle[] = res.ok ? body.data.vehicles : [];
         setVehicles(list);
-        // Το όχημα που είχε διαλεχτεί δεν είναι πια ελεύθερο → ξεδιάλεξέ το.
+        // Το επιλεγμένο όχημα ΜΕΝΕΙ ακόμα κι αν δεν είναι πια ελεύθερο: η
+        // προεπισκόπηση δείχνει τη σύγκρουση (STAFF μπλοκάρεται, ADMIN override).
         setVehicleId((id) => (list.some((v) => v.id === id) ? id : ""));
       } catch {
         if (mine === vehSeq.current) setVehicles([]);
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [active, win, showAll, reload]);
+  }, [active, win, reload]);
 
   /* ── Προεπισκόπηση τιμής από τον server ── */
   const prevSeq = useRef(0);
@@ -167,8 +169,6 @@ export function useWalkInDraft(active: boolean, extraIds: string[], customerId: 
     setWinField: (key: keyof RentalWindow, value: string) =>
       setWin((w) => (w ? { ...w, [key]: value } : w)),
     vehicles,
-    showAll,
-    setShowAll,
     vehicleId,
     setVehicleId,
     codeInput,
@@ -258,45 +258,16 @@ export function WalkInSection({
       </div>
       {win && !windowValid(win) && <p className="dash-field-error">{tr("walkIn.returnAfterPickup")}</p>}
 
-      <div className="dash-walkin-head">
-        <h3 className="dash-contract-sub">{tr("walkIn.vehicle")} *</h3>
-        {canOverride && (
-          <label className="dash-field dash-field--check">
-            <input
-              type="checkbox"
-              checked={draft.showAll}
-              onChange={(e) => draft.setShowAll(e.target.checked)}
-            />
-            {tr("walkIn.showUnavailable")}
-          </label>
-        )}
-      </div>
-      {vehicles === null ? (
-        <p className="dash-form-note">{windowValid(win) ? tr("contracts.loading") : "—"}</p>
-      ) : vehicles.length === 0 ? (
-        <p className="dash-form-note">{tr("walkIn.noVehicles")}</p>
+      <h3 className="dash-contract-sub dash-vpick-label">{tr("walkIn.vehicle")} *</h3>
+      {windowValid(win) ? (
+        <VehiclePicker
+          vehicles={vehicles}
+          value={vehicleId}
+          onChange={draft.setVehicleId}
+          loading={vehicles === null}
+        />
       ) : (
-        <div className="dash-extras-pick dash-walkin-vehicles">
-          {vehicles.map((v) => (
-            <label key={v.id} className={`dash-extra-pick ${vehicleId === v.id ? "on" : ""}`}>
-              <input
-                type="radio"
-                name="vehicle"
-                checked={vehicleId === v.id}
-                onChange={() => draft.setVehicleId(v.id)}
-              />
-              <span className="dash-extra-pick-name">
-                <Car size={13} /> {v.brand} {v.model}
-                <small> · {v.plate}</small>
-                {!v.available && <small className="dash-walkin-busy"> · {tr("walkIn.unavailable")}</small>}
-              </span>
-              <span className="dash-extra-pick-price">
-                {eur(v.dailyRate, locale)}
-                <small> {tr("contracts.perDay")}</small>
-              </span>
-            </label>
-          ))}
-        </div>
+        <p className="dash-form-note">—</p>
       )}
 
       {draft.hasConflict && (

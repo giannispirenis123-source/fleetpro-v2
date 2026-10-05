@@ -13,6 +13,7 @@
 //    το καύσιμο παράδοσης, οι αλλαγές οχήματος και οι παρατηρήσεις.
 
 import type { PublicLinkDTO } from "./contractLink";
+import type { PriceOverride } from "./priceOverride";
 
 export const CONTRACT_STATUSES = ["DRAFT", "SIGNED", "COMPLETED"] as const;
 export type ContractStatusValue = (typeof CONTRACT_STATUSES)[number];
@@ -388,6 +389,12 @@ export interface ContractSnapshot {
   terms: { el: string; en: string };
   /** ΦΠΑ % της εταιρίας τη στιγμή του snapshot (οι τιμές το ΠΕΡΙΕΧΟΥΝ). */
   vatRate?: number;
+  /**
+   * Χειροκίνητη τελική τιμή (contracts.price). Όταν υπάρχει, το
+   * booking.total ΕΙΝΑΙ αυτή η τιμή· οι γραμμές μένουν υπολογισμένες.
+   * Ποιος/πότε/γιατί ΜΟΝΟ στη φόρμα — η σελίδα πελάτη παίρνει μόνο το ποσό.
+   */
+  priceOverride?: PriceOverride;
   /** ISO — πότε πάρθηκε. */
   takenAt: string;
 }
@@ -405,6 +412,10 @@ export function readSnapshot(value: unknown): ContractSnapshot | null {
     insurance: Array.isArray(s.insurance) ? s.insurance : [],
     terms: s.terms ?? { el: "", en: "" },
     vatRate: typeof s.vatRate === "number" ? s.vatRate : undefined,
+    priceOverride:
+      s.priceOverride && typeof s.priceOverride === "object" && Number(s.priceOverride.manualTotal) > 0
+        ? s.priceOverride
+        : undefined,
     takenAt: s.takenAt ?? "",
   };
 }

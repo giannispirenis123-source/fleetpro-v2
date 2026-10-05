@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ok, badRequest, conflict, notFound, noContent, serverError } from "@/lib/api";
-import { withPermission } from "@/lib/authz";
+import { ok, badRequest, conflict, forbidden, notFound, noContent, serverError } from "@/lib/api";
+import { viewerCan, withPermission } from "@/lib/authz";
+import { decidePriceOverride, type PriceOverride } from "@/lib/priceOverride";
 import { anySigned, licensePathsOf, readDrivers, readPhotos } from "@/lib/contracts";
 import { removeObjects } from "@/lib/storage";
 import { readExtrasSnapshot } from "@/lib/pricing";
@@ -29,6 +30,7 @@ import {
   withLatestLicensePhotos,
   mergeDrivers,
   pickupChanged,
+  priceOverrideOf,
   resolveVehicleChanges,
   toContractDTO,
 } from "@/lib/contractForm";
@@ -50,12 +52,22 @@ export const GET = withPermission(
 
 // PATCH /api/contracts/[id]
 export const PATCH = withPermission(
-  async (req, _session, params, viewer) => {
+  async (req, session, params, viewer) => {
     try {
       const current = await db.contract.findFirst({
         where: { ...contractScope(viewer!), id: params!.id },
         include: {
-          booking: { select: { status: true, extras: true, invoice: { select: { id: true } } } },
+          booking: {
+            select: {
+              status: true,
+              extras: true,
+              invoice: { select: { id: true } },
+              subtotal: true,
+              extrasTotal: true,
+              insuranceCost: true,
+              discountAmount: true,
+            },
+          },
         },
       });
       if (!current) return notFound("Το συμβόλαιο δεν βρέθηκε");
@@ -99,6 +111,53 @@ export const PATCH = withPermission(
           if (!priced.ok) return badRequest(priced.message);
           bookingUpdate = priced.data;
         }
+      }
+
+      /* ── Χειροκίνητη τιμή (contracts.price) ── */
+      // Από τον client λαμβάνεται ΜΟΝΟ το τελικό ποσό + λόγος. Η διαφορά, η
+      // υπολογισμένη τιμή και ποιος/πότε μπαίνουν εδώ.
+      const currentOverride = priceOverrideOf(current.snapshot);
+      let nextOverride: PriceOverride | null | undefined; // undefined = καμία αλλαγή
+      const requested = patch.priceOverride;
+      const changesPrice =
+        requested !== undefined &&
+        (requested === null
+          ? currentOverride !== undefined
+          : requested.total !== currentOverride?.manualTotal ||
+            (requested.reason ?? "").trim() !== (currentOverride?.reason ?? ""));
+      if (changesPrice) {
+        const tenant = await db.tenant.findUnique({
+          where: { id: tenantId },
+          select: { roundUpTotal: true },
+        });
+        // Οι γραμμές ΜΕΤΑ από τυχόν αλλαγή πρόσθετων στο ίδιο αίτημα.
+        const src = bookingUpdate ?? current.booking;
+        const decision = decidePriceOverride({
+          requested: requested!,
+          canPrice: viewerCan(viewer!, "contracts.price"),
+          lock: locked ? "signed" : extrasLockOf(readDrivers(current.drivers), current.booking),
+          parts: {
+            subtotal: Number(src.subtotal),
+            extrasTotal: Number(src.extrasTotal),
+            insuranceCost: Number(src.insuranceCost),
+            discountAmount: Number(src.discountAmount),
+          },
+          roundUpTotal: tenant?.roundUpTotal ?? false,
+          actor: { userId: viewer!.userId, userName: session.name },
+          now: new Date(),
+        });
+        if (!decision.ok) {
+          return decision.status === 403
+            ? forbidden(decision.message)
+            : decision.status === 409
+              ? conflict(decision.message)
+              : badRequest(decision.message);
+        }
+        bookingUpdate = { ...(bookingUpdate ?? {}), total: decision.total };
+        nextOverride = decision.override;
+      } else if (currentOverride && bookingUpdate) {
+        // Άλλαξαν τα πρόσθετα: η χειροκίνητη τιμή ΜΕΝΕΙ (η φόρμα προειδοποιεί).
+        bookingUpdate.total = currentOverride.manualTotal;
       }
 
       /* ── Πάντα επιτρεπτά (εκτός COMPLETED) ── */
@@ -176,7 +235,14 @@ export const PATCH = withPermission(
           // και τις ρυθμίσεις· με την πρώτη υπογραφή παγώνει.
           if (!locked && !anySigned(drivers)) {
             const snapshot = await buildSnapshot(tenantId, current.bookingId, tx);
-            if (snapshot) data.snapshot = snapshot as unknown as Prisma.InputJsonValue;
+            if (snapshot) {
+              // Νέα/αφαιρεμένη χειροκίνητη τιμή (αλλιώς την κρατά το buildSnapshot).
+              if (nextOverride !== undefined) {
+                if (nextOverride) snapshot.priceOverride = nextOverride;
+                else delete snapshot.priceOverride;
+              }
+              data.snapshot = snapshot as unknown as Prisma.InputJsonValue;
+            }
           }
           const result = await tx.contract.updateMany({
             where: { id: current.id, updatedAt: current.updatedAt },

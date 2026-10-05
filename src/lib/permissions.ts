@@ -203,6 +203,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         en: "Edit and sign contracts",
       },
       { key: "contracts.delete", el: "Διαγραφή πρόχειρου συμβολαίου", en: "Delete draft contracts" },
+      {
+        key: "contracts.price",
+        el: "Αλλαγή τιμής στο συμβόλαιο (χειροκίνητη τελική τιμή)",
+        en: "Change the contract price (manual final price)",
+      },
     ],
   },
   {

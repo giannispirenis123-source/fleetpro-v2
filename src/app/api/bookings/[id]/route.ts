@@ -25,6 +25,7 @@ import {
 } from "@/lib/bookings";
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
 import { discountOfBooking, priceBooking } from "@/lib/bookingPricing";
+import { manualTotalOfBooking } from "@/lib/contractForm";
 import { applyDiscountUsage } from "@/lib/discounts";
 import { issueInvoiceOnCompletion, syncVehicleStatus } from "@/lib/bookingLifecycle";
 import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
@@ -198,6 +199,10 @@ export const PATCH = withPermission(
 
       const { breakdown } = priced;
 
+      // Χειροκίνητη τιμή από το συμβόλαιο (contracts.price): οι γραμμές
+      // ξαναϋπολογίζονται, το τελικό σύνολο ΜΕΝΕΙ (το συμβόλαιο προειδοποιεί).
+      const manualTotal = await manualTotalOfBooking(db, current.id);
+
       const partner = await resolvePartnerId({
         viewer: viewer!,
         requested: data.partnerId,
@@ -224,7 +229,7 @@ export const PATCH = withPermission(
           insuranceCost: breakdown.insuranceCost,
           discountAmount: breakdown.discountAmount,
           discountCode: priced.discountCode,
-          total: breakdown.total,
+          total: manualTotal ?? breakdown.total,
           extras: priced.snapshot as never,
         },
         include: withRelations,

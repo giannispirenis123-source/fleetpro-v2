@@ -18,6 +18,7 @@ import {
   toPublicContract,
 } from "./contractLink";
 import { photoIdOf } from "./photoShared";
+import { PRICE_REASON_MAX, readPriceOverride, type PriceOverride } from "./priceOverride";
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
 import { discountOfBooking, priceBooking } from "./bookingPricing";
@@ -154,6 +155,23 @@ export const contractPatchSchema = z.object({
   /* ── Πρόσθετα: αλλάζουν ΚΑΙ την κράτηση (ίδιο σύνολο παντού) ── */
   extraIds: z.array(z.string().min(1)).max(50).optional(),
 
+  /**
+   * Χειροκίνητη τελική τιμή ΜΕ ΦΠΑ (contracts.price): ΜΟΝΟ ποσό + λόγος —
+   * strict, κανένα άλλο ποσό δεν περνά. null = επαναφορά υπολογισμένης.
+   * Ελέγχεται και εφαρμόζεται από το decidePriceOverride στον server.
+   */
+  priceOverride: z
+    .union([
+      z
+        .object({
+          total: z.number(),
+          reason: z.string().max(PRICE_REASON_MAX, `Ο λόγος έως ${PRICE_REASON_MAX} χαρακτήρες`).optional(),
+        })
+        .strict(),
+      z.null(),
+    ])
+    .optional(),
+
   /* ── Επιτρέπονται και μετά την υπογραφή ── */
   damageNotesReturn: text(1000).optional(),
   vehicleChanges: z.array(changeSchema).max(30).optional(),
@@ -247,7 +265,7 @@ export async function buildSnapshot(
   bookingId: string,
   client: Client = db
 ): Promise<ContractSnapshot | null> {
-  const [tenant, booking] = await Promise.all([
+  const [tenant, booking, existing] = await Promise.all([
     client.tenant.findUnique({
       where: { id: tenantId },
       select: {
@@ -270,8 +288,11 @@ export async function buildSnapshot(
         vehicle: { select: { id: true, brand: true, model: true, plate: true, fuel: true } },
       },
     }),
+    // Η χειροκίνητη τιμή ζει στο snapshot: κάθε ανανέωση την κρατά.
+    client.contract.findFirst({ where: { bookingId, tenantId }, select: { snapshot: true } }),
   ]);
   if (!tenant || !booking) return null;
+  const priceOverride = priceOverrideOf(existing?.snapshot);
 
   const lines = readExtrasSnapshot(booking.extras);
   const insuranceLines = lines.filter((l) => l.type === "INSURANCE");
@@ -334,8 +355,27 @@ export async function buildSnapshot(
       en: tenant.contractTermsEn ?? "",
     },
     vatRate: Number(tenant.vatRate),
+    ...(priceOverride && { priceOverride }),
     takenAt: new Date().toISOString(),
   };
+}
+
+/** Η χειροκίνητη τιμή ενός snapshot (Json της βάσης), αν υπάρχει. */
+export const priceOverrideOf = (snapshot: unknown): PriceOverride | undefined =>
+  snapshot && typeof snapshot === "object"
+    ? readPriceOverride((snapshot as { priceOverride?: unknown }).priceOverride)
+    : undefined;
+
+/**
+ * Η χειροκίνητη τιμή της κράτησης (από το συμβόλαιό της). Όσο υπάρχει,
+ * κάθε ξαναϋπολογισμός (ημερομηνίες, όχημα, πρόσθετα) κρατά το total ίδιο.
+ */
+export async function manualTotalOfBooking(
+  client: Client,
+  bookingId: string
+): Promise<number | null> {
+  const c = await client.contract.findUnique({ where: { bookingId }, select: { snapshot: true } });
+  return priceOverrideOf(c?.snapshot)?.manualTotal ?? null;
 }
 
 /** Ο κύριος οδηγός, προσυμπληρωμένος από τον πελάτη της κράτησης. */

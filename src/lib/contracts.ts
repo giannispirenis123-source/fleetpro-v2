@@ -27,10 +27,13 @@ export const CONTRACT_STATUS_CLASS: Record<string, string> = {
 export const PAYMENT_METHODS = ["CASH", "CARD", "TRANSFER", "OTHER"] as const;
 export const DEPOSIT_METHODS = ["CASH", "CARD", "CARD_HOLD"] as const;
 export const ID_TYPES = ["ID", "PASSPORT"] as const;
+/** Τύποι καυσίμου που προσφέρει το συμβόλαιο (υποσύνολο του enum FuelType). */
+export const CONTRACT_FUEL_TYPES = ["PETROL", "DIESEL", "ELECTRIC", "HYBRID"] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export type DepositMethod = (typeof DEPOSIT_METHODS)[number];
 export type IdType = (typeof ID_TYPES)[number];
+export type ContractFuelType = (typeof CONTRACT_FUEL_TYPES)[number];
 
 /* ─────────────────────────────────────────────
    Κάρτα — ΜΟΝΟ στοιχεία αναγνώρισης (PCI DSS)
@@ -501,6 +504,8 @@ export interface ContractDTO {
   drivers: ContractDriver[];
   pickupLocation: string;
   returnLocation: string;
+  /** Τύπος καυσίμου του συμβολαίου· null = δεν επιλέχθηκε. */
+  fuelType: ContractFuelType | null;
   fuelPickup: number | null;
   /** ΠΑΛΙΟ — μόνο ανάγνωση σε παλιά συμβόλαια. */
   fuelReturn: number | null;

@@ -18,6 +18,7 @@ import {
   toPublicContract,
 } from "./contractLink";
 import { photoIdOf } from "./photoShared";
+import { mergeLocations } from "./contractLocations";
 import { PRICE_REASON_MAX, readPriceOverride, type PriceOverride } from "./priceOverride";
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
@@ -40,6 +41,7 @@ import {
   DRIVER_FIELDS,
   ID_TYPES,
   PAYMENT_METHODS,
+  CONTRACT_FUEL_TYPES,
   FUEL_STEPS,
   emptyDriver,
   randomContractCode,
@@ -58,6 +60,7 @@ import {
   type LicensePhotoDTO,
   licensePathsOf,
   type ExtrasLock,
+  type ContractFuelType,
   type PaymentMethod,
   type VehicleChange,
 } from "./contracts";
@@ -142,6 +145,7 @@ export const contractPatchSchema = z.object({
   drivers: z.array(driverSchema).min(1, "Χρειάζεται τουλάχιστον ένας οδηγός").max(20).optional(),
   pickupLocation: text(200).optional(),
   returnLocation: text(200).optional(),
+  fuelType: z.union([z.enum(CONTRACT_FUEL_TYPES), z.null()]).optional(),
   fuelPickup: z.union([eighths, z.null()]).optional(),
   /** Ελεύθερη περιγραφή ζημιών παραλαβής — κλειδώνει με την υπογραφή. */
   damageNotesPickup: text(1000).optional(),
@@ -217,6 +221,7 @@ export function initialContractData(
     drivers: c.drivers.map((d) => ({ ...d, signature: null, signedAt: null })) as unknown as Prisma.InputJsonValue,
     ...(c.pickupLocation !== undefined && { pickupLocation: c.pickupLocation || null }),
     ...(c.returnLocation !== undefined && { returnLocation: c.returnLocation || null }),
+    ...(c.fuelType !== undefined && { fuelType: c.fuelType }),
     ...(c.fuelPickup !== undefined && { fuelPickup: c.fuelPickup }),
     ...(c.damageNotesPickup !== undefined && { damageNotesPickup: c.damageNotesPickup || null }),
     ...(c.damageNotesReturn !== undefined && { damageNotesReturn: c.damageNotesReturn || null }),
@@ -535,6 +540,7 @@ export function pickupChanged(current: Contract, patch: ContractPatch): boolean 
     !sameDrivers(drivers, patch.drivers),
     patch.pickupLocation !== undefined && patch.pickupLocation !== (current.pickupLocation ?? ""),
     patch.returnLocation !== undefined && patch.returnLocation !== (current.returnLocation ?? ""),
+    patch.fuelType !== undefined && patch.fuelType !== current.fuelType,
     patch.fuelPickup !== undefined && patch.fuelPickup !== current.fuelPickup,
     patch.damageNotesPickup !== undefined &&
       patch.damageNotesPickup !== (current.damageNotesPickup ?? ""),
@@ -700,6 +706,9 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     drivers,
     pickupLocation: c.pickupLocation ?? "",
     returnLocation: c.returnLocation ?? "",
+    fuelType: (CONTRACT_FUEL_TYPES as readonly string[]).includes(c.fuelType ?? "")
+      ? (c.fuelType as ContractFuelType)
+      : null,
     fuelPickup: c.fuelPickup,
     fuelReturn: c.fuelReturn,
     damageMarks: readMarks(c.damageMarks),
@@ -773,6 +782,29 @@ export async function tenantLogoUrl(
   if (!t?.logoPath) return null;
   const urls = await signUrls([t.logoPath], seconds);
   return urls.get(t.logoPath) ?? null;
+}
+
+/**
+ * Τα σημεία παραλαβής/επιστροφής της εταιρίας για το combobox: βασικά
+ * σημεία + ό,τι έχει γραφτεί στα συμβόλαιά της (πιο συχνά πρώτα).
+ */
+export async function tenantLocations(tenantId: string): Promise<string[]> {
+  const [pickup, ret] = await Promise.all([
+    db.contract.groupBy({
+      by: ["pickupLocation"],
+      where: { tenantId, pickupLocation: { not: null } },
+      _count: { _all: true },
+    }),
+    db.contract.groupBy({
+      by: ["returnLocation"],
+      where: { tenantId, returnLocation: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
+  return mergeLocations([
+    ...pickup.map((r) => ({ value: r.pickupLocation, count: r._count._all })),
+    ...ret.map((r) => ({ value: r.returnLocation, count: r._count._all })),
+  ]);
 }
 
 /**

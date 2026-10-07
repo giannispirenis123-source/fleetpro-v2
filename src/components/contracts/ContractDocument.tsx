@@ -237,7 +237,11 @@ export default function ContractDocument({
           <h2>{BI.vehicle}</h2>
           <Row label={BI.model} value={s ? `${s.vehicle.brand} ${s.vehicle.model}` : "—"} />
           <Row label={BI.plate} value={v(s?.vehicle.plate)} />
-          <Row label={BI.fuelType} value={FUEL_TYPE_LABEL[s?.vehicle.fuel ?? ""] ?? "—"} />
+          {/* Ο τύπος του συμβολαίου· αν δεν επιλέχθηκε, του οχήματος. */}
+          <Row
+            label={BI.fuelType}
+            value={FUEL_TYPE_LABEL[contract.fuelType ?? s?.vehicle.fuel ?? ""] ?? "—"}
+          />
         </div>
         <div>
           <h2>{BI.pickup}</h2>

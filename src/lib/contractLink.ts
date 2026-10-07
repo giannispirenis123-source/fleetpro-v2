@@ -127,6 +127,7 @@ export function toPublicContract(c: ContractDTO): ContractDTO {
     drivers,
     pickupLocation: c.pickupLocation,
     returnLocation: c.returnLocation,
+    fuelType: c.fuelType,
     fuelPickup: c.fuelPickup,
     fuelReturn: null,
     damageMarks: c.damageMarks.map((m, i) => ({ ...m, id: `m${i + 1}` })),

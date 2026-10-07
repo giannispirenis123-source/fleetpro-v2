@@ -46,6 +46,8 @@ import {
   GDPR_TEXT,
   ID_TYPES,
   PAYMENT_METHODS,
+  CONTRACT_FUEL_TYPES,
+  type ContractFuelType,
   allSigned,
   anySigned,
   emptyDriver,
@@ -97,6 +99,7 @@ import {
 } from "@/lib/stagedPhotos";
 import NewContractModal from "../NewContractModal";
 import { WalkInSection, eur, useWalkInDraft, windowValid } from "./WalkInSection";
+import { LocationFields } from "./LocationFields";
 import { SuggestList, useCustomerSuggest } from "./CustomerSuggest";
 
 const INTL: Record<string, string> = { el: "el-GR", en: "en-GB" };
@@ -135,6 +138,8 @@ interface FormState {
   drivers: ContractDriver[];
   pickupLocation: string;
   returnLocation: string;
+  /** Τύπος καυσίμου — χωρίς προεπιλογή (null). */
+  fuelType: ContractFuelType | null;
   fuelPickup: number | null;
   damageNotesPickup: string;
   damageNotesReturn: string;
@@ -184,6 +189,7 @@ const fromContract = (c: ContractDTO): FormState => ({
   drivers: c.drivers,
   pickupLocation: c.pickupLocation,
   returnLocation: c.returnLocation,
+  fuelType: c.fuelType,
   fuelPickup: c.fuelPickup,
   damageNotesPickup: c.damageNotesPickup,
   damageNotesReturn: c.damageNotesReturn,
@@ -210,6 +216,7 @@ const newForm = (): FormState => ({
   drivers: [emptyDriver(randomId())],
   pickupLocation: "",
   returnLocation: "",
+  fuelType: null,
   fuelPickup: null,
   damageNotesPickup: "",
   damageNotesReturn: "",
@@ -234,6 +241,7 @@ const pickupPart = (f: FormState) =>
     drivers: driverPayload(f.drivers),
     pickupLocation: f.pickupLocation,
     returnLocation: f.returnLocation,
+    fuelType: f.fuelType,
     fuelPickup: f.fuelPickup,
     damageNotesPickup: f.damageNotesPickup,
     paymentMethod: f.paymentMethod,
@@ -263,6 +271,7 @@ const pickupPayload = (f: FormState) => ({
   drivers: driverPayload(f.drivers),
   pickupLocation: f.pickupLocation,
   returnLocation: f.returnLocation,
+  fuelType: f.fuelType,
   fuelPickup: f.fuelPickup,
   damageNotesPickup: f.damageNotesPickup,
   paymentMethod: f.paymentMethod || null,
@@ -334,6 +343,7 @@ export default function ContractEditor({
   roundUpTotal,
   can,
   logoUrl,
+  locations,
   walkIn,
 }: {
   /** null = νέο συμβόλαιο (walk-in), πριν την πρώτη αποθήκευση. */
@@ -347,6 +357,8 @@ export default function ContractEditor({
   can: { edit: boolean; delete: boolean; price: boolean };
   /** Τρέχον λογότυπο εταιρίας (signed URL) ή null. */
   logoUrl: string | null;
+  /** Σημεία παραλαβής/επιστροφής της εταιρίας (tenantLocations). */
+  locations: string[];
   /** Μόνο στο νέο συμβόλαιο. Κενό `partners` για συνεργάτη. */
   walkIn?: { partners: { id: string; name: string }[]; canOverride: boolean };
 }) {
@@ -1110,6 +1122,19 @@ export default function ContractEditor({
       {/* ── Όχημα, ημερομηνίες, τιμή ── */}
       <section className="dash-panel dash-contract-section">
         <h2 className="dash-section-title">{tr("contracts.vehicleAndDates")}</h2>
+        <LocationFields
+          pickup={form.pickupLocation}
+          ret={form.returnLocation}
+          returnSame={returnSame}
+          locations={locations}
+          disabled={pickupReadOnly}
+          onPickup={setPickupLocation}
+          onReturn={(v) => set("returnLocation", v)}
+          onReturnSame={(same) => {
+            setReturnSame(same);
+            if (same) set("returnLocation", form.pickupLocation);
+          }}
+        />
         {isNew ? (
           <WalkInSection draft={draft} canOverride={canOverride} />
         ) : (
@@ -1560,49 +1585,35 @@ export default function ContractEditor({
         )}
       </Collapsible>
 
-      {/* ── Τόπος & καύσιμο (κλειστή) ── */}
+      {/* ── Τύπος & καύσιμα (κλειστή) ── */}
       <Collapsible
         title={tr("contracts.placeAndFuel")}
-        summary={[form.pickupLocation, form.fuelPickup !== null ? `${fuelWord} ${form.fuelPickup}/8` : ""]
+        summary={[
+          form.fuelType ? tr(`fuelType.${form.fuelType}`) : "",
+          form.fuelPickup !== null ? `${fuelWord} ${form.fuelPickup}/8` : "",
+        ]
           .filter(Boolean)
           .join(" · ")}
         open={!!open.place}
         onToggle={() => toggle("place")}
       >
-        <div className="dash-form-grid">
-          <label className="dash-field">
-            {tr("contracts.pickupLocation")}
-            <input
-              value={form.pickupLocation}
+        <span className="dash-field-label">{tr("contracts.fuelTypeLabel")}</span>
+        {/* Χωρίς προεπιλογή: ένα κλικ επιλέγει, κλικ σε άλλο αλλάζει. */}
+        <div className="dash-fueltype" role="radiogroup" aria-label={tr("contracts.fuelTypeLabel")}>
+          {CONTRACT_FUEL_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="radio"
+              aria-checked={form.fuelType === t}
               disabled={pickupReadOnly}
-              maxLength={200}
-              onChange={(e) => setPickupLocation(e.target.value)}
-            />
-          </label>
-          {!returnSame && (
-            <label className="dash-field">
-              {tr("contracts.returnLocation")}
-              <input
-                value={form.returnLocation}
-                disabled={pickupReadOnly}
-                maxLength={200}
-                onChange={(e) => set("returnLocation", e.target.value)}
-              />
-            </label>
-          )}
+              className={`dash-fuel-step ${form.fuelType === t ? "current" : ""}`}
+              onClick={() => set("fuelType", t)}
+            >
+              {tr(`fuelType.${t}`)}
+            </button>
+          ))}
         </div>
-        <label className="dash-field dash-field--check">
-          <input
-            type="checkbox"
-            checked={returnSame}
-            disabled={pickupReadOnly}
-            onChange={(e) => {
-              setReturnSame(e.target.checked);
-              if (e.target.checked) set("returnLocation", form.pickupLocation);
-            }}
-          />
-          {tr("contracts.returnSamePlace")}
-        </label>
         <span className="dash-field-label">
           {fuelWord} · {tr("contracts.atPickup")}
         </span>

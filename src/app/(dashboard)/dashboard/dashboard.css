@@ -1934,6 +1934,13 @@
 .dash-fuel-step.current { background: var(--primary); color: #fff; border-color: var(--primary); }
 .dash-fuel-step:disabled { cursor: not-allowed; opacity: 0.75; }
 .dash-fuel-value { font-size: 13px; font-weight: 600; }
+/* Τύπος καυσίμου: 4 κουμπιά (ίδια εμφάνιση με τα όγδοα), 2 ανά σειρά σε κινητό. */
+.dash-fueltype { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
+.dash-fueltype .dash-fuel-step { height: 44px; }
+@media (max-width: 640px) {
+  .dash-fueltype { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.dash-locations { margin-bottom: 12px; }
 
 .dash-damage { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: start; }
 .dash-damage-sketch {

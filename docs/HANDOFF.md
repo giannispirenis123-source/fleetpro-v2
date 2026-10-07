@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 06/10/2026 · **main:** `f9b78b6` (PR #15, squash — επιλογή οχήματος με αναζήτηση + χειροκίνητη τελική τιμή). Σειρά: `d30c20d` (#11) → `27ede67` (#12) → `9276dd3` (#13) → `3e611ea` (#14) → `f9b78b6` (#15). **Τελευταίο SQL που έχει τρέξει στη Supabase: `14`. Επόμενος ελεύθερος αριθμός: `15`.**
+**Ημερομηνία:** 06/10/2026 · **main:** `f9b78b6` (PR #15, squash — επιλογή οχήματος με αναζήτηση + χειροκίνητη τελική τιμή). Σειρά: `d30c20d` (#11) → `27ede67` (#12) → `9276dd3` (#13) → `3e611ea` (#14) → `f9b78b6` (#15). **Τελευταίο SQL που έχει τρέξει στη Supabase: `14`.** Το branch `claude/handoff-docs-update-7s4x3u` φέρνει το **`15-contract-fuel-type`** (δεν έχει τρέξει ακόμα — πρέπει να τρέξει πριν το push). Επόμενος ελεύθερος: `16`.
 
 > **Επόμενο βήμα:** Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
@@ -110,6 +110,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Απλό συμβόλαιο: νέο κατευθείαν στη φόρμα, αναγνώριση παλιού πελάτη, δίπλωμα με ένα κουμπί, κλειστές ενότητες | ✅ live (`9276dd3`, PR #13) |
 | Νέο συμβόλαιο: όλα πριν την πρώτη αποθήκευση (φωτογραφίες staged στον browser), όλα τα πεδία οδηγού ορατά | ✅ live (`3e611ea`, PR #14) |
 | Επιλογή οχήματος με αναζήτηση (μία γραμμή) + χειροκίνητη τελική τιμή συμβολαίου (`contracts.price`) | ✅ live (`f9b78b6`, PR #15), χωρίς SQL |
+| Τοποθεσίες παραλαβής/επιστροφής (combobox) στην κορυφή «Όχημα & ημερομηνίες» + τύπος καυσίμου στο «Τύπος & καύσιμα» | ⏳ στο branch, θέλει SQL `15` |
 
 **Γνωστές συμπεριφορές (σκόπιμες):**
 - Η προμήθεια συνεργάτη μένει πάνω στις γραμμές της κράτησης, **όχι** στη χειροκίνητη τιμή.
@@ -160,6 +161,10 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - **Σύγκρουση:** ίδια με τις κρατήσεις — 409 με τη λίστα· `override: true` μόνο με `bookings.override` (STAFF → 403). Στη φόρμα ο STAFF δεν βλέπει κουμπί αποθήκευσης όσο υπάρχει σύγκρουση.
   - **PARTNER:** μόνο με **και τα δύο** δικαιώματα· `partnerId` κλειδωμένο στον εαυτό του (`resolvePartnerId`), άρα βλέπει μόνο τα δικά του (`bookingScope`/`contractScope`). Δεν έχει τα δικαιώματα στα defaults. Ο νέος πελάτης φτιάχνεται χωρίς `customers.create` (αρκούν τα δύο δικαιώματα, όπως αποφασίστηκε).
   - Βοηθητικά API: `GET /api/contracts/walk-in?pickupDate&pickupTime&returnDate&returnTime[&all=1]` (διαθέσιμα οχήματα, ένα ερώτημα για όλο τον στόλο + `findConflicts` με προετοιμασία· εξαιρούνται `MAINTENANCE`/`INACTIVE`) και `GET /api/contracts/walk-in/customers?field=&q=` / `?phone=&email=` / `?id=` (βλ. παρακάτω).
+- **Τοποθεσίες + τύπος καυσίμου (branch, SQL `15`):**
+  - Τοποθεσία παραλαβής/επιστροφής: `[id]/LocationFields.tsx`, στην κορυφή της ενότητας «Όχημα & ημερομηνίες» (νέο **και** αποθηκευμένο), δίπλα-δίπλα (κινητό: η μία κάτω από την άλλη), `<input list>` + `<datalist>` = λίστα ή ελεύθερο κείμενο. «Επιστροφή στο ίδιο σημείο» = ο υπάρχων μηχανισμός `returnSame`. Στήλες `pickupLocation`/`returnLocation` υπήρχαν ήδη· κλειδώνουν με την υπογραφή όπως πριν.
+  - Λίστα σημείων ανά εταιρία **χωρίς νέο πίνακα**: `tenantLocations` (`contractForm.ts`) = βασικά σημεία (`DEFAULT_LOCATIONS` στο `src/lib/contractLocations.ts`) + ό,τι έχει γραφτεί σε συμβόλαια της εταιρίας (πιο συχνά πρώτα, έως 50, χωρίς διπλότυπα τόνων/κεφαλαίων — `mergeLocations` με tests). Νέο σημείο εμφανίζεται μετά την αποθήκευση του συμβολαίου.
+  - Τύπος καυσίμου: `contracts."fuelType"` (υπάρχον enum `FuelType`, nullable, **χωρίς προεπιλογή**), 4 κουμπιά (Βενζίνη/Πετρέλαιο/Ηλεκτρικό/Υβριδικό, `CONTRACT_FUEL_TYPES`). Κλειδώνει με την υπογραφή (μέρος των στοιχείων παραλαβής). Α4/σελίδα πελάτη: «Καύσιμο / Fuel type» = του συμβολαίου, αλλιώς του οχήματος. Ο δείκτης «Καύσιμο · στην παραλαβή» αμετάβλητος.
 - **Επιλογή οχήματος (PR #15, `f9b78b6`, χωρίς SQL):**
   - `src/components/contracts/VehiclePicker.tsx` — ΕΝΑ component για το νέο συμβόλαιο και την «Αλλαγή οχήματος». Πεδίο αναζήτησης (μάρκα, μοντέλο, πινακίδα) με έως 6 προτάσεις μόνο από τα **διαθέσιμα**· με την επιλογή μαζεύεται σε μία γραμμή «Μάρκα Μοντέλο · Πινακίδα · €/ημέρα» με «Αλλαγή». «Όλα τα οχήματα»: όλα τα ενεργά με scroll, τα μη διαθέσιμα γκρι «Μη διαθέσιμο», μη επιλέξιμα (η αναζήτηση ισχύει και εκεί). Esc / πάτημα έξω κλείνει. Στόχοι αφής 44px.
   - Αναζήτηση στον client (`src/lib/vehicleSearch.ts`, καθαρή, με tests): χωρίς τόνους, πεζά/κεφαλαία, πινακίδα χωρίς κενά/παύλες/τελείες, ελληνικά = λατινικά ομοιόγραφα (Α/A … Χ/X). Κανένα νέο API.
@@ -248,7 +253,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 ## 6. Migrations
 
-Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
@@ -257,6 +262,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - **12-contracts-update:** έχει τρέξει (verification `3 | 1 | 1`).
 - **13-contract-photos:** έχει τρέξει (verification `3 | 0`). `contracts."damagePhotos"` (JSONB, default `[]`), `"damageNotesPickup"`, `"damageNotesReturn"` (TEXT).
 - **14-contract-branding-link:** έχει τρέξει (verification `1 | 2 | 1`).
+- **15-contract-fuel-type: ΔΕΝ έχει τρέξει ακόμα.** `contracts."fuelType" "FuelType"` (nullable). Αναμενόμενο verification `1 | 2`. Τοπικά (PostgreSQL, `01 → 15`): «empty migration».
 - **Επιλογή οχήματος + χειροκίνητη τιμή (PR #15): κανένα νέο SQL.** Το `contracts.price` είναι κλειδί στο JSON δικαιωμάτων των χρηστών (χωρίς backfill)· το ιστορικό τιμής ζει στο υπάρχον `contracts.snapshot`.
 - **Νέο συμβόλαιο με όλα πριν την αποθήκευση (PR #14): κανένα νέο SQL.** Αλλαγές οχήματος και διπλώματα ζουν σε υπάρχουσες JSON στήλες. Τοπική PostgreSQL 16 με `01 → 14`: «empty migration».
 - **Απλό συμβόλαιο (PR #13): κανένα νέο SQL.** Τοπική PostgreSQL 16 με `01 → 14`: `prisma migrate diff` → «empty migration». Τα στοιχεία πελάτη υπήρχαν ήδη στο `customers`· τα διπλώματα ζουν στο JSON `contracts.drivers`.

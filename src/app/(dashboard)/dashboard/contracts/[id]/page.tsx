@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { pageGuard, viewerCan } from "@/lib/authz";
 import { db } from "@/lib/db";
-import { loadContract, refreshDraftSnapshot, tenantLogoUrl } from "@/lib/contractForm";
+import { loadContract, refreshDraftSnapshot, tenantLocations, tenantLogoUrl } from "@/lib/contractForm";
 import { toExtraDTO } from "@/lib/extras";
 import ContractEditor from "./ContractEditor";
 
@@ -14,7 +14,7 @@ export default async function ContractPage({ params }: { params: { id: string } 
 
   await refreshDraftSnapshot(viewer, params.id);
 
-  const [contract, vehicles, extras, tenant, logoUrl] = await Promise.all([
+  const [contract, vehicles, extras, tenant, logoUrl, locations] = await Promise.all([
     loadContract(viewer, params.id),
     // Για την αλλαγή οχήματος: μόνο τα ενεργά οχήματα του στόλου.
     db.vehicle.findMany({
@@ -32,6 +32,7 @@ export default async function ContractPage({ params }: { params: { id: string } 
       select: { vatRate: true, roundUpTotal: true },
     }),
     tenantLogoUrl(session.tenantId!),
+    tenantLocations(session.tenantId!),
   ]);
   if (!contract) notFound();
 
@@ -49,6 +50,7 @@ export default async function ContractPage({ params }: { params: { id: string } 
       vatRate={Number(tenant?.vatRate ?? 24)}
       roundUpTotal={tenant?.roundUpTotal ?? false}
       logoUrl={logoUrl}
+      locations={locations}
       can={{
         edit: viewerCan(viewer, "contracts.edit"),
         delete: viewerCan(viewer, "contracts.delete"),

@@ -186,6 +186,7 @@ export const PATCH = withPermission(
 
         if (patch.pickupLocation !== undefined) data.pickupLocation = patch.pickupLocation || null;
         if (patch.returnLocation !== undefined) data.returnLocation = patch.returnLocation || null;
+        if (patch.fuelType !== undefined) data.fuelType = patch.fuelType;
         if (patch.fuelPickup !== undefined) data.fuelPickup = patch.fuelPickup;
         if (patch.damageNotesPickup !== undefined) {
           data.damageNotesPickup = patch.damageNotesPickup || null;

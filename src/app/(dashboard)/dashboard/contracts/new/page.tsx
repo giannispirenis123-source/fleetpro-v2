@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { pageGuard, viewerCan } from "@/lib/authz";
+import { ADMIN_ROLE } from "@/lib/adminRole";
 import { db } from "@/lib/db";
 import { toExtraDTO } from "@/lib/extras";
 import { listPartners } from "@/lib/partners";
@@ -58,6 +59,8 @@ export default async function NewContractPage() {
         edit: viewerCan(viewer, "contracts.edit"),
         delete: viewerCan(viewer, "contracts.delete"),
         price: viewerCan(viewer, "contracts.price"),
+        // Πλήρης αριθμός κάρτας: ΜΟΝΟ Διαχειριστής εταιρίας.
+        revealCard: viewer.role === ADMIN_ROLE,
       }}
       walkIn={{
         partners: partners.map((p) => ({ id: p.id, name: p.name })),

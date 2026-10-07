@@ -209,22 +209,32 @@ export type WalkInDraft = ReturnType<typeof useWalkInDraft>;
 export function WalkInSection({
   draft,
   canOverride,
+  requiredErrors,
 }: {
   draft: WalkInDraft;
   canOverride: boolean;
+  /** Μήνυμα όταν λείπουν (κόκκινο, μετά το 1ο πάτημα «Αποθήκευση»). */
+  requiredErrors?: { dates?: string; vehicle?: string };
 }) {
   const tr = useT();
   const locale = useLocale();
   const { win, vehicles, vehicleId } = draft;
+  // Κόκκινο μόνο στα κενά πεδία· αν όλα έχουν τιμή (λάθος σειρά), στην επιστροφή.
+  const allSet = !!(win?.pickupDate && win.pickupTime && win.returnDate && win.returnTime);
+  const dateBad = (field: "pickupDate" | "pickupTime" | "returnDate" | "returnTime") =>
+    !!requiredErrors?.dates && (allSet ? field.startsWith("return") : !win?.[field]);
+  const bad = (field: Parameters<typeof dateBad>[0]) =>
+    dateBad(field) ? { className: "dash-invalid", "aria-invalid": true as const } : {};
 
   return (
     <>
-      <div className="dash-form-grid dash-walkin-dates">
+      <div className="dash-form-grid dash-walkin-dates" data-required="dates">
         <label className="dash-field">
           {tr("walkIn.pickupDate")} *
           <input
             type="date"
             value={win?.pickupDate ?? ""}
+            {...bad("pickupDate")}
             onChange={(e) => draft.setWinField("pickupDate", e.target.value)}
           />
         </label>
@@ -234,6 +244,7 @@ export function WalkInSection({
             type="time"
             step={900}
             value={win?.pickupTime ?? ""}
+            {...bad("pickupTime")}
             onChange={(e) => draft.setWinField("pickupTime", e.target.value)}
           />
         </label>
@@ -242,6 +253,7 @@ export function WalkInSection({
           <input
             type="date"
             value={win?.returnDate ?? ""}
+            {...bad("returnDate")}
             min={win?.pickupDate}
             onChange={(e) => draft.setWinField("returnDate", e.target.value)}
           />
@@ -252,23 +264,31 @@ export function WalkInSection({
             type="time"
             step={900}
             value={win?.returnTime ?? ""}
+            {...bad("returnTime")}
             onChange={(e) => draft.setWinField("returnTime", e.target.value)}
           />
         </label>
       </div>
-      {win && !windowValid(win) && <p className="dash-field-error">{tr("walkIn.returnAfterPickup")}</p>}
+      {requiredErrors?.dates && !allSet ? (
+        <p className="dash-field-error">{requiredErrors.dates}</p>
+      ) : (
+        win && !windowValid(win) && <p className="dash-field-error">{tr("walkIn.returnAfterPickup")}</p>
+      )}
 
       <h3 className="dash-contract-sub dash-vpick-label">{tr("walkIn.vehicle")} *</h3>
-      {windowValid(win) ? (
-        <VehiclePicker
-          vehicles={vehicles}
-          value={vehicleId}
-          onChange={draft.setVehicleId}
-          loading={vehicles === null}
-        />
-      ) : (
-        <p className="dash-form-note">—</p>
-      )}
+      <div data-required="vehicle" className={requiredErrors?.vehicle ? "dash-invalid-box" : undefined}>
+        {windowValid(win) ? (
+          <VehiclePicker
+            vehicles={vehicles}
+            value={vehicleId}
+            onChange={draft.setVehicleId}
+            loading={vehicles === null}
+          />
+        ) : (
+          <p className="dash-form-note">—</p>
+        )}
+        {requiredErrors?.vehicle && <p className="dash-field-error">{requiredErrors.vehicle}</p>}
+      </div>
 
       {draft.hasConflict && (
         <div className="dash-conflict">

@@ -43,8 +43,8 @@ export const CARD_BRANDS = ["VISA", "MASTERCARD", "OTHER"] as const;
 export type CardBrand = (typeof CARD_BRANDS)[number];
 
 /**
- * Ό,τι αποθηκεύεται για μια κάρτα. ΠΟΤΕ πλήρης αριθμός ή CVV: αυτά
- * περνούν μόνο στο POS.
+ * Ό,τι αποθηκεύεται ΑΝΟΙΧΤΑ για μια κάρτα. Ο πλήρης αριθμός ζει ΜΟΝΟ
+ * κρυπτογραφημένος (contracts.cardNumberEnc, cardCrypto.ts). ΠΟΤΕ CVV.
  */
 export interface CardInfo {
   brand: CardBrand;
@@ -522,6 +522,8 @@ export interface ContractDTO {
   depositMethod: DepositMethod | null;
   paymentCard: CardInfo | null;
   depositCard: CardInfo | null;
+  /** Υπάρχει κρυπτογραφημένος πλήρης αριθμός; (ο αριθμός ΔΕΝ είναι ποτέ εδώ) */
+  cardNumberSaved: { payment: boolean; deposit: boolean };
   gdprConsent: boolean;
   signedAt: string | null;
   completedAt: string | null;

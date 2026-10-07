@@ -2104,6 +2104,13 @@
   margin-top: 14px;
 }
 .dash-field-error { color: var(--bad-fg); font-size: 12px; font-weight: 500; }
+/* Υποχρεωτικό πεδίο που λείπει (μετά το 1ο πάτημα «Αποθήκευση»). */
+input.dash-invalid,
+.dash-invalid-box input { border-color: var(--bad-fg) !important; box-shadow: 0 0 0 1px var(--bad-fg); }
+.dash-required-warn { color: var(--bad-fg); font-weight: 600; }
+/* Κάρτα: μάσκα / πλήρης αριθμός (μόνο Διαχειριστής) + «Εμφάνιση». */
+.dash-card-reveal { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; }
+.dash-card-full { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; }
 .dash-extras-pick { display: flex; flex-direction: column; gap: 8px; }
 .dash-extra-pick {
   display: flex;

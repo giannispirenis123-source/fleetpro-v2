@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { pageGuard, viewerCan } from "@/lib/authz";
+import { ADMIN_ROLE } from "@/lib/adminRole";
 import { db } from "@/lib/db";
 import { loadContract, refreshDraftSnapshot, tenantLocations, tenantLogoUrl } from "@/lib/contractForm";
 import { toExtraDTO } from "@/lib/extras";
@@ -55,6 +56,8 @@ export default async function ContractPage({ params }: { params: { id: string } 
         edit: viewerCan(viewer, "contracts.edit"),
         delete: viewerCan(viewer, "contracts.delete"),
         price: viewerCan(viewer, "contracts.price"),
+        // Πλήρης αριθμός κάρτας: ΜΟΝΟ Διαχειριστής εταιρίας.
+        revealCard: viewer.role === ADMIN_ROLE,
       }}
     />
   );

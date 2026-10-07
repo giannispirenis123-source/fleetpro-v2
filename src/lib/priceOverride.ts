@@ -7,8 +7,9 @@
 //    κλείδωμα, και υπολογίζει ο ίδιος τη διαφορά από την υπολογισμένη τιμή.
 //  · Η χειροκίνητη τιμή γίνεται το total της κράτησης (ΕΝΑ σύνολο παντού).
 //    Η roundUpTotal ΔΕΝ εφαρμόζεται πάνω της. Οι γραμμές (ενοίκιο, πρόσθετα,
-//    ασφάλεια, έκπτωση) μένουν όπως υπολογίστηκαν· η «Προσαρμογή τιμής» είναι
-//    η διαφορά ώστε να αθροίζουν ακριβώς στο σύνολο.
+//    ασφάλεια, έκπτωση) μένουν όπως υπολογίστηκαν· η διαφορά ώστε να
+//    αθροίζουν ακριβώς στο σύνολο ΑΠΟΡΡΟΦΑΤΑΙ στο ενοίκιο (withManualTotal)
+//    — καμία γραμμή «Προσαρμογή τιμής» σε φόρμα, Α4 ή σελίδα πελάτη.
 //  · Το ιστορικό (υπολογισμένη, χειροκίνητη, ποιος, πότε, γιατί) ζει στο
 //    snapshot του συμβολαίου (JSON) — χωρίς νέα στήλη.
 
@@ -53,6 +54,16 @@ export const computedTotalOf = (b: PriceParts, roundUpTotal: boolean) => {
 /** «Προσαρμογή τιμής»: ό,τι λείπει/περισσεύει ώστε οι γραμμές = σύνολο. */
 export const adjustmentOf = (b: PriceParts, manualTotal: number) =>
   round2(manualTotal - exactTotalOf(b));
+
+/**
+ * Για εμφάνιση: η διαφορά από τη χειροκίνητη τιμή μπαίνει στο ενοίκιο, ώστε
+ * «Ενοίκιο» + πρόσθετα + ασφάλεια − έκπτωση = ακριβώς το τελικό σύνολο.
+ */
+export const withManualTotal = <T extends PriceParts>(b: T, manualTotal: number) => ({
+  ...b,
+  subtotal: round2(b.subtotal + adjustmentOf(b, manualTotal)),
+  total: manualTotal,
+});
 
 /** Αμυντική ανάγνωση από το Json. */
 export function readPriceOverride(v: unknown): PriceOverride | undefined {

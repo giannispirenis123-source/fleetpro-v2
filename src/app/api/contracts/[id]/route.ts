@@ -16,11 +16,13 @@ import { viewerCan, withPermission } from "@/lib/authz";
 import { decidePriceOverride, type PriceOverride } from "@/lib/priceOverride";
 import { anySigned, licensePathsOf, readDrivers, readPhotos } from "@/lib/contracts";
 import { removeObjects } from "@/lib/storage";
+import { CardKeyError, nextCardNumbersEnc } from "@/lib/cardCrypto";
 import { readExtrasSnapshot } from "@/lib/pricing";
 import {
   CONTRACT_INCLUDE,
   buildSnapshot,
   cardsFor,
+  withCardNumbers,
   extrasLockOf,
   priceBookingExtras,
   refreshSearchText,
@@ -195,12 +197,19 @@ export const PATCH = withPermission(
         if (patch.depositAmount !== undefined) data.depositAmount = patch.depositAmount;
         if (patch.depositMethod !== undefined) data.depositMethod = patch.depositMethod;
         // Στοιχεία κάρτας μόνο με τρόπο «κάρτα»· αλλιώς σβήνονται.
-        const cards = cardsFor(
+        const cards = withCardNumbers(cardsFor(
           patch.paymentMethod !== undefined ? patch.paymentMethod : current.paymentMethod,
           patch.depositMethod !== undefined ? patch.depositMethod : current.depositMethod,
           patch,
           current
+        ), patch);
+        // Πλήρης αριθμός: κρυπτογραφημένος· κάρτα που δεν ισχύει πια → σβήνεται.
+        const cardNumberEnc = nextCardNumbersEnc(
+          current.cardNumberEnc,
+          { payment: patch.paymentCardNumber, deposit: patch.depositCardNumber },
+          { payment: !!cards.paymentCard, deposit: !!cards.depositCard }
         );
+        if (cardNumberEnc !== current.cardNumberEnc) data.cardNumberEnc = cardNumberEnc;
         // Αποθηκεύονται ΜΟΝΟ τα 4 πεδία που επέτρεψε το strict zod schema.
         data.paymentCard = cards.paymentCard
           ? ({ ...cards.paymentCard } as Prisma.InputJsonObject)
@@ -267,6 +276,8 @@ export const PATCH = withPermission(
       });
       return ok({ contract: toContractDTO(fresh), signaturesReset });
     } catch (error) {
+      // Λείπει/λάθος κλειδί κάρτας: καθαρό μήνυμα, τίποτα δεν αποθηκεύτηκε.
+      if (error instanceof CardKeyError) return serverError(error.message);
       console.error(error);
       return serverError();
     }

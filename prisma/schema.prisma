@@ -528,10 +528,14 @@ model Contract {
   paymentMethod String? // CASH | CARD | TRANSFER | OTHER
   depositAmount Decimal? @db.Decimal(10, 2)
   depositMethod String? // CASH | CARD | CARD_HOLD
-  // Στοιχεία κάρτας ΜΟΝΟ για αναγνώριση: { brand, last4, holder, expiry }.
-  // ΠΟΤΕ πλήρης αριθμός ή CVV (PCI DSS).
+  // Στοιχεία κάρτας για αναγνώριση: { brand, last4, holder, expiry }.
+  // Ο πλήρης αριθμός ΜΟΝΟ κρυπτογραφημένος (cardNumberEnc). ΠΟΤΕ CVV.
   paymentCard   Json?
   depositCard   Json?
+  // Πλήρης αριθμός κάρτας ΚΡΥΠΤΟΓΡΑΦΗΜΕΝΟΣ (AES-256-GCM, κλειδί
+  // CARD_ENCRYPTION_KEY): JSON { payment?, deposit? } — βλ. src/lib/cardCrypto.ts.
+  // Αποκρυπτογραφείται μόνο στον server, μόνο για COMPANY_ADMIN. Ποτέ CVV.
+  cardNumberEnc String? @db.Text
 
   // Κανονικοποιημένο κείμενο αναζήτησης (πεζά, χωρίς τόνους/κενά/σύμβολα),
   // ξαναϋπολογίζεται από τον server σε κάθε αλλαγή. GIN trigram index.

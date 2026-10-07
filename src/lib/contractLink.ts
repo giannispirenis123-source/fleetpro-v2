@@ -141,6 +141,7 @@ export function toPublicContract(c: ContractDTO): ContractDTO {
     depositMethod: null,
     paymentCard: null,
     depositCard: null,
+    cardNumberSaved: { payment: false, deposit: false },
     gdprConsent: c.gdprConsent,
     signedAt: c.signedAt,
     completedAt: c.completedAt,

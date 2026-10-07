@@ -28,6 +28,7 @@ import {
   type ContractDriver,
 } from "@/lib/contracts";
 import { toDisplayBreakdown } from "@/lib/pricing";
+import { withManualTotal } from "@/lib/priceOverride";
 import { splitVatInclusive } from "@/lib/invoices";
 import DamageSketch from "./DamageSketch";
 import "./contract-document.css";
@@ -116,11 +117,11 @@ export default function ContractDocument({
   const s = contract.snapshot;
   // Η στρογγυλοποίηση απορροφάται στις γραμμές, όπως στις κρατήσεις: οι
   // γραμμές αθροίζουν ΑΚΡΙΒΩΣ στο σύνολο.
-  // Χειροκίνητη τιμή: οι γραμμές ως έχουν και το τελικό σύνολο όπως ορίστηκε.
-  // Η «Προσαρμογή τιμής» και ποιος/γιατί ΔΕΝ τυπώνονται (μόνο στη φόρμα).
+  // Χειροκίνητη τιμή: η διαφορά απορροφάται στο ενοίκιο (καμία γραμμή
+  // «Προσαρμογή τιμής»)· ποιος/γιατί ΔΕΝ τυπώνονται.
   const money = s
     ? s.priceOverride
-      ? { ...s.booking, total: s.booking.total, subtotalAdjusted: false }
+      ? withManualTotal(s.booking, s.booking.total)
       : toDisplayBreakdown(s.booking)
     : null;
   const vatRate = s?.vatRate ?? fallbackVatRate;
@@ -361,7 +362,9 @@ export default function ContractDocument({
               <tbody>
                 <tr>
                   <td>
-                    {BI.rental} · {s.booking.totalDays} {BI.days} × {eur(s.booking.dailyRate)}
+                    {BI.rental} · {s.booking.totalDays} {BI.days}
+                    {/* Χειροκίνητη τιμή: το ενοίκιο δεν είναι πια ημέρες × τιμή. */}
+                    {!s.priceOverride && ` × ${eur(s.booking.dailyRate)}`}
                   </td>
                   <td>{eur(money.subtotal)}</td>
                 </tr>

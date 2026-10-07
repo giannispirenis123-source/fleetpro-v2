@@ -13,6 +13,7 @@ import {
   publicPriceOverride,
   readPriceOverride,
   validManualTotal,
+  withManualTotal,
 } from "../src/lib/priceOverride.ts";
 import { register } from "node:module";
 
@@ -122,4 +123,17 @@ test("σελίδα πελάτη: μόνο το ποσό — όχι ποιος/γ
   assert.deepEqual(publicPriceOverride(full), { manualTotal: 110 });
   assert.equal(readPriceOverride({ manualTotal: 0 }), undefined);
   assert.equal(readPriceOverride(null), undefined);
+});
+
+test("withManualTotal: η διαφορά μπαίνει στο ενοίκιο, οι γραμμές = σύνολο", () => {
+  const b = { subtotal: 50, extrasTotal: 10, insuranceCost: 0, discountAmount: 0 };
+  const up = withManualTotal(b, 70);
+  assert.equal(up.subtotal, 60); // ενοίκιο 50 → 60
+  assert.equal(up.total, 70);
+  assert.equal(up.extrasTotal, 10);
+  const down = withManualTotal(parts, 120);
+  assert.equal(
+    Math.round((down.subtotal + down.extrasTotal + down.insuranceCost - down.discountAmount) * 100) / 100,
+    120
+  );
 });

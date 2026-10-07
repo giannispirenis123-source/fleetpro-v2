@@ -19,6 +19,8 @@ import {
 } from "./contractLink";
 import { photoIdOf } from "./photoShared";
 import { mergeLocations } from "./contractLocations";
+import { normalizeCardNumber } from "./cardNumber";
+import { nextCardNumbersEnc, storedCardNumbers } from "./cardCrypto";
 import { PRICE_REASON_MAX, readPriceOverride, type PriceOverride } from "./priceOverride";
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
@@ -61,6 +63,7 @@ import {
   licensePathsOf,
   type ExtrasLock,
   type ContractFuelType,
+  type CardInfo,
   type PaymentMethod,
   type VehicleChange,
 } from "./contracts";
@@ -96,6 +99,27 @@ const isoDate = z
   }, "Μη έγκυρη ημερομηνία");
 
 const optionalDate = z.union([isoDate, z.literal("")]);
+
+/**
+ * Πλήρης αριθμός κάρτας: 13–19 ψηφία (κενά/παύλες καθαρίζονται). Στέλνεται
+ * ΜΟΝΟ όταν πληκτρολογηθεί νέος· null = διαγραφή. Κρυπτογραφείται στον server.
+ */
+const cardNumberField = z
+  .union([
+    z
+      .string()
+      .max(40)
+      .transform((v, ctx) => {
+        const digits = normalizeCardNumber(v);
+        if (!digits) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Ο αριθμός κάρτας θέλει 13–19 ψηφία" });
+          return z.NEVER;
+        }
+        return digits;
+      }),
+    z.null(),
+  ])
+  .optional();
 const text = (max: number) => z.string().max(max).transform((s) => s.trim());
 
 const driverSchema = z.object({
@@ -154,6 +178,8 @@ export const contractPatchSchema = z.object({
   depositMethod: z.union([z.enum(DEPOSIT_METHODS), z.null()]).optional(),
   paymentCard: z.union([cardSchema, z.null()]).optional(),
   depositCard: z.union([cardSchema, z.null()]).optional(),
+  paymentCardNumber: cardNumberField,
+  depositCardNumber: cardNumberField,
   gdprConsent: z.boolean().optional(),
 
   /* ── Πρόσθετα: αλλάζουν ΚΑΙ την κράτηση (ίδιο σύνολο παντού) ── */
@@ -212,10 +238,18 @@ export function initialContractData(
 ): Partial<Prisma.ContractUncheckedCreateInput> {
   const payment = c.paymentMethod ?? null;
   const depositMethod = c.depositMethod ?? null;
-  const cards = {
-    paymentCard: paymentUsesCard(payment) && c.paymentCard ? c.paymentCard : null,
-    depositCard: depositUsesCard(depositMethod) && c.depositCard ? c.depositCard : null,
-  };
+  const cards = withCardNumbers(
+    {
+      paymentCard: paymentUsesCard(payment) && c.paymentCard ? c.paymentCard : null,
+      depositCard: depositUsesCard(depositMethod) && c.depositCard ? c.depositCard : null,
+    },
+    c
+  );
+  const cardNumberEnc = nextCardNumbersEnc(
+    null,
+    { payment: c.paymentCardNumber, deposit: c.depositCardNumber },
+    { payment: !!cards.paymentCard, deposit: !!cards.depositCard }
+  );
   return {
     // Νέοι οδηγοί: χωρίς υπογραφές και χωρίς φωτογραφίες (ανεβαίνουν μετά).
     drivers: c.drivers.map((d) => ({ ...d, signature: null, signedAt: null })) as unknown as Prisma.InputJsonValue,
@@ -235,6 +269,7 @@ export function initialContractData(
     // ΜΟΝΟ τα 4 πεδία του strict schema.
     paymentCard: cards.paymentCard ? ({ ...cards.paymentCard } as Prisma.InputJsonObject) : Prisma.DbNull,
     depositCard: cards.depositCard ? ({ ...cards.depositCard } as Prisma.InputJsonObject) : Prisma.DbNull,
+    cardNumberEnc,
     ...(c.gdprConsent && { gdprConsent: true, gdprConsentAt: new Date() }),
   };
 }
@@ -549,6 +584,7 @@ export function pickupChanged(current: Contract, patch: ContractPatch): boolean 
     patch.depositMethod !== undefined && patch.depositMethod !== current.depositMethod,
     patch.paymentCard !== undefined && !sameJson(readCard(current.paymentCard), patch.paymentCard),
     patch.depositCard !== undefined && !sameJson(readCard(current.depositCard), patch.depositCard),
+    patch.paymentCardNumber !== undefined || patch.depositCardNumber !== undefined,
     patch.gdprConsent !== undefined && patch.gdprConsent !== current.gdprConsent,
   ];
   return checks.some(Boolean);
@@ -730,6 +766,8 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     // readCard κρατά ΜΟΝΟ τα 4 επιτρεπτά πεδία.
     paymentCard: readCard(c.paymentCard),
     depositCard: readCard(c.depositCard),
+    // Μόνο ΑΝ υπάρχει πλήρης αριθμός — ποτέ ο ίδιος ο αριθμός.
+    cardNumberSaved: storedCardNumbers(c.cardNumberEnc),
     gdprConsent: c.gdprConsent,
     signedAt: c.signedAt?.toISOString() ?? null,
     completedAt: c.completedAt?.toISOString() ?? null,
@@ -1118,6 +1156,20 @@ export async function priceBookingExtras(
       total: b.total,
       extras: priced.snapshot as unknown as Prisma.InputJsonValue,
     },
+  };
+}
+
+/** Με νέο πλήρη αριθμό, τα 4 τελευταία ψηφία βγαίνουν ΑΠΟ τον αριθμό. */
+export function withCardNumbers<T extends { paymentCard: CardInfo | null; depositCard: CardInfo | null }>(
+  cards: T,
+  patch: Pick<ContractPatch, "paymentCardNumber" | "depositCardNumber">
+): T {
+  const last4 = (card: CardInfo | null, n: string | null | undefined) =>
+    card && typeof n === "string" ? { ...card, last4: n.slice(-4) } : card;
+  return {
+    ...cards,
+    paymentCard: last4(cards.paymentCard, patch.paymentCardNumber),
+    depositCard: last4(cards.depositCard, patch.depositCardNumber),
   };
 }
 

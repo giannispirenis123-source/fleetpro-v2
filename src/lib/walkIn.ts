@@ -19,7 +19,6 @@ import {
   customerMatches,
   duplicateKeys,
   isDuplicateOf,
-  phoneDigits,
   searchQueryFor,
   type CustomerSearchField,
   type MatchableCustomer,
@@ -45,18 +44,13 @@ export const walkInSchema = z
     contract: contractCreateSchema.optional(),
     ...bookingFields,
   })
-  // Εγγραφή: χρειάζεται κύριος οδηγός με όνομα και τηλέφωνο.
+  // Εγγραφή: χρειάζονται τα στοιχεία του συμβολαίου. Όνομα/τηλέφωνο του
+  // κύριου οδηγού ΔΕΝ είναι υποχρεωτικά εδώ: η φόρμα τα ζητά (κόκκινα) αλλά
+  // ο χρήστης μπορεί να αποθηκεύσει ούτως ή άλλως. Για υπογραφή χρειάζεται
+  // όνομα (έλεγχος στο /sign).
   .refine((d) => d.preview || !!d.contract, {
     message: "Λείπουν τα στοιχεία του συμβολαίου",
     path: ["contract"],
-  })
-  .refine((d) => d.preview || (d.contract?.drivers[0]?.fullName ?? "").length > 0, {
-    message: "Συμπλήρωσε το ονοματεπώνυμο του κύριου οδηγού",
-    path: ["contract", "drivers", 0, "fullName"],
-  })
-  .refine((d) => d.preview || phoneDigits(d.contract?.drivers[0]?.phone ?? "").length >= 5, {
-    message: "Συμπλήρωσε το τηλέφωνο του κύριου οδηγού",
-    path: ["contract", "drivers", 0, "phone"],
   });
 
 export type WalkInInput = z.infer<typeof walkInSchema>;

@@ -2,6 +2,8 @@
 // Τοποθεσία παραλαβής / επιστροφής: δύο combobox (λίστα σημείων της εταιρίας
 // ή ελεύθερο κείμενο) δίπλα-δίπλα (σε κινητό το ένα κάτω από το άλλο) και
 // «Επιστροφή στο ίδιο σημείο». Η λίστα έρχεται από το tenantLocations.
+// Η επιστροφή είναι ΠΑΝΤΑ επεξεργάσιμη: το τικ απλώς αντιγράφει την
+// παραλαβή, και μια χειροκίνητη αλλαγή της επιστροφής το ξετσεκάρει.
 
 import { useId } from "react";
 import { useT } from "@/lib/i18n/I18nProvider";
@@ -48,7 +50,7 @@ export function LocationFields({
           <input
             list={listId}
             value={returnSame ? pickup : ret}
-            disabled={disabled || returnSame}
+            disabled={disabled}
             maxLength={200}
             autoComplete="off"
             placeholder={tr("contracts.locationPlaceholder")}

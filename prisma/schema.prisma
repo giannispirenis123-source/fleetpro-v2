@@ -546,6 +546,13 @@ model Contract {
   publicToken          String?   @unique
   publicTokenRevokedAt DateTime?
 
+  // Αποστολή στον πελάτη (email + PDF, Resend): η τελευταία ΕΠΙΤΥΧΗΣ
+  // αποστολή και το ιστορικό όλων των προσπαθειών [{ id, at, ok, lang, to
+  // (μασκαρισμένο), by, error? }] — από εδώ μετρά το όριο 5/ώρα (SQL 17).
+  emailSentAt  DateTime?
+  emailSentTo  String?
+  emailSendLog Json      @default("[]")
+
   gdprConsent   Boolean   @default(false)
   gdprConsentAt DateTime?
 

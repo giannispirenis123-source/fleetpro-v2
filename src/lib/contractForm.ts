@@ -18,7 +18,17 @@ import {
   toPublicContract,
 } from "./contractLink";
 import { photoIdOf } from "./photoShared";
-import { PRICE_REASON_MAX, readPriceOverride, type PriceOverride } from "./priceOverride";
+import { mergeLocations } from "./contractLocations";
+import { normalizeCardNumber } from "./cardNumber";
+import { nextCardNumbersEnc, storedCardNumbers } from "./cardCrypto";
+import {
+  PRICE_REASON_MAX,
+  manualRentalOf,
+  readPriceOverride,
+  toRentalOverride,
+  type PriceOverride,
+  type PriceParts,
+} from "./priceOverride";
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
 import { discountOfBooking, priceBooking } from "./bookingPricing";
@@ -40,6 +50,7 @@ import {
   DRIVER_FIELDS,
   ID_TYPES,
   PAYMENT_METHODS,
+  CONTRACT_FUEL_TYPES,
   FUEL_STEPS,
   emptyDriver,
   randomContractCode,
@@ -58,6 +69,8 @@ import {
   type LicensePhotoDTO,
   licensePathsOf,
   type ExtrasLock,
+  type ContractFuelType,
+  type CardInfo,
   type PaymentMethod,
   type VehicleChange,
 } from "./contracts";
@@ -93,6 +106,27 @@ const isoDate = z
   }, "Μη έγκυρη ημερομηνία");
 
 const optionalDate = z.union([isoDate, z.literal("")]);
+
+/**
+ * Πλήρης αριθμός κάρτας: 13–19 ψηφία (κενά/παύλες καθαρίζονται). Στέλνεται
+ * ΜΟΝΟ όταν πληκτρολογηθεί νέος· null = διαγραφή. Κρυπτογραφείται στον server.
+ */
+const cardNumberField = z
+  .union([
+    z
+      .string()
+      .max(40)
+      .transform((v, ctx) => {
+        const digits = normalizeCardNumber(v);
+        if (!digits) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Ο αριθμός κάρτας θέλει 13–19 ψηφία" });
+          return z.NEVER;
+        }
+        return digits;
+      }),
+    z.null(),
+  ])
+  .optional();
 const text = (max: number) => z.string().max(max).transform((s) => s.trim());
 
 const driverSchema = z.object({
@@ -142,6 +176,7 @@ export const contractPatchSchema = z.object({
   drivers: z.array(driverSchema).min(1, "Χρειάζεται τουλάχιστον ένας οδηγός").max(20).optional(),
   pickupLocation: text(200).optional(),
   returnLocation: text(200).optional(),
+  fuelType: z.union([z.enum(CONTRACT_FUEL_TYPES), z.null()]).optional(),
   fuelPickup: z.union([eighths, z.null()]).optional(),
   /** Ελεύθερη περιγραφή ζημιών παραλαβής — κλειδώνει με την υπογραφή. */
   damageNotesPickup: text(1000).optional(),
@@ -150,13 +185,15 @@ export const contractPatchSchema = z.object({
   depositMethod: z.union([z.enum(DEPOSIT_METHODS), z.null()]).optional(),
   paymentCard: z.union([cardSchema, z.null()]).optional(),
   depositCard: z.union([cardSchema, z.null()]).optional(),
+  paymentCardNumber: cardNumberField,
+  depositCardNumber: cardNumberField,
   gdprConsent: z.boolean().optional(),
 
   /* ── Πρόσθετα: αλλάζουν ΚΑΙ την κράτηση (ίδιο σύνολο παντού) ── */
   extraIds: z.array(z.string().min(1)).max(50).optional(),
 
   /**
-   * Χειροκίνητη τελική τιμή ΜΕ ΦΠΑ (contracts.price): ΜΟΝΟ ποσό + λόγος —
+   * Χειροκίνητη τιμή ΕΝΟΙΚΙΟΥ ΜΕ ΦΠΑ (contracts.price): ΜΟΝΟ ποσό + λόγος —
    * strict, κανένα άλλο ποσό δεν περνά. null = επαναφορά υπολογισμένης.
    * Ελέγχεται και εφαρμόζεται από το decidePriceOverride στον server.
    */
@@ -164,7 +201,7 @@ export const contractPatchSchema = z.object({
     .union([
       z
         .object({
-          total: z.number(),
+          rental: z.number(),
           reason: z.string().max(PRICE_REASON_MAX, `Ο λόγος έως ${PRICE_REASON_MAX} χαρακτήρες`).optional(),
         })
         .strict(),
@@ -208,15 +245,24 @@ export function initialContractData(
 ): Partial<Prisma.ContractUncheckedCreateInput> {
   const payment = c.paymentMethod ?? null;
   const depositMethod = c.depositMethod ?? null;
-  const cards = {
-    paymentCard: paymentUsesCard(payment) && c.paymentCard ? c.paymentCard : null,
-    depositCard: depositUsesCard(depositMethod) && c.depositCard ? c.depositCard : null,
-  };
+  const cards = withCardNumbers(
+    {
+      paymentCard: paymentUsesCard(payment) && c.paymentCard ? c.paymentCard : null,
+      depositCard: depositUsesCard(depositMethod) && c.depositCard ? c.depositCard : null,
+    },
+    c
+  );
+  const cardNumberEnc = nextCardNumbersEnc(
+    null,
+    { payment: c.paymentCardNumber, deposit: c.depositCardNumber },
+    { payment: !!cards.paymentCard, deposit: !!cards.depositCard }
+  );
   return {
     // Νέοι οδηγοί: χωρίς υπογραφές και χωρίς φωτογραφίες (ανεβαίνουν μετά).
     drivers: c.drivers.map((d) => ({ ...d, signature: null, signedAt: null })) as unknown as Prisma.InputJsonValue,
     ...(c.pickupLocation !== undefined && { pickupLocation: c.pickupLocation || null }),
     ...(c.returnLocation !== undefined && { returnLocation: c.returnLocation || null }),
+    ...(c.fuelType !== undefined && { fuelType: c.fuelType }),
     ...(c.fuelPickup !== undefined && { fuelPickup: c.fuelPickup }),
     ...(c.damageNotesPickup !== undefined && { damageNotesPickup: c.damageNotesPickup || null }),
     ...(c.damageNotesReturn !== undefined && { damageNotesReturn: c.damageNotesReturn || null }),
@@ -230,6 +276,7 @@ export function initialContractData(
     // ΜΟΝΟ τα 4 πεδία του strict schema.
     paymentCard: cards.paymentCard ? ({ ...cards.paymentCard } as Prisma.InputJsonObject) : Prisma.DbNull,
     depositCard: cards.depositCard ? ({ ...cards.depositCard } as Prisma.InputJsonObject) : Prisma.DbNull,
+    cardNumberEnc,
     ...(c.gdprConsent && { gdprConsent: true, gdprConsentAt: new Date() }),
   };
 }
@@ -367,15 +414,55 @@ export const priceOverrideOf = (snapshot: unknown): PriceOverride | undefined =>
     : undefined;
 
 /**
- * Η χειροκίνητη τιμή της κράτησης (από το συμβόλαιό της). Όσο υπάρχει,
- * κάθε ξαναϋπολογισμός (ημερομηνίες, όχημα, πρόσθετα) κρατά το total ίδιο.
+ * Χειροκίνητη τιμή στο DTO: ΠΑΝΤΑ με `manualRental` — η παλιά μορφή
+ * (τελικό σύνολο) μετατρέπεται με τις γραμμές του ίδιου snapshot, ώστε
+ * φόρμα, Α4 και σελίδα πελάτη να βλέπουν μία μορφή.
  */
-export async function manualTotalOfBooking(
+function withRentalOverride(s: ContractSnapshot | null): ContractSnapshot | null {
+  if (!s?.priceOverride || s.priceOverride.manualRental !== undefined) return s;
+  return { ...s, priceOverride: toRentalOverride(s.priceOverride, s.booking) };
+}
+
+/** Οι γραμμές μιας κράτησης (Decimal → number). */
+export const pricePartsOf = (b: {
+  subtotal?: unknown;
+  extrasTotal?: unknown;
+  insuranceCost?: unknown;
+  discountAmount?: unknown;
+}): PriceParts => ({
+  subtotal: Number(b.subtotal),
+  extrasTotal: Number(b.extrasTotal),
+  insuranceCost: Number(b.insuranceCost),
+  discountAmount: Number(b.discountAmount),
+});
+
+/**
+ * Το χειροκίνητο ενοίκιο της κράτησης (από το συμβόλαιό της). Όσο υπάρχει,
+ * κάθε ξαναϋπολογισμός (ημερομηνίες, όχημα, πρόσθετα) κρατά το ΕΝΟΙΚΙΟ
+ * ίδιο και το σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση.
+ *
+ * `before` = οι γραμμές της κράτησης ΠΡΙΝ την αλλαγή. Παλιά μορφή (τελικό
+ * σύνολο) μετατρέπεται με αυτές και ΑΠΟΘΗΚΕΥΕΤΑΙ ως ενοίκιο, ώστε η
+ * επόμενη αλλαγή να μη χρειαστεί ξανά τις παλιές γραμμές. Χωρίς αλλαγή
+ * του "updatedAt" (η ανοιχτή φόρμα δεν «χαλάει»).
+ */
+export async function manualRentalOfBooking(
   client: Client,
-  bookingId: string
+  bookingId: string,
+  before: PriceParts
 ): Promise<number | null> {
-  const c = await client.contract.findUnique({ where: { bookingId }, select: { snapshot: true } });
-  return priceOverrideOf(c?.snapshot)?.manualTotal ?? null;
+  const c = await client.contract.findUnique({ where: { bookingId }, select: { id: true, snapshot: true } });
+  const override = priceOverrideOf(c?.snapshot);
+  if (!c || !override) return null;
+  if (override.manualRental === undefined) {
+    const converted = JSON.stringify(toRentalOverride(override, before));
+    await client.$executeRaw(Prisma.sql`
+      UPDATE "contracts"
+      SET "snapshot" = jsonb_set("snapshot", '{priceOverride}', ${converted}::jsonb)
+      WHERE "id" = ${c.id}
+    `);
+  }
+  return manualRentalOf(override, before) ?? null;
 }
 
 /** Ο κύριος οδηγός, προσυμπληρωμένος από τον πελάτη της κράτησης. */
@@ -535,6 +622,7 @@ export function pickupChanged(current: Contract, patch: ContractPatch): boolean 
     !sameDrivers(drivers, patch.drivers),
     patch.pickupLocation !== undefined && patch.pickupLocation !== (current.pickupLocation ?? ""),
     patch.returnLocation !== undefined && patch.returnLocation !== (current.returnLocation ?? ""),
+    patch.fuelType !== undefined && patch.fuelType !== current.fuelType,
     patch.fuelPickup !== undefined && patch.fuelPickup !== current.fuelPickup,
     patch.damageNotesPickup !== undefined &&
       patch.damageNotesPickup !== (current.damageNotesPickup ?? ""),
@@ -543,6 +631,7 @@ export function pickupChanged(current: Contract, patch: ContractPatch): boolean 
     patch.depositMethod !== undefined && patch.depositMethod !== current.depositMethod,
     patch.paymentCard !== undefined && !sameJson(readCard(current.paymentCard), patch.paymentCard),
     patch.depositCard !== undefined && !sameJson(readCard(current.depositCard), patch.depositCard),
+    patch.paymentCardNumber !== undefined || patch.depositCardNumber !== undefined,
     patch.gdprConsent !== undefined && patch.gdprConsent !== current.gdprConsent,
   ];
   return checks.some(Boolean);
@@ -696,10 +785,13 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     bookingNumber: c.booking.bookingNumber,
     bookingStatus: c.booking.status,
     createdByName: c.createdByName,
-    snapshot: readSnapshot(c.snapshot),
+    snapshot: withRentalOverride(readSnapshot(c.snapshot)),
     drivers,
     pickupLocation: c.pickupLocation ?? "",
     returnLocation: c.returnLocation ?? "",
+    fuelType: (CONTRACT_FUEL_TYPES as readonly string[]).includes(c.fuelType ?? "")
+      ? (c.fuelType as ContractFuelType)
+      : null,
     fuelPickup: c.fuelPickup,
     fuelReturn: c.fuelReturn,
     damageMarks: readMarks(c.damageMarks),
@@ -721,6 +813,8 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     // readCard κρατά ΜΟΝΟ τα 4 επιτρεπτά πεδία.
     paymentCard: readCard(c.paymentCard),
     depositCard: readCard(c.depositCard),
+    // Μόνο ΑΝ υπάρχει πλήρης αριθμός — ποτέ ο ίδιος ο αριθμός.
+    cardNumberSaved: storedCardNumbers(c.cardNumberEnc),
     gdprConsent: c.gdprConsent,
     signedAt: c.signedAt?.toISOString() ?? null,
     completedAt: c.completedAt?.toISOString() ?? null,
@@ -773,6 +867,29 @@ export async function tenantLogoUrl(
   if (!t?.logoPath) return null;
   const urls = await signUrls([t.logoPath], seconds);
   return urls.get(t.logoPath) ?? null;
+}
+
+/**
+ * Τα σημεία παραλαβής/επιστροφής της εταιρίας για το combobox: βασικά
+ * σημεία + ό,τι έχει γραφτεί στα συμβόλαιά της (πιο συχνά πρώτα).
+ */
+export async function tenantLocations(tenantId: string): Promise<string[]> {
+  const [pickup, ret] = await Promise.all([
+    db.contract.groupBy({
+      by: ["pickupLocation"],
+      where: { tenantId, pickupLocation: { not: null } },
+      _count: { _all: true },
+    }),
+    db.contract.groupBy({
+      by: ["returnLocation"],
+      where: { tenantId, returnLocation: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
+  return mergeLocations([
+    ...pickup.map((r) => ({ value: r.pickupLocation, count: r._count._all })),
+    ...ret.map((r) => ({ value: r.returnLocation, count: r._count._all })),
+  ]);
 }
 
 /**
@@ -1086,6 +1203,20 @@ export async function priceBookingExtras(
       total: b.total,
       extras: priced.snapshot as unknown as Prisma.InputJsonValue,
     },
+  };
+}
+
+/** Με νέο πλήρη αριθμό, τα 4 τελευταία ψηφία βγαίνουν ΑΠΟ τον αριθμό. */
+export function withCardNumbers<T extends { paymentCard: CardInfo | null; depositCard: CardInfo | null }>(
+  cards: T,
+  patch: Pick<ContractPatch, "paymentCardNumber" | "depositCardNumber">
+): T {
+  const last4 = (card: CardInfo | null, n: string | null | undefined) =>
+    card && typeof n === "string" ? { ...card, last4: n.slice(-4) } : card;
+  return {
+    ...cards,
+    paymentCard: last4(cards.paymentCard, patch.paymentCardNumber),
+    depositCard: last4(cards.depositCard, patch.depositCardNumber),
   };
 }
 

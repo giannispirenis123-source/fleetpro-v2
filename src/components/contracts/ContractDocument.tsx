@@ -28,6 +28,7 @@ import {
   type ContractDriver,
 } from "@/lib/contracts";
 import { toDisplayBreakdown } from "@/lib/pricing";
+import { withManualRental } from "@/lib/priceOverride";
 import { splitVatInclusive } from "@/lib/invoices";
 import DamageSketch from "./DamageSketch";
 import "./contract-document.css";
@@ -116,11 +117,12 @@ export default function ContractDocument({
   const s = contract.snapshot;
   // Η στρογγυλοποίηση απορροφάται στις γραμμές, όπως στις κρατήσεις: οι
   // γραμμές αθροίζουν ΑΚΡΙΒΩΣ στο σύνολο.
-  // Χειροκίνητη τιμή: οι γραμμές ως έχουν και το τελικό σύνολο όπως ορίστηκε.
-  // Η «Προσαρμογή τιμής» και ποιος/γιατί ΔΕΝ τυπώνονται (μόνο στη φόρμα).
+  // Χειροκίνητο ενοίκιο: «Ενοίκιο» = το χειροκίνητο και σύνολο = ενοίκιο +
+  // πρόσθετα + ασφάλεια − έκπτωση (καμία «Προσαρμογή»)· ποιος/γιατί ΔΕΝ τυπώνονται.
+  const manualRental = s?.priceOverride?.manualRental;
   const money = s
-    ? s.priceOverride
-      ? { ...s.booking, total: s.booking.total, subtotalAdjusted: false }
+    ? manualRental !== undefined
+      ? withManualRental(s.booking, manualRental)
       : toDisplayBreakdown(s.booking)
     : null;
   const vatRate = s?.vatRate ?? fallbackVatRate;
@@ -237,7 +239,11 @@ export default function ContractDocument({
           <h2>{BI.vehicle}</h2>
           <Row label={BI.model} value={s ? `${s.vehicle.brand} ${s.vehicle.model}` : "—"} />
           <Row label={BI.plate} value={v(s?.vehicle.plate)} />
-          <Row label={BI.fuelType} value={FUEL_TYPE_LABEL[s?.vehicle.fuel ?? ""] ?? "—"} />
+          {/* Ο τύπος του συμβολαίου· αν δεν επιλέχθηκε, του οχήματος. */}
+          <Row
+            label={BI.fuelType}
+            value={FUEL_TYPE_LABEL[contract.fuelType ?? s?.vehicle.fuel ?? ""] ?? "—"}
+          />
         </div>
         <div>
           <h2>{BI.pickup}</h2>
@@ -357,7 +363,9 @@ export default function ContractDocument({
               <tbody>
                 <tr>
                   <td>
-                    {BI.rental} · {s.booking.totalDays} {BI.days} × {eur(s.booking.dailyRate)}
+                    {BI.rental} · {s.booking.totalDays} {BI.days}
+                    {/* Χειροκίνητη τιμή: το ενοίκιο δεν είναι πια ημέρες × τιμή. */}
+                    {!s.priceOverride && ` × ${eur(s.booking.dailyRate)}`}
                   </td>
                   <td>{eur(money.subtotal)}</td>
                 </tr>

@@ -7,10 +7,10 @@ import assert from "node:assert/strict";
 import {
   LINK_DAYS_AFTER_RETURN,
   PUBLIC_TOKEN_RE,
-  appBaseUrl,
   linkExpiresAt,
   linkStateOf,
   newPublicToken,
+  PUBLIC_CONTRACT_PATH_RE,
   publicContractUrl,
   publicLinkDTO,
   toPublicContract,
@@ -81,11 +81,22 @@ test("νέο link: διαφορετικό token, άρα το παλιό δεν �
 
 /* ── URL ── */
 
-test("βασικό URL: NEXT_PUBLIC_APP_URL αλλιώς host του αιτήματος", () => {
-  assert.equal(appBaseUrl("https://app.example.com/", "http://localhost:3000"), "https://app.example.com");
-  assert.equal(appBaseUrl("", "https://fleet.vercel.app"), "https://fleet.vercel.app");
-  assert.equal(appBaseUrl("  ", "https://h.example/"), "https://h.example");
+test("link πελάτη: origin όπου δουλεύει ο χρήστης + /c/<token>", () => {
   assert.equal(publicContractUrl("https://a.b/", "TOKEN"), "https://a.b/c/TOKEN");
+  // Βάση = το origin όπου δουλεύει ο χρήστης (production ή preview), όχι env.
+  assert.equal(
+    publicContractUrl("https://fleetpro-abc-giannis4.vercel.app", "T"),
+    "https://fleetpro-abc-giannis4.vercel.app/c/T"
+  );
+});
+
+test("το link ταιριάζει ΑΚΡΙΒΩΣ με τη δημόσια διαδρομή του middleware (/c/<token>)", () => {
+  for (let i = 0; i < 20; i++) {
+    const url = new URL(publicContractUrl("https://app.example.com", newPublicToken()));
+    assert.match(url.pathname, PUBLIC_CONTRACT_PATH_RE);
+  }
+  assert.doesNotMatch("/c/abc/def", PUBLIC_CONTRACT_PATH_RE);
+  assert.doesNotMatch("/dashboard", PUBLIC_CONTRACT_PATH_RE);
 });
 
 /* ── Η δημόσια σελίδα: χωρίς διπλώματα, χωρίς εσωτερικά ids ── */

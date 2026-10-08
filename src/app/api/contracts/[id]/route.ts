@@ -13,14 +13,22 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ok, badRequest, conflict, forbidden, notFound, noContent, serverError } from "@/lib/api";
 import { viewerCan, withPermission } from "@/lib/authz";
-import { decidePriceOverride, type PriceOverride } from "@/lib/priceOverride";
+import {
+  decidePriceOverride,
+  manualRentalOf,
+  toRentalOverride,
+  totalWithRental,
+  type PriceOverride,
+} from "@/lib/priceOverride";
 import { anySigned, licensePathsOf, readDrivers, readPhotos } from "@/lib/contracts";
 import { removeObjects } from "@/lib/storage";
+import { CardKeyError, nextCardNumbersEnc } from "@/lib/cardCrypto";
 import { readExtrasSnapshot } from "@/lib/pricing";
 import {
   CONTRACT_INCLUDE,
   buildSnapshot,
   cardsFor,
+  withCardNumbers,
   extrasLockOf,
   priceBookingExtras,
   refreshSearchText,
@@ -31,6 +39,7 @@ import {
   mergeDrivers,
   pickupChanged,
   priceOverrideOf,
+  pricePartsOf,
   resolveVehicleChanges,
   toContractDTO,
 } from "@/lib/contractForm";
@@ -113,17 +122,20 @@ export const PATCH = withPermission(
         }
       }
 
-      /* ── Χειροκίνητη τιμή (contracts.price) ── */
-      // Από τον client λαμβάνεται ΜΟΝΟ το τελικό ποσό + λόγος. Η διαφορά, η
-      // υπολογισμένη τιμή και ποιος/πότε μπαίνουν εδώ.
+      /* ── Χειροκίνητη τιμή ενοικίου (contracts.price) ── */
+      // Από τον client λαμβάνεται ΜΟΝΟ το ενοίκιο + λόγος. Το σύνολο, το
+      // υπολογισμένο ενοίκιο και ποιος/πότε μπαίνουν εδώ.
       const currentOverride = priceOverrideOf(current.snapshot);
+      // Παλιά μορφή (τελικό σύνολο) → ενοίκιο με τις γραμμές ΠΡΙΝ την αλλαγή.
+      const currentParts = pricePartsOf(current.booking);
+      const currentRental = manualRentalOf(currentOverride, currentParts);
       let nextOverride: PriceOverride | null | undefined; // undefined = καμία αλλαγή
       const requested = patch.priceOverride;
       const changesPrice =
         requested !== undefined &&
         (requested === null
           ? currentOverride !== undefined
-          : requested.total !== currentOverride?.manualTotal ||
+          : requested.rental !== currentRental ||
             (requested.reason ?? "").trim() !== (currentOverride?.reason ?? ""));
       if (changesPrice) {
         const tenant = await db.tenant.findUnique({
@@ -131,17 +143,11 @@ export const PATCH = withPermission(
           select: { roundUpTotal: true },
         });
         // Οι γραμμές ΜΕΤΑ από τυχόν αλλαγή πρόσθετων στο ίδιο αίτημα.
-        const src = bookingUpdate ?? current.booking;
         const decision = decidePriceOverride({
           requested: requested!,
           canPrice: viewerCan(viewer!, "contracts.price"),
           lock: locked ? "signed" : extrasLockOf(readDrivers(current.drivers), current.booking),
-          parts: {
-            subtotal: Number(src.subtotal),
-            extrasTotal: Number(src.extrasTotal),
-            insuranceCost: Number(src.insuranceCost),
-            discountAmount: Number(src.discountAmount),
-          },
+          parts: pricePartsOf(bookingUpdate ?? current.booking),
           roundUpTotal: tenant?.roundUpTotal ?? false,
           actor: { userId: viewer!.userId, userName: session.name },
           now: new Date(),
@@ -155,9 +161,13 @@ export const PATCH = withPermission(
         }
         bookingUpdate = { ...(bookingUpdate ?? {}), total: decision.total };
         nextOverride = decision.override;
-      } else if (currentOverride && bookingUpdate) {
-        // Άλλαξαν τα πρόσθετα: η χειροκίνητη τιμή ΜΕΝΕΙ (η φόρμα προειδοποιεί).
-        bookingUpdate.total = currentOverride.manualTotal;
+      } else if (currentOverride && currentRental !== undefined && bookingUpdate) {
+        // Άλλαξαν τα πρόσθετα: το ΕΝΟΙΚΙΟ μένει χειροκίνητο και το σύνολο
+        // ακολουθεί τα πρόσθετα (ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση).
+        bookingUpdate.total = totalWithRental(pricePartsOf(bookingUpdate), currentRental);
+        if (currentOverride.manualRental === undefined) {
+          nextOverride = toRentalOverride(currentOverride, currentParts);
+        }
       }
 
       /* ── Πάντα επιτρεπτά (εκτός COMPLETED) ── */
@@ -186,6 +196,7 @@ export const PATCH = withPermission(
 
         if (patch.pickupLocation !== undefined) data.pickupLocation = patch.pickupLocation || null;
         if (patch.returnLocation !== undefined) data.returnLocation = patch.returnLocation || null;
+        if (patch.fuelType !== undefined) data.fuelType = patch.fuelType;
         if (patch.fuelPickup !== undefined) data.fuelPickup = patch.fuelPickup;
         if (patch.damageNotesPickup !== undefined) {
           data.damageNotesPickup = patch.damageNotesPickup || null;
@@ -194,12 +205,19 @@ export const PATCH = withPermission(
         if (patch.depositAmount !== undefined) data.depositAmount = patch.depositAmount;
         if (patch.depositMethod !== undefined) data.depositMethod = patch.depositMethod;
         // Στοιχεία κάρτας μόνο με τρόπο «κάρτα»· αλλιώς σβήνονται.
-        const cards = cardsFor(
+        const cards = withCardNumbers(cardsFor(
           patch.paymentMethod !== undefined ? patch.paymentMethod : current.paymentMethod,
           patch.depositMethod !== undefined ? patch.depositMethod : current.depositMethod,
           patch,
           current
+        ), patch);
+        // Πλήρης αριθμός: κρυπτογραφημένος· κάρτα που δεν ισχύει πια → σβήνεται.
+        const cardNumberEnc = nextCardNumbersEnc(
+          current.cardNumberEnc,
+          { payment: patch.paymentCardNumber, deposit: patch.depositCardNumber },
+          { payment: !!cards.paymentCard, deposit: !!cards.depositCard }
         );
+        if (cardNumberEnc !== current.cardNumberEnc) data.cardNumberEnc = cardNumberEnc;
         // Αποθηκεύονται ΜΟΝΟ τα 4 πεδία που επέτρεψε το strict zod schema.
         data.paymentCard = cards.paymentCard
           ? ({ ...cards.paymentCard } as Prisma.InputJsonObject)
@@ -266,6 +284,8 @@ export const PATCH = withPermission(
       });
       return ok({ contract: toContractDTO(fresh), signaturesReset });
     } catch (error) {
+      // Λείπει/λάθος κλειδί κάρτας: καθαρό μήνυμα, τίποτα δεν αποθηκεύτηκε.
+      if (error instanceof CardKeyError) return serverError(error.message);
       console.error(error);
       return serverError();
     }

@@ -27,10 +27,13 @@ export const CONTRACT_STATUS_CLASS: Record<string, string> = {
 export const PAYMENT_METHODS = ["CASH", "CARD", "TRANSFER", "OTHER"] as const;
 export const DEPOSIT_METHODS = ["CASH", "CARD", "CARD_HOLD"] as const;
 export const ID_TYPES = ["ID", "PASSPORT"] as const;
+/** Τύποι καυσίμου που προσφέρει το συμβόλαιο (υποσύνολο του enum FuelType). */
+export const CONTRACT_FUEL_TYPES = ["PETROL", "DIESEL", "ELECTRIC", "HYBRID"] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export type DepositMethod = (typeof DEPOSIT_METHODS)[number];
 export type IdType = (typeof ID_TYPES)[number];
+export type ContractFuelType = (typeof CONTRACT_FUEL_TYPES)[number];
 
 /* ─────────────────────────────────────────────
    Κάρτα — ΜΟΝΟ στοιχεία αναγνώρισης (PCI DSS)
@@ -40,8 +43,8 @@ export const CARD_BRANDS = ["VISA", "MASTERCARD", "OTHER"] as const;
 export type CardBrand = (typeof CARD_BRANDS)[number];
 
 /**
- * Ό,τι αποθηκεύεται για μια κάρτα. ΠΟΤΕ πλήρης αριθμός ή CVV: αυτά
- * περνούν μόνο στο POS.
+ * Ό,τι αποθηκεύεται ΑΝΟΙΧΤΑ για μια κάρτα. Ο πλήρης αριθμός ζει ΜΟΝΟ
+ * κρυπτογραφημένος (contracts.cardNumberEnc, cardCrypto.ts). ΠΟΤΕ CVV.
  */
 export interface CardInfo {
   brand: CardBrand;
@@ -390,9 +393,10 @@ export interface ContractSnapshot {
   /** ΦΠΑ % της εταιρίας τη στιγμή του snapshot (οι τιμές το ΠΕΡΙΕΧΟΥΝ). */
   vatRate?: number;
   /**
-   * Χειροκίνητη τελική τιμή (contracts.price). Όταν υπάρχει, το
-   * booking.total ΕΙΝΑΙ αυτή η τιμή· οι γραμμές μένουν υπολογισμένες.
-   * Ποιος/πότε/γιατί ΜΟΝΟ στη φόρμα — η σελίδα πελάτη παίρνει μόνο το ποσό.
+   * Χειροκίνητη τιμή ενοικίου (contracts.price). Όταν υπάρχει, το
+   * booking.total = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση· οι γραμμές της
+   * κράτησης μένουν υπολογισμένες. Ποιος/πότε/γιατί ΜΟΝΟ στη φόρμα — η
+   * σελίδα πελάτη παίρνει μόνο το ενοίκιο.
    */
   priceOverride?: PriceOverride;
   /** ISO — πότε πάρθηκε. */
@@ -413,7 +417,9 @@ export function readSnapshot(value: unknown): ContractSnapshot | null {
     terms: s.terms ?? { el: "", en: "" },
     vatRate: typeof s.vatRate === "number" ? s.vatRate : undefined,
     priceOverride:
-      s.priceOverride && typeof s.priceOverride === "object" && Number(s.priceOverride.manualTotal) > 0
+      s.priceOverride &&
+      typeof s.priceOverride === "object" &&
+      (Number(s.priceOverride.manualRental) > 0 || Number(s.priceOverride.manualTotal) > 0)
         ? s.priceOverride
         : undefined,
     takenAt: s.takenAt ?? "",
@@ -501,6 +507,8 @@ export interface ContractDTO {
   drivers: ContractDriver[];
   pickupLocation: string;
   returnLocation: string;
+  /** Τύπος καυσίμου του συμβολαίου· null = δεν επιλέχθηκε. */
+  fuelType: ContractFuelType | null;
   fuelPickup: number | null;
   /** ΠΑΛΙΟ — μόνο ανάγνωση σε παλιά συμβόλαια. */
   fuelReturn: number | null;
@@ -517,6 +525,8 @@ export interface ContractDTO {
   depositMethod: DepositMethod | null;
   paymentCard: CardInfo | null;
   depositCard: CardInfo | null;
+  /** Υπάρχει κρυπτογραφημένος πλήρης αριθμός; (ο αριθμός ΔΕΝ είναι ποτέ εδώ) */
+  cardNumberSaved: { payment: boolean; deposit: boolean };
   gdprConsent: boolean;
   signedAt: string | null;
   completedAt: string | null;

@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { CardKeyError } from "@/lib/cardCrypto";
 import { Prisma } from "@prisma/client";
 import { ok, created, badRequest, conflict, forbidden, serverError } from "@/lib/api";
 import { decidePriceOverride, type PriceOverride } from "@/lib/priceOverride";
@@ -229,6 +230,8 @@ export const POST = withPermission(
       const contract = await loadContract(viewer!, result.contractId);
       return created({ id: result.contractId, bookingId: result.bookingId, contract });
     } catch (error) {
+      // Λείπει/λάθος κλειδί κάρτας: καθαρό μήνυμα, τίποτα δεν αποθηκεύτηκε.
+      if (error instanceof CardKeyError) return serverError(error.message);
       console.error(error);
       return serverError();
     }

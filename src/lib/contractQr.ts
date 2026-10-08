@@ -4,15 +4,20 @@
 
 import { headers } from "next/headers";
 import QRCode from "qrcode";
-import { appBaseUrl, publicContractUrl } from "./contractLink";
+import { publicContractUrl } from "./contractLink";
 
-/** NEXT_PUBLIC_APP_URL αν υπάρχει, αλλιώς το host του αιτήματος. */
+/**
+ * Το origin του αιτήματος (το domain που σερβίρει τη σελίδα — production ή
+ * preview). Ίδια βάση με το link της φόρμας (window.location.origin).
+ */
 export function requestBaseUrl(): string {
   const h = headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  // Πίσω από proxy μπορεί να έρθουν πολλά («a, b»): μετρά το πρώτο.
+  const first = (v: string | null) => v?.split(",")[0].trim() || null;
+  const host = first(h.get("x-forwarded-host")) ?? first(h.get("host")) ?? "localhost:3000";
   const proto =
-    h.get("x-forwarded-proto") ?? (/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) ? "http" : "https");
-  return appBaseUrl(process.env.NEXT_PUBLIC_APP_URL, `${proto}://${host}`);
+    first(h.get("x-forwarded-proto")) ?? (/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) ? "http" : "https");
+  return `${proto}://${host}`;
 }
 
 /** Το SVG του QR για ένα token (ή null σε σφάλμα — το Α4 τυπώνεται χωρίς QR). */

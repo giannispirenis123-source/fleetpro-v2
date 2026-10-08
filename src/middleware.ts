@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
+import { PUBLIC_CONTRACT_PATH_RE } from "@/lib/contractLink";
 
 // Routes που δεν χρειάζονται auth
 const PUBLIC_ROUTES = ["/login", "/api/auth/login"];
@@ -19,8 +20,9 @@ const ADMIN_ROUTES = [
 ];
 
 // Η σελίδα πελάτη /c/<token>: ΜΟΝΟ αυτή η διαδρομή (ακριβώς ένα τμήμα,
-// χαρακτήρες base64url) είναι ελεύθερη χωρίς login.
-const PUBLIC_CONTRACT_RE = /^\/c\/[A-Za-z0-9_-]{1,128}$/;
+// χαρακτήρες base64url) είναι ελεύθερη χωρίς login — ο ΙΔΙΟΣ έλεγχος με το
+// link που φτιάχνει η εφαρμογή (contractLink.ts).
+const PUBLIC_CONTRACT_RE = PUBLIC_CONTRACT_PATH_RE;
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

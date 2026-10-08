@@ -46,6 +46,8 @@ import {
   GDPR_TEXT,
   ID_TYPES,
   PAYMENT_METHODS,
+  CONTRACT_FUEL_TYPES,
+  type ContractFuelType,
   allSigned,
   anySigned,
   emptyDriver,
@@ -66,14 +68,14 @@ import {
   licenseLockOf,
   type LicensePhotoDTO,
 } from "@/lib/contracts";
-import { appBaseUrl, publicContractUrl, type PublicLinkDTO } from "@/lib/contractLink";
+import { publicContractUrl, type PublicLinkDTO } from "@/lib/contractLink";
 import { computePrice, toDisplayBreakdown, type PricedExtraInput } from "@/lib/pricing";
 import { splitVatInclusive } from "@/lib/invoices";
 import {
   PRICE_REASON_MAX,
-  adjustmentOf,
+  withManualRental,
   computedTotalOf,
-  validManualTotal,
+  validManualPrice,
 } from "@/lib/priceOverride";
 import { phoneDigits, type CustomerSearchField } from "@/lib/customerMatch";
 import type { ExtraDTO } from "@/lib/extras";
@@ -97,6 +99,13 @@ import {
 } from "@/lib/stagedPhotos";
 import NewContractModal from "../NewContractModal";
 import { WalkInSection, eur, useWalkInDraft, windowValid } from "./WalkInSection";
+import { LocationFields } from "./LocationFields";
+import {
+  groupCardNumber,
+  maskedCardNumber,
+  normalizeCardNumber,
+  type CardKind,
+} from "@/lib/cardNumber";
 import { SuggestList, useCustomerSuggest } from "./CustomerSuggest";
 
 const INTL: Record<string, string> = { el: "el-GR", en: "en-GB" };
@@ -135,6 +144,8 @@ interface FormState {
   drivers: ContractDriver[];
   pickupLocation: string;
   returnLocation: string;
+  /** Τύπος καυσίμου — χωρίς προεπιλογή (null). */
+  fuelType: ContractFuelType | null;
   fuelPickup: number | null;
   damageNotesPickup: string;
   damageNotesReturn: string;
@@ -148,42 +159,59 @@ interface FormState {
   gdprConsent: boolean;
   extraIds: string[];
   /**
-   * Χειροκίνητη τελική τιμή με ΦΠΑ (contracts.price) ή null = υπολογισμένη.
-   * `base` = η υπολογισμένη τιμή όταν ορίστηκε (για την προειδοποίηση).
+   * Χειροκίνητη τιμή ΕΝΟΙΚΙΟΥ με ΦΠΑ (contracts.price) ή null = υπολογισμένη.
+   * Σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση.
+   * `base` = το υπολογισμένο ενοίκιο όταν ορίστηκε (για την προειδοποίηση).
    */
-  price: { total: string; reason: string; base?: number } | null;
+  price: { rental: string; reason: string; base?: number } | null;
 }
 
-/** Κάρτα στη φόρμα — ΜΟΝΟ τα 4 επιτρεπτά πεδία, ποτέ πλήρης αριθμός/CVV. */
+/**
+ * Κάρτα στη φόρμα. `number` = ΝΕΟΣ πλήρης αριθμός που πληκτρολογήθηκε
+ * (κενό = μένει ό,τι υπάρχει)· πάει μόνο στον server, που τον κρυπτογραφεί.
+ * `last4` = τα αποθηκευμένα 4 τελευταία (για τη μάσκα). Ποτέ CVV.
+ */
 interface CardForm {
   brand: string;
+  number: string;
   last4: string;
   holder: string;
   expiry: string;
 }
 
-const emptyCard = (): CardForm => ({ brand: "VISA", last4: "", holder: "", expiry: "" });
-const cardFromDTO = (c: CardInfo | null): CardForm => (c ? { ...c } : emptyCard());
+const emptyCard = (): CardForm => ({ brand: "VISA", number: "", last4: "", holder: "", expiry: "" });
+const cardFromDTO = (c: CardInfo | null): CardForm => (c ? { ...c, number: "" } : emptyCard());
+
+/** Ο νέος πλήρης αριθμός για τον server, μόνο όταν πληκτρολογήθηκε. */
+const cardNumberPayload = (c: CardForm, uses: boolean) =>
+  uses && c.number.trim() ? c.number : undefined;
 
 /** Κενή κάρτα → null. Μερικώς συμπληρωμένη → στέλνεται και την ελέγχει ο server. */
-const cardPayload = (c: CardForm): CardInfo | null =>
-  c.last4.trim() || c.holder.trim() || c.expiry.trim()
+const cardPayload = (c: CardForm): CardInfo | null => {
+  // Με νέο αριθμό, τα 4 τελευταία βγαίνουν από αυτόν (το ίδιο κάνει ο server).
+  const digits = normalizeCardNumber(c.number);
+  const last4 = digits ? digits.slice(-4) : c.last4.trim();
+  return last4 || c.number.trim() || c.holder.trim() || c.expiry.trim()
     ? {
         brand: c.brand as CardInfo["brand"],
-        last4: c.last4.trim(),
+        last4,
         holder: c.holder.trim(),
         expiry: c.expiry.trim(),
       }
     : null;
+};
 
 /** Η κάρτα είναι έγκυρη για αποθήκευση (κενή = εντάξει). */
 const cardValid = (c: CardForm) =>
-  cardPayload(c) === null || (LAST4_RE.test(c.last4) && CARD_EXPIRY_RE.test(c.expiry));
+  cardPayload(c) === null ||
+  ((c.number.trim() ? !!normalizeCardNumber(c.number) : LAST4_RE.test(c.last4)) &&
+    CARD_EXPIRY_RE.test(c.expiry));
 
 const fromContract = (c: ContractDTO): FormState => ({
   drivers: c.drivers,
   pickupLocation: c.pickupLocation,
   returnLocation: c.returnLocation,
+  fuelType: c.fuelType,
   fuelPickup: c.fuelPickup,
   damageNotesPickup: c.damageNotesPickup,
   damageNotesReturn: c.damageNotesReturn,
@@ -196,13 +224,15 @@ const fromContract = (c: ContractDTO): FormState => ({
   depositCard: cardFromDTO(c.depositCard),
   gdprConsent: c.gdprConsent,
   extraIds: [...c.bookingExtraIds].sort(),
-  price: c.snapshot?.priceOverride
-    ? {
-        total: String(c.snapshot.priceOverride.manualTotal),
-        reason: c.snapshot.priceOverride.reason ?? "",
-        base: c.snapshot.priceOverride.computedTotal,
-      }
-    : null,
+  // Το DTO έχει πάντα manualRental (και για την παλιά μορφή «τελικό σύνολο»).
+  price:
+    c.snapshot?.priceOverride?.manualRental !== undefined
+      ? {
+          rental: String(c.snapshot.priceOverride.manualRental),
+          reason: c.snapshot.priceOverride.reason ?? "",
+          base: c.snapshot.priceOverride.computedRental,
+        }
+      : null,
 });
 
 /** Νέο συμβόλαιο: προεπιλογές — μετρητά, εγγύηση χωρίς ποσό, ένας οδηγός. */
@@ -210,6 +240,7 @@ const newForm = (): FormState => ({
   drivers: [emptyDriver(randomId())],
   pickupLocation: "",
   returnLocation: "",
+  fuelType: null,
   fuelPickup: null,
   damageNotesPickup: "",
   damageNotesReturn: "",
@@ -234,6 +265,7 @@ const pickupPart = (f: FormState) =>
     drivers: driverPayload(f.drivers),
     pickupLocation: f.pickupLocation,
     returnLocation: f.returnLocation,
+    fuelType: f.fuelType,
     fuelPickup: f.fuelPickup,
     damageNotesPickup: f.damageNotesPickup,
     paymentMethod: f.paymentMethod,
@@ -241,14 +273,16 @@ const pickupPart = (f: FormState) =>
     depositMethod: f.depositMethod,
     paymentCard: paymentUsesCard(f.paymentMethod) ? cardPayload(f.paymentCard) : null,
     depositCard: depositUsesCard(f.depositMethod) ? cardPayload(f.depositCard) : null,
+    paymentCardNumber: cardNumberPayload(f.paymentCard, paymentUsesCard(f.paymentMethod)),
+    depositCardNumber: cardNumberPayload(f.depositCard, depositUsesCard(f.depositMethod)),
     gdprConsent: f.gdprConsent,
   });
 
 const extrasPart = (f: FormState) => f.extraIds.join(",");
 
-/** Η χειροκίνητη τιμή όπως τη στέλνει ο client: ΜΟΝΟ ποσό + λόγος. */
+/** Η χειροκίνητη τιμή όπως τη στέλνει ο client: ΜΟΝΟ ενοίκιο + λόγος. */
 const pricePayload = (f: FormState) =>
-  f.price ? { total: Number(f.price.total), reason: f.price.reason.trim() } : null;
+  f.price ? { rental: Number(f.price.rental), reason: f.price.reason.trim() } : null;
 const pricePart = (f: FormState) => JSON.stringify(pricePayload(f));
 
 const afterPart = (f: FormState) =>
@@ -263,6 +297,7 @@ const pickupPayload = (f: FormState) => ({
   drivers: driverPayload(f.drivers),
   pickupLocation: f.pickupLocation,
   returnLocation: f.returnLocation,
+  fuelType: f.fuelType,
   fuelPickup: f.fuelPickup,
   damageNotesPickup: f.damageNotesPickup,
   paymentMethod: f.paymentMethod || null,
@@ -270,6 +305,8 @@ const pickupPayload = (f: FormState) => ({
   depositMethod: f.depositMethod || null,
   paymentCard: paymentUsesCard(f.paymentMethod) ? cardPayload(f.paymentCard) : null,
   depositCard: depositUsesCard(f.depositMethod) ? cardPayload(f.depositCard) : null,
+  paymentCardNumber: cardNumberPayload(f.paymentCard, paymentUsesCard(f.paymentMethod)),
+  depositCardNumber: cardNumberPayload(f.depositCard, depositUsesCard(f.depositMethod)),
   gdprConsent: f.gdprConsent,
 });
 
@@ -312,6 +349,9 @@ const toView = (p: StagedPhoto): StagedView => ({
   message: p.message,
 });
 
+/** Υποχρεωτικά πεδία (με αστερίσκο) της φόρμας. */
+type RequiredKey = "name" | "phone" | "dates" | "vehicle";
+
 /** Πεδία του κύριου οδηγού με αναγνώριση πελάτη. */
 const SUGGEST_FIELD: Partial<Record<keyof ContractDriver, CustomerSearchField>> = {
   fullName: "name",
@@ -334,6 +374,7 @@ export default function ContractEditor({
   roundUpTotal,
   can,
   logoUrl,
+  locations,
   walkIn,
 }: {
   /** null = νέο συμβόλαιο (walk-in), πριν την πρώτη αποθήκευση. */
@@ -344,9 +385,12 @@ export default function ContractEditor({
   vatRate: number;
   roundUpTotal: boolean;
   /** price = contracts.price (αλλαγή τελικής τιμής). */
-  can: { edit: boolean; delete: boolean; price: boolean };
+  /** revealCard = Διαχειριστής: βλέπει τον πλήρη αριθμό κάρτας με «Εμφάνιση». */
+  can: { edit: boolean; delete: boolean; price: boolean; revealCard: boolean };
   /** Τρέχον λογότυπο εταιρίας (signed URL) ή null. */
   logoUrl: string | null;
+  /** Σημεία παραλαβής/επιστροφής της εταιρίας (tenantLocations). */
+  locations: string[];
   /** Μόνο στο νέο συμβόλαιο. Κενό `partners` για συνεργάτη. */
   walkIn?: { partners: { id: string; name: string }[]; canOverride: boolean };
 }) {
@@ -493,31 +537,29 @@ export default function ContractEditor({
     };
   }, [isNew, draft.preview, s, extras, extrasDirty, form.extraIds, roundUpTotal, vatRate]);
 
-  /* ── Χειροκίνητη τιμή: οι γραμμές ως έχουν + «Προσαρμογή τιμής» ── */
-  const manualTotal =
-    form.price && validManualTotal(Number(form.price.total)) ? Number(form.price.total) : null;
+  /* ── Χειροκίνητο ενοίκιο: σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση ──
+     Τα πρόσθετα (και στην προεπισκόπηση) αλλάζουν αμέσως το σύνολο. */
+  const manualRental =
+    form.price && validManualPrice(Number(form.price.rental)) ? Number(form.price.rental) : null;
   const shown = money
-    ? manualTotal !== null
-      ? {
-          subtotal: money.parts.subtotal,
-          discountAmount: money.parts.discountAmount,
-          total: manualTotal,
-          adjustment: adjustmentOf(money.parts, manualTotal),
-        }
-      : { ...money.display, adjustment: 0 }
+    ? manualRental !== null
+      ? withManualRental(money.parts, manualRental)
+      : money.display
     : null;
   const savedOverride = contract?.snapshot?.priceOverride;
+  // Το υπολογισμένο ενοίκιο άλλαξε (ημερομηνίες/όχημα) από τότε που ορίστηκε.
   const priceStale =
-    manualTotal !== null &&
+    manualRental !== null &&
     !!money &&
     form.price?.base !== undefined &&
-    Math.abs(form.price.base - money.computed) > 0.004;
+    Math.abs(form.price.base - money.parts.subtotal) > 0.004;
   // Ίδιο κλείδωμα με τα πρόσθετα: υπογραφή / τιμολόγιο / κλειστή κράτηση.
   const priceLock = isNew ? null : locked ? "signed" : contract?.extrasLock ?? null;
   const canChangePrice = can.price && !readOnly && priceLock === null;
   const [priceOpen, setPriceOpen] = useState(false);
-  const [priceDraft, setPriceDraft] = useState({ total: "", reason: "" });
-  const priceDraftValid = validManualTotal(Number(priceDraft.total)) && priceDraft.reason.length <= PRICE_REASON_MAX;
+  const [priceDraft, setPriceDraft] = useState({ rental: "", reason: "" });
+  const priceDraftValid =
+    validManualPrice(Number(priceDraft.rental)) && priceDraft.reason.length <= PRICE_REASON_MAX;
 
   const vat = shown && money ? splitVatInclusive(shown.total, money.vatRate) : null;
   const totalChangedAfterSign =
@@ -586,25 +628,78 @@ export default function ContractEditor({
     }
   };
 
-  /* ── Πρώτη αποθήκευση: πελάτης + κράτηση + συμβόλαιο ── */
+  /* ── Υποχρεωτικά πεδία (με αστερίσκο) ──
+     1ο πάτημα με ελλιπή: ΔΕΝ αποθηκεύει, κοκκινίζει, scroll + focus στο πρώτο.
+     2ο συνεχόμενο πάτημα: αποθηκεύει ούτως ή άλλως. Το κόκκινο κάθε πεδίου
+     φεύγει μόλις συμπληρωθεί. Όχημα/ημερομηνίες μόνο στο νέο (μετά ζουν
+     στην κράτηση)· όνομα/τηλέφωνο όσο τα στοιχεία παραλαβής αλλάζουν. */
   const nameOk = (form.drivers[0]?.fullName ?? "").trim().length > 0;
   const phoneOk = phoneDigits(form.drivers[0]?.phone ?? "").length >= 5;
-  const missing = isNew
-    ? [
-        !nameOk && tr("contracts.missing_name"),
-        !phoneOk && tr("contracts.missing_phone"),
-        !windowValid(draft.win) && tr("contracts.missing_dates"),
-        !draft.vehicleId && tr("contracts.missing_vehicle"),
-      ].filter((x): x is string => !!x)
-    : [];
+  const missingReq = (
+    [
+      !pickupReadOnly && !nameOk && "name",
+      !pickupReadOnly && !phoneOk && "phone",
+      isNew && !windowValid(draft.win) && "dates",
+      isNew && !draft.vehicleId && "vehicle",
+    ] as const
+  ).filter((x): x is RequiredKey => !!x);
+  const [showRequired, setShowRequired] = useState(false);
+  const [requiredWarned, setRequiredWarned] = useState(false);
+  const requiredError = (k: RequiredKey) =>
+    showRequired && missingReq.includes(k) ? tr(`contracts.required_${k}`) : undefined;
   const changesIncomplete = form.vehicleChanges.some((c) => !c.vehicleId || !c.date);
-  const canCreate =
-    isNew &&
-    missing.length === 0 &&
-    draft.ready &&
-    !cardsInvalid &&
-    !changesIncomplete &&
-    (!draft.hasConflict || canOverride);
+
+  /** Κάθε πάτημα «Αποθήκευση» περνά από εδώ. */
+  const attemptSave = (run: () => void) => {
+    if (missingReq.length > 0 && !requiredWarned) {
+      setRequiredWarned(true);
+      setShowRequired(true);
+      setError("");
+      // Οι ενότητες με υποχρεωτικά (οδηγός, όχημα & ημερομηνίες) είναι πάντα
+      // ανοιχτές· scroll + focus στο πρώτο κενό πεδίο του πρώτου που λείπει.
+      requestAnimationFrame(() => {
+        const box = document.querySelector<HTMLElement>(`[data-required="${missingReq[0]}"]`);
+        if (!box) return;
+        const inputs = box.matches("input")
+          ? [box as HTMLInputElement]
+          : Array.from(box.querySelectorAll<HTMLInputElement>("input:not([disabled])"));
+        const target = inputs.find((i) => !i.value) ?? inputs[0];
+        box.scrollIntoView({ behavior: "smooth", block: "center" });
+        target?.focus({ preventScroll: true });
+      });
+      return;
+    }
+    if (cardsInvalid || changesIncomplete) {
+      setError(tr("contracts.fixBeforeSave"));
+      return;
+    }
+    run();
+  };
+  const requiredDone = () => {
+    setShowRequired(false);
+    setRequiredWarned(false);
+  };
+
+  /* ── «Εμφάνιση» πλήρους αριθμού κάρτας (μόνο Διαχειριστής) ── */
+  const revealFor = (kind: CardKind) =>
+    can.revealCard && contract?.cardNumberSaved[kind]
+      ? async (): Promise<string | null> => {
+          try {
+            const res = await fetch(`/api/contracts/${contract.id}/card-number?kind=${kind}`, {
+              cache: "no-store",
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setError(body.message || tr("contracts.errorConnection"));
+              return null;
+            }
+            return body.data.number as string;
+          } catch {
+            setError(tr("contracts.errorConnection"));
+            return null;
+          }
+        }
+      : undefined;
 
   /* ── Staged φωτογραφίες: προσθήκη/αφαίρεση πριν την αποθήκευση ── */
   const stage = (target: StageTarget) => (blob: Blob, takenAt: string) =>
@@ -679,6 +774,11 @@ export default function ContractEditor({
 
   const create = async (opts: { override?: boolean; allowDuplicate?: boolean } = {}) => {
     if (busy || !isNew) return;
+    // Η κράτηση δεν γίνεται χωρίς όχημα και ημερομηνίες — ούτε «ούτως ή άλλως».
+    if (!windowValid(draft.win) || !draft.vehicleId) {
+      setError(tr("contracts.needVehicleDates"));
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
@@ -714,6 +814,7 @@ export default function ContractEditor({
       setPhotos(next.damagePhotos);
       setLicenses(next.licensePhotos);
       setDuplicates(null);
+      requiredDone();
       // Η ίδια φόρμα μένει ανοιχτή· μόνο η διεύθυνση γίνεται του συμβολαίου.
       window.history.replaceState(null, "", `/dashboard/contracts/${next.id}`);
       // Οι φωτογραφίες ανεβαίνουν ΤΩΡΑ (υπάρχει contractId). Οδηγοί που δεν
@@ -761,6 +862,7 @@ export default function ContractEditor({
       }
       setContract(data.data.contract);
       setForm(fromContract(data.data.contract));
+      requiredDone();
       setNotice(data.data.signaturesReset ? tr("contracts.signaturesWereReset") : tr("contracts.saved"));
       router.refresh();
     } catch {
@@ -951,7 +1053,7 @@ export default function ContractEditor({
   useEffect(() => setOrigin(window.location.origin), []);
   const linkUrl =
     link && link.state === "active" && link.token && origin
-      ? publicContractUrl(appBaseUrl(process.env.NEXT_PUBLIC_APP_URL, origin), link.token)
+      ? publicContractUrl(origin, link.token)
       : null;
 
   const copyLink = async () => {
@@ -1110,8 +1212,29 @@ export default function ContractEditor({
       {/* ── Όχημα, ημερομηνίες, τιμή ── */}
       <section className="dash-panel dash-contract-section">
         <h2 className="dash-section-title">{tr("contracts.vehicleAndDates")}</h2>
+        <LocationFields
+          pickup={form.pickupLocation}
+          ret={form.returnLocation}
+          returnSame={returnSame}
+          locations={locations}
+          disabled={pickupReadOnly}
+          onPickup={setPickupLocation}
+          onReturn={(v) => {
+            // Χειροκίνητη αλλαγή της επιστροφής: δεν είναι πια «ίδιο σημείο».
+            setReturnSame(false);
+            set("returnLocation", v);
+          }}
+          onReturnSame={(same) => {
+            setReturnSame(same);
+            if (same) set("returnLocation", form.pickupLocation);
+          }}
+        />
         {isNew ? (
-          <WalkInSection draft={draft} canOverride={canOverride} />
+          <WalkInSection
+            draft={draft}
+            canOverride={canOverride}
+            requiredErrors={{ dates: requiredError("dates"), vehicle: requiredError("vehicle") }}
+          />
         ) : (
           <>
             <p className="dash-contract-vehicle">
@@ -1136,7 +1259,9 @@ export default function ContractEditor({
           <div className="dash-contract-money">
             <div className="dash-contract-line">
               <span>
-                {tr("contracts.rental")} · {money.totalDays} × {eur(money.dailyRate, locale)}
+                {tr("contracts.rental")} · {money.totalDays}
+                {/* Χειροκίνητη τιμή: το ενοίκιο δεν είναι πια ημέρες × τιμή. */}
+                {manualRental !== null ? ` ${tr("bookings.days")}` : ` × ${eur(money.dailyRate, locale)}`}
               </span>
               <span>{eur(shown.subtotal, locale)}</span>
             </div>
@@ -1166,20 +1291,10 @@ export default function ContractEditor({
                 <span>−{eur(shown.discountAmount, locale)}</span>
               </div>
             )}
-            {/* Μόνο στη φόρμα: η διαφορά ώστε οι γραμμές = τελικό σύνολο. */}
-            {manualTotal !== null && shown.adjustment !== 0 && (
-              <div className="dash-contract-line dash-price-adjust">
-                <span>{tr("contracts.priceAdjustment")}</span>
-                <span>
-                  {shown.adjustment > 0 ? "+" : "−"}
-                  {eur(Math.abs(shown.adjustment), locale)}
-                </span>
-              </div>
-            )}
             <div className="dash-contract-line dash-contract-total">
               <span>
                 {tr("contracts.total")}
-                {manualTotal !== null && (
+                {manualRental !== null && (
                   <span className="dash-status dash-status--warn dash-price-tag">{tr("contracts.manualPrice")}</span>
                 )}
               </span>
@@ -1196,19 +1311,17 @@ export default function ContractEditor({
             </p>
 
             {/* ── Αλλαγή τιμής (contracts.price) ── */}
-            {manualTotal !== null && savedOverride && !priceDirty && (
+            {manualRental !== null && savedOverride && !priceDirty && (
               <p className="dash-form-note dash-price-who">
                 {tr("contracts.priceSetBy")} {savedOverride.userName || "—"}
                 {savedOverride.at &&
                   ` · ${new Date(savedOverride.at).toLocaleString(INTL[locale] ?? "el-GR", { timeZone: "Europe/Athens" })}`}
-                {savedOverride.computedTotal !== undefined &&
-                  ` · ${tr("contracts.priceComputedWas")} ${eur(savedOverride.computedTotal, locale)}`}
                 {savedOverride.reason && ` · ${savedOverride.reason}`}
               </p>
             )}
             {priceStale && (
               <div className="dash-contract-warn">
-                <AlertTriangle size={15} /> {tr("contracts.priceStale")} ({eur(money.computed, locale)})
+                <AlertTriangle size={15} /> {tr("contracts.priceStale")} ({eur(money.parts.subtotal, locale)})
                 {canChangePrice && (
                   <button type="button" className="dash-link-btn" onClick={() => set("price", null)}>
                     {tr("contracts.priceReset")}
@@ -1228,7 +1341,7 @@ export default function ContractEditor({
                   className="dash-btn dash-btn--sm"
                   onClick={() => {
                     setPriceDraft({
-                      total: form.price?.total ?? shown.total.toFixed(2),
+                      rental: form.price?.rental ?? shown.subtotal.toFixed(2),
                       reason: form.price?.reason ?? "",
                     });
                     setPriceOpen(true);
@@ -1247,14 +1360,14 @@ export default function ContractEditor({
               <div className="dash-card-box dash-price-box">
                 <div className="dash-form-grid">
                   <label className="dash-field">
-                    {tr("contracts.priceFinal")}
+                    {tr("contracts.priceRental")}
                     <input
                       type="number"
                       inputMode="decimal"
                       min="0.01"
                       step="0.01"
-                      value={priceDraft.total}
-                      onChange={(e) => setPriceDraft((d) => ({ ...d, total: e.target.value }))}
+                      value={priceDraft.rental}
+                      onChange={(e) => setPriceDraft((d) => ({ ...d, rental: e.target.value }))}
                     />
                   </label>
                   <label className="dash-field dash-field--wide">
@@ -1266,7 +1379,7 @@ export default function ContractEditor({
                     />
                   </label>
                 </div>
-                {priceDraft.total !== "" && !validManualTotal(Number(priceDraft.total)) && (
+                {priceDraft.rental !== "" && !validManualPrice(Number(priceDraft.rental)) && (
                   <span className="dash-field-error">{tr("contracts.priceInvalid")}</span>
                 )}
                 <div className="dash-price-actions">
@@ -1276,9 +1389,9 @@ export default function ContractEditor({
                     disabled={!priceDraftValid}
                     onClick={() => {
                       set("price", {
-                        total: Number(priceDraft.total).toFixed(2),
+                        rental: Number(priceDraft.rental).toFixed(2),
                         reason: priceDraft.reason.trim(),
-                        base: money.computed,
+                        base: money.parts.subtotal,
                       });
                       setPriceOpen(false);
                     }}
@@ -1344,6 +1457,7 @@ export default function ContractEditor({
               ) : null
             }
             onBlurField={suggest.close}
+            requiredErrors={{ fullName: requiredError("name"), phone: requiredError("phone") }}
             signed={!!savedDrivers.find((d) => d.id === main.id)?.signature}
             license={licenseBlock(main.id)}
           />
@@ -1548,6 +1662,7 @@ export default function ContractEditor({
             value={form.paymentCard}
             disabled={pickupReadOnly}
             onChange={(v) => set("paymentCard", v)}
+            onReveal={revealFor("payment")}
           />
         )}
         {depositUsesCard(form.depositMethod) && (
@@ -1556,53 +1671,40 @@ export default function ContractEditor({
             value={form.depositCard}
             disabled={pickupReadOnly}
             onChange={(v) => set("depositCard", v)}
+            onReveal={revealFor("deposit")}
           />
         )}
       </Collapsible>
 
-      {/* ── Τόπος & καύσιμο (κλειστή) ── */}
+      {/* ── Τύπος & καύσιμα (κλειστή) ── */}
       <Collapsible
         title={tr("contracts.placeAndFuel")}
-        summary={[form.pickupLocation, form.fuelPickup !== null ? `${fuelWord} ${form.fuelPickup}/8` : ""]
+        summary={[
+          form.fuelType ? tr(`fuelType.${form.fuelType}`) : "",
+          form.fuelPickup !== null ? `${fuelWord} ${form.fuelPickup}/8` : "",
+        ]
           .filter(Boolean)
           .join(" · ")}
         open={!!open.place}
         onToggle={() => toggle("place")}
       >
-        <div className="dash-form-grid">
-          <label className="dash-field">
-            {tr("contracts.pickupLocation")}
-            <input
-              value={form.pickupLocation}
+        <span className="dash-field-label">{tr("contracts.fuelTypeLabel")}</span>
+        {/* Χωρίς προεπιλογή: ένα κλικ επιλέγει, κλικ σε άλλο αλλάζει. */}
+        <div className="dash-fueltype" role="radiogroup" aria-label={tr("contracts.fuelTypeLabel")}>
+          {CONTRACT_FUEL_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="radio"
+              aria-checked={form.fuelType === t}
               disabled={pickupReadOnly}
-              maxLength={200}
-              onChange={(e) => setPickupLocation(e.target.value)}
-            />
-          </label>
-          {!returnSame && (
-            <label className="dash-field">
-              {tr("contracts.returnLocation")}
-              <input
-                value={form.returnLocation}
-                disabled={pickupReadOnly}
-                maxLength={200}
-                onChange={(e) => set("returnLocation", e.target.value)}
-              />
-            </label>
-          )}
+              className={`dash-fuel-step ${form.fuelType === t ? "current" : ""}`}
+              onClick={() => set("fuelType", t)}
+            >
+              {tr(`fuelType.${t}`)}
+            </button>
+          ))}
         </div>
-        <label className="dash-field dash-field--check">
-          <input
-            type="checkbox"
-            checked={returnSame}
-            disabled={pickupReadOnly}
-            onChange={(e) => {
-              setReturnSame(e.target.checked);
-              if (e.target.checked) set("returnLocation", form.pickupLocation);
-            }}
-          />
-          {tr("contracts.returnSamePlace")}
-        </label>
         <span className="dash-field-label">
           {fuelWord} · {tr("contracts.atPickup")}
         </span>
@@ -1894,20 +1996,29 @@ export default function ContractEditor({
       {/* ── Μπάρα αποθήκευσης ── */}
       {isNew ? (
         <div className="dash-savebar">
-          <span>{missing.length > 0 ? `${tr("contracts.missing")} ${missing.join(", ")}` : tr("contracts.readyToSave")}</span>
+          {requiredWarned && missingReq.length > 0 ? (
+            <span className="dash-required-warn">{tr("contracts.requiredWarn")}</span>
+          ) : (
+            <span>{tr("contracts.readyToSave")}</span>
+          )}
           {draft.hasConflict ? (
             canOverride && (
               <button
                 type="button"
                 className="dash-btn dash-btn--danger"
-                disabled={busy || !canCreate}
-                onClick={() => create({ override: true })}
+                disabled={busy}
+                onClick={() => attemptSave(() => create({ override: true }))}
               >
                 {busy ? tr("contracts.saving") : tr("bookings.conflictApprove")}
               </button>
             )
           ) : (
-            <button type="button" className="dash-btn dash-btn--primary" disabled={busy || !canCreate} onClick={() => create()}>
+            <button
+              type="button"
+              className="dash-btn dash-btn--primary"
+              disabled={busy}
+              onClick={() => attemptSave(() => create())}
+            >
               <Save size={16} /> {busy ? tr("contracts.saving") : tr("contracts.save")}
             </button>
           )}
@@ -1916,15 +2027,23 @@ export default function ContractEditor({
         !readOnly &&
         dirty && (
           <div className="dash-savebar">
-            <span>{tr("contracts.unsaved")}</span>
-            <button className="dash-btn" disabled={busy} onClick={() => contract && setForm(fromContract(contract))}>
+            {requiredWarned && missingReq.length > 0 ? (
+              <span className="dash-required-warn">{tr("contracts.requiredWarn")}</span>
+            ) : (
+              <span>{tr("contracts.unsaved")}</span>
+            )}
+            <button
+              className="dash-btn"
+              disabled={busy}
+              onClick={() => {
+                if (!contract) return;
+                setForm(fromContract(contract));
+                setReturnSame(contract.returnLocation === contract.pickupLocation);
+              }}
+            >
               {tr("contracts.discard")}
             </button>
-            <button
-              className="dash-btn dash-btn--primary"
-              disabled={busy || changesIncomplete || cardsInvalid}
-              onClick={() => save()}
-            >
+            <button className="dash-btn dash-btn--primary" disabled={busy} onClick={() => attemptSave(() => save())}>
               <Save size={16} /> {busy ? tr("contracts.saving") : tr("contracts.save")}
             </button>
           </div>
@@ -2060,6 +2179,7 @@ function DriverCard({
   onBlurField,
   signed,
   license,
+  requiredErrors,
 }: {
   driver: ContractDriver;
   index: number;
@@ -2073,12 +2193,16 @@ function DriverCard({
   onBlurField?: () => void;
   signed: boolean;
   license: ReactNode;
+  /** Μήνυμα ανά υποχρεωτικό πεδίο που λείπει (κόκκινο) — μόνο κύριος οδηγός. */
+  requiredErrors?: Partial<Record<"fullName" | "phone", string>>;
 }) {
   const tr = useT();
   const locale = useLocale();
   const expiring = licenseExpiresBeforeReturn(d.licenseExpiry, returnDate);
   // Υποχρεωτικά ΜΟΝΟ όνομα και τηλέφωνο του κύριου οδηγού.
   const required = index === 0;
+  const requiredOf = (key: string) =>
+    key === "fullName" || key === "phone" ? requiredErrors?.[key] : undefined;
 
   const input = (
     key: "fullName" | "phone" | "email" | "idNumber" | "licenseNumber" | "address" | "country",
@@ -2094,9 +2218,13 @@ function DriverCard({
         disabled={disabled}
         maxLength={extra.max ?? 200}
         autoComplete="off"
+        className={requiredOf(key) ? "dash-invalid" : undefined}
+        aria-invalid={requiredOf(key) ? true : undefined}
+        data-required={key === "fullName" ? "name" : key === "phone" ? "phone" : undefined}
         onChange={(e) => onChange(key, e.target.value)}
         onBlur={onBlurField}
       />
+      {requiredOf(key) && <span className="dash-field-error">{requiredOf(key)}</span>}
       {suggestFor?.(key)}
     </label>
   );
@@ -2177,15 +2305,22 @@ function CardFields({
   value,
   disabled,
   onChange,
+  onReveal,
 }: {
   title: string;
   value: CardForm;
   disabled: boolean;
   onChange: (v: CardForm) => void;
+  /** Μόνο Διαχειριστής με αποθηκευμένο πλήρη αριθμό: φέρνει τον αριθμό από τον server. */
+  onReveal?: () => Promise<string | null>;
 }) {
   const tr = useT();
   const set = (k: keyof CardForm, v: string) => onChange({ ...value, [k]: v });
-  const last4Bad = value.last4 !== "" && !LAST4_RE.test(value.last4);
+  const numberBad = value.number.trim() !== "" && !normalizeCardNumber(value.number);
+  // Ο πλήρης αριθμός ζει ΜΟΝΟ στη μνήμη του component όσο είναι «Εμφάνιση».
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  useEffect(() => setRevealed(null), [value.last4]);
   const expiryBad = value.expiry !== "" && !CARD_EXPIRY_RE.test(value.expiry);
 
   return (
@@ -2203,18 +2338,37 @@ function CardFields({
           </select>
         </label>
         <label className="dash-field">
-          {tr("contracts.cardLast4")}
+          {tr("contracts.cardNumber")}
           <input
             inputMode="numeric"
             autoComplete="off"
-            maxLength={4}
-            placeholder="1234"
-            value={value.last4}
+            maxLength={23}
+            // Υπάρχουσα κάρτα: μάσκα με τα 4 τελευταία· κενό πεδίο = μένει ως έχει.
+            placeholder={value.last4 ? maskedCardNumber(value.last4) : "1234 5678 9012 3456"}
+            value={value.number}
             disabled={disabled}
-            // Μόνο ψηφία, το πολύ 4: ο πλήρης αριθμός δεν χωρά ποτέ εδώ.
-            onChange={(e) => set("last4", e.target.value.replace(/\D/g, "").slice(0, 4))}
+            // Ψηφία, κενά και παύλες· ο server κρατά μόνο τα ψηφία (13–19).
+            onChange={(e) => set("number", e.target.value.replace(/[^\d\s-]/g, "").slice(0, 23))}
           />
-          {last4Bad && <span className="dash-field-error">{tr("contracts.cardLast4Error")}</span>}
+          {numberBad && <span className="dash-field-error">{tr("contracts.cardNumberError")}</span>}
+          {onReveal && !value.number && (
+            <span className="dash-card-reveal">
+              <span className="dash-card-full">{revealed ? groupCardNumber(revealed) : maskedCardNumber(value.last4)}</span>
+              <button
+                type="button"
+                className="dash-link-btn"
+                disabled={revealing}
+                onClick={async () => {
+                  if (revealed) return setRevealed(null);
+                  setRevealing(true);
+                  setRevealed(await onReveal());
+                  setRevealing(false);
+                }}
+              >
+                {revealed ? tr("contracts.cardHide") : tr("contracts.cardShow")}
+              </button>
+            </span>
+          )}
         </label>
         <label className="dash-field">
           {tr("contracts.cardHolder")}

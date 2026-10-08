@@ -501,6 +501,9 @@ model Contract {
 
   pickupLocation String?
   returnLocation String?
+  // Τύπος καυσίμου που δηλώθηκε στο συμβόλαιο (χωρίς προεπιλογή· null =
+  // δεν επιλέχθηκε — το Α4 δείχνει τότε του οχήματος). Κλειδώνει με την υπογραφή.
+  fuelType       FuelType?
   // Καύσιμο / μπαταρία σε όγδοα: 0–8.
   fuelPickup     Int?
   // ΠΑΛΙΟ: το καύσιμο παράδοσης δεν καταγράφεται πια. Μένει για τα παλιά
@@ -525,10 +528,14 @@ model Contract {
   paymentMethod String? // CASH | CARD | TRANSFER | OTHER
   depositAmount Decimal? @db.Decimal(10, 2)
   depositMethod String? // CASH | CARD | CARD_HOLD
-  // Στοιχεία κάρτας ΜΟΝΟ για αναγνώριση: { brand, last4, holder, expiry }.
-  // ΠΟΤΕ πλήρης αριθμός ή CVV (PCI DSS).
+  // Στοιχεία κάρτας για αναγνώριση: { brand, last4, holder, expiry }.
+  // Ο πλήρης αριθμός ΜΟΝΟ κρυπτογραφημένος (cardNumberEnc). ΠΟΤΕ CVV.
   paymentCard   Json?
   depositCard   Json?
+  // Πλήρης αριθμός κάρτας ΚΡΥΠΤΟΓΡΑΦΗΜΕΝΟΣ (AES-256-GCM, κλειδί
+  // CARD_ENCRYPTION_KEY): JSON { payment?, deposit? } — βλ. src/lib/cardCrypto.ts.
+  // Αποκρυπτογραφείται μόνο στον server, μόνο για COMPANY_ADMIN. Ποτέ CVV.
+  cardNumberEnc String? @db.Text
 
   // Κανονικοποιημένο κείμενο αναζήτησης (πεζά, χωρίς τόνους/κενά/σύμβολα),
   // ξαναϋπολογίζεται από τον server σε κάθε αλλαγή. GIN trigram index.

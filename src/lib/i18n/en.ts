@@ -826,6 +826,21 @@ export const en: Dictionary = {
     errorTooLarge: "The photo is too large to upload.",
     errorType: "Only JPEG, PNG or WebP images are allowed.",
     errorConnection: "Connection error",
+    open: "Open photo",
+    moveUp: "Up",
+    moveDown: "Down",
+    previous: "Previous",
+    next: "Next",
+  },
+
+  vehiclePhotos: {
+    title: "Photos",
+    main: "Main",
+    none: "No photo",
+    saveFirst: "Save the vehicle first to add photos (up to 10).",
+    viewOnly: "Only the Admin can add, delete or reorder photos.",
+    errorCloudinary: "Upload to Cloudinary failed. Please try again.",
+    errorOrder: "Reordering failed",
   },
 
   reports: {

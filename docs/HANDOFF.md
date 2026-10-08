@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 08/10/2026 · **main:** `14ab7da` (merge του PR #17 — αποστολή συμβολαίου στον πελάτη). Πριν: `6b054e6` (merge #16). Σειρά: `d30c20d` (#11) → `27ede67` (#12) → `9276dd3` (#13) → `3e611ea` (#14) → `f9b78b6` (#15) → `6b054e6` (#16) → `14ab7da` (#17). **SQL `15`, `16`, `17` έχουν τρέξει** (επόμενος ελεύθερος `18`). **Ανοιχτό:** branch `claude/ios-camera-fix` — «Κάμερα»/«Συλλογή» σε iPhone (χωρίς SQL, χωρίς νέο env).
+**Ημερομηνία:** 08/10/2026 · **main:** `1124541` (merge του PR #18 — κάμερα σε iPhone). Σειρά: `d30c20d` (#11) → `27ede67` (#12) → `9276dd3` (#13) → `3e611ea` (#14) → `f9b78b6` (#15) → `6b054e6` (#16) → `14ab7da` (#17) → `1124541` (#18). **SQL `15`, `16`, `17` έχουν τρέξει.** **Ανοιχτό:** branch `claude/vehicle-photos` — φωτογραφίες οχήματος με Cloudinary (§5), **θέλει SQL `18`** και τα 3 env `CLOUDINARY_*` (§3) **πριν το merge** (επόμενος ελεύθερος `19`).
 
 > **Επόμενο βήμα:** Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
@@ -37,6 +37,9 @@ Push πριν το SQL = σπασμένη παραγωγή (ο κώδικας ζ
 | `CARD_ENCRYPTION_KEY` | Κλειδί AES-256-GCM για τον πλήρη αριθμό κάρτας: 32 τυχαία bytes σε base64 (`openssl rand -base64 32`). Χωρίς αυτό η αποθήκευση **πλήρους αριθμού** αποτυγχάνει με καθαρό μήνυμα· όλα τα άλλα δουλεύουν. **Ποτέ αλλαγή/απώλεια** μετά τη χρήση: οι αποθηκευμένοι αριθμοί δεν θα αποκρυπτογραφούνται. | Vercel (Production + Preview) |
 | `RESEND_API_KEY` | Κλειδί του Resend για την «Αποστολή στον πελάτη» (email + PDF). Χωρίς αυτό η αποστολή απαντά 500 με καθαρό μήνυμα και **δεν** μετρά στο όριο 5/ώρα· όλα τα άλλα δουλεύουν. Το πακέτο `resend` θέλει **Node 20+**. | Vercel (Production + Preview) |
 | `EMAIL_FROM` | Αποστολέας, σήμερα `onboarding@resend.dev` (το Resend στέλνει τότε **μόνο** στο email του λογαριασμού Resend). Για πραγματικούς πελάτες: επαλήθευση δικού σας domain στο Resend και αλλαγή εδώ. Κενό → `onboarding@resend.dev`. | Vercel (Production + Preview) |
+| `CLOUDINARY_CLOUD_NAME` | Το cloud name του λογαριασμού Cloudinary (Dashboard → Product Environment). Φωτογραφίες οχημάτων. Δεκτό και το παλιό `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` ως εφεδρικό. | Vercel (Production + Preview) |
+| `CLOUDINARY_API_KEY` | API key του Cloudinary (Settings → API Keys). Το παίρνει και ο browser μέσα στην υπογραφή — δεν είναι μυστικό. | Vercel (Production + Preview) |
+| `CLOUDINARY_API_SECRET` | API secret του Cloudinary — **μόνο server**, ποτέ `NEXT_PUBLIC_`. Υπογράφει τα ανεβάσματα και σβήνει εικόνες. Χωρίς τα 3 `CLOUDINARY_*`: οι φωτογραφίες οχημάτων απαντούν 503 με καθαρό μήνυμα· όλα τα άλλα δουλεύουν. | Vercel (Production + Preview) |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Διαβάζονται **μόνο** από το `prisma/seed.ts` — η εφαρμογή δεν τα χρειάζεται | τοπικά, αν τρέξει το seed |
 | `SUPABASE_URL` | Η διεύθυνση του project, **ακριβώς `https://<ref>.supabase.co`** (χωρίς διαδρομή). Supabase → Project Settings → API (Data API) → Project URL | Vercel (όλα τα environments) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Κλειδί **μόνο για τον server** (Storage). Supabase → Project Settings → API Keys → `service_role` (legacy, `eyJ…`) **ή** ένα νέο Secret key (`sb_secret_…`) — δουλεύουν και τα δύο. **Ποτέ** με πρόθεμα `NEXT_PUBLIC_`, ποτέ στον client | Vercel (όλα τα environments) |
@@ -278,9 +281,19 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - **PDF** (`src/lib/contractPdf.ts`): `pdf-lib` + `@pdf-lib/fontkit`, DejaVu Sans κανονική/έντονη ως subset (`src/lib/pdfFonts.ts`, base64 — χωρίς ανάγνωση αρχείου στο Vercel), **χωρίς headless browser**, ~20–30 KB. Ίδια στοιχεία με το Α4 (print), μία στήλη, ετικέτα/τιμή με ξεχωριστή αναδίπλωση, αρίθμηση σελίδων, υπογραφές (PNG). Φωτογραφίες ζημιών **όχι** — μόνο πλήθος και σημείωση ότι είναι στο link· αντί για QR γράφεται το link.
   - **Ασφάλεια:** κάρτα μόνο «Visa •••• 1234» (χωρίς κάτοχο/λήξη)· ο πλήρης αριθμός δεν φτάνει καν στο DTO. Επιπλέον **κάθε** κείμενο του PDF/email περνά από `stripCardNumbers` (σειρές 13+ ψηφίων, και με κενά/παύλες/τελείες → «[•••]»). Τα console logs γράφουν μόνο κωδικούς (π.χ. `validation_error`), ποτέ email πελάτη ή κάρτα· στο `emailSendLog` το email είναι μασκαρισμένο (`m***@example.com`).
 
+- **Φωτογραφίες οχήματος (branch `claude/vehicle-photos`, Cloudinary):**
+  - Έως **10** ανά όχημα· **κύρια = η πρώτη**. Σειρά με κουμπιά «Πάνω/Κάτω» (δουλεύουν σε κινητό, χωρίς drag). Στον Στόλο: κύρια φωτογραφία στην κάρτα (ή placeholder «Χωρίς φωτογραφία») — πάτημα = gallery + lightbox για **όλους** (Admin/Staff/Partner). Στη φόρμα επεξεργασίας: ενότητα «Φωτογραφίες» (σε νέο όχημα: «Αποθήκευσε πρώτα»).
+  - **Μόνο COMPANY_ADMIN** ανεβάζει/σβήνει/αλλάζει σειρά (`fleet.edit` **και** ρόλος στον server)· Staff/Partner μόνο βλέπουν.
+  - **Signed upload:** `POST /api/vehicles/[id]/photos/sign` (ρόλος, εταιρία, όριο) → `signature`, `timestamp`, `folder`, `api_key` → ο browser ανεβάζει **απευθείας** στο Cloudinary (με πρόοδο) → `POST /api/vehicles/[id]/photos { publicId, version, format }`: ο server δέχεται μόνο publicId μέσα στον φάκελο `fleetpro/{companyId}/vehicles/{vehicleId}`, φτιάχνει **ο ίδιος** το URL και ξαναελέγχει το όριο στο **ίδιο** `UPDATE … WHERE jsonb_array_length < 10` (αν γέμισε στο μεταξύ, σβήνει την εικόνα από το Cloudinary και απαντά 409). `PATCH { order }` = νέα σειρά (μόνο αν η στήλη δεν άλλαξε στο μεταξύ), `DELETE …/photos/[photoId]` = πρώτα Cloudinary, μετά βάση (αν αποτύχει το Cloudinary, μένει). Διαγραφή οχήματος (ήπια) → σβήνονται όλες από το Cloudinary.
+  - **Επαναχρήση:** το κοινό `PhotoManager` (νέα προαιρετικά props `upload`, `onMove`, `onOpen`, `thumb`, `mainLabel`), η συμπίεση στον browser (JPEG, 1600px, 0,85, και HEIC), τα κουμπιά `<label>` + κρυμμένο input του PR #18, το `sendPhoto` (πρόοδος). Το πακέτο `cloudinary` (υπήρχε ήδη) για υπογραφή και διαγραφή — **δεν υπήρχε άλλη ενσωμάτωση Cloudinary** στον κώδικα.
+  - Μικρογραφίες με transformations `f_auto,q_auto,c_limit,w_<πλάτος>` (κάρτα 400/640/960, πλέγμα 400, lightbox 1600).
+  - Αρχεία: `src/lib/vehiclePhotos.ts` (καθαρή λογική + μηνύματα, `tests/vehicle-photos.test.mjs`), `src/lib/cloudinary.ts`, `src/lib/vehiclePhotoServer.ts`, `src/components/photos/VehiclePhotos.tsx`, `PhotoLightbox.tsx`.
+  - Logs: μόνο ονόματα μεταβλητών που λείπουν και σύντομοι κωδικοί — ποτέ κλειδιά/υπογραφές.
+  - **Δημόσιο site κρατήσεων δεν υπάρχει ακόμη** (§8.8): όταν φτιαχτεί, η κάρτα οχήματος παίρνει την κύρια με `mainPhotoUrl(vehicle.photos)` + `cloudinaryThumb(url, πλάτος)` (το DTO δίνει ήδη `photos` χωρίς `publicId`).
+
 ## 6. Migrations
 
-Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
@@ -289,6 +302,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - **12-contracts-update:** έχει τρέξει (verification `3 | 1 | 1`).
 - **13-contract-photos:** έχει τρέξει (verification `3 | 0`). `contracts."damagePhotos"` (JSONB, default `[]`), `"damageNotesPickup"`, `"damageNotesReturn"` (TEXT).
 - **14-contract-branding-link:** έχει τρέξει (verification `1 | 2 | 1`).
+- **18-vehicle-photos: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/vehicle-photos`). `vehicles."photos" JSONB NOT NULL DEFAULT '[]'` = `[{ id, url, publicId, order }]`. Η παλιά `vehicles."images" TEXT[]` (μόνο URLs, χωρίς publicId/σειρά — δεν ταιριάζει) **μένει**· ό,τι https URL έχει μεταφέρεται μία φορά στο `photos` (publicId από URL του Cloudinary, αλλιώς `null`). Idempotent. Αναμενόμενο verification `1 | <οχήματα με φωτογραφίες> | 0`. Τοπικά (PostgreSQL, `01 → 18`): δύο εκτελέσεις χωρίς σφάλμα, μεταφορά δοκιμασμένη.
 - **17-contract-email-sent: έχει τρέξει** (επιβεβαίωση Giannis, 08/10/2026). `contracts."emailSentAt" TIMESTAMP(3)`, `"emailSentTo" TEXT` (nullable), `"emailSendLog" JSONB NOT NULL DEFAULT '[]'`. Idempotent. Αναμενόμενο verification `3 | 1`.
 - **16-contract-card-number: έχει τρέξει** (επιβεβαίωση Giannis, 08/10/2026). `contracts."cardNumberEnc" TEXT` (nullable). Αναμενόμενο verification `1 | 1` (η 2η στήλη ελέγχει ότι έτρεξε το `15`). Τοπικά (PostgreSQL, `01 → 16`): «empty migration», idempotent.
 - **15-contract-fuel-type: έχει τρέξει** (επιβεβαίωση Giannis, 08/10/2026). `contracts."fuelType" "FuelType"` (nullable). Αναμενόμενο verification `1 | 2`. Τοπικά (PostgreSQL, `01 → 15`): «empty migration».
@@ -313,6 +327,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🟠 Πριν την πραγματική χρήση | **Καθάρισμα demo κωδικών/δεδομένων** (demo εταιρία «Fleet-Pro Car Rental», demo χρήστες/κρατήσεις/συμβόλαια). Μέχρι τότε οι demo/Super Admin κωδικοί μένουν ως έχουν. |
 | 🟠 Αδοκίμαστα στην παραγωγή | Μετονομασία tenant (§5), δεύτερος Διαχειριστής, link πελάτη `/c/[token]` + QR (πλέον από το domain της εφαρμογής, χωρίς env), κάμερα σε iPhone (φωτογραφίες ζημιών/διπλώματος — διόρθωση στο branch `claude/ios-camera-fix`, δοκιμή μόνο σε Chromium με εξομοίωση iPhone, **όχι σε πραγματικό iPhone**). |
 | 🟠 Αδοκίμαστα στην παραγωγή | **Αποστολή στον πελάτη:** πραγματική παράδοση μέσω Resend δεν δοκιμάστηκε (τα tests χρησιμοποιούν mock). Με `EMAIL_FROM=onboarding@resend.dev` το Resend δέχεται **μόνο** τον email του λογαριασμού Resend ως παραλήπτη — για πελάτες χρειάζεται επαληθευμένο domain. |
+| 🟠 Αδοκίμαστα στην παραγωγή | **Φωτογραφίες οχήματος:** πραγματικό ανέβασμα/διαγραφή στο Cloudinary δεν δοκιμάστηκε (τοπικά με mock του Cloudinary· όλα τα υπόλοιπα — ρόλοι, εταιρία, όριο, σειρά, lightbox — δοκιμασμένα σε Chromium με εξομοίωση iPhone). |
 | 🟡 Χαμηλή | Παλιό branch `claude/graphify-setup-install-hwt5im` στο GitHub — να σβηστεί. |
 | 🟠 PCI DSS | Με αποθήκευση πλήρους αριθμού κάρτας η εταιρία μπαίνει σε πλήρες πεδίο PCI DSS (κρυπτογράφηση ✅, ρόλος ✅· απομένουν: διαχείριση/εναλλαγή κλειδιού, καταγραφή κάθε «Εμφάνισης» σε audit log, πολιτική διαγραφής μετά το τέλος της ενοικίασης). |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
@@ -329,7 +344,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 3. ~~**Αναφορές**~~ — ✅ ολοκληρώθηκε (§5).
 4. **Τιμολόγια: email** — το `invoiceSendMode = AUTO` και το πεδίο `Invoice.sentAt` υπάρχουν, η αποστολή όχι.
 5. **Τιμολόγια: PDF** — σήμερα μόνο εκτύπωση από browser.
-6. ~~**Φωτογραφίες ζημιών**~~ — ✅ με Supabase Storage (§5). Το `documents[]` και το πακέτο `cloudinary` μένουν αχρησιμοποίητα.
+6. ~~**Φωτογραφίες ζημιών**~~ — ✅ με Supabase Storage (§5). ~~**Φωτογραφίες οχημάτων**~~ — ✅ με Cloudinary (§5, branch `claude/vehicle-photos`). Το `documents[]` μένει αχρησιμοποίητο.
 7. **Billing / Stripe** — συνδρομές εταιριών. Οι εκπτώσεις συνδρομών (`PlatformDiscount`) υπάρχουν ήδη· το billing θα εφαρμόζει την ενεργή με `platformDiscountStatus` + `discountedPrice`.
 8. **Δημόσιο site κρατήσεων** — το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
 
@@ -337,7 +352,9 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
-| _(branch `claude/ios-camera-fix`)_ | «Κάμερα»/«Συλλογή» σε iPhone: `<label>` + οπτικά κρυμμένο input αντί για `hidden` + `click()`, δεκτά αρχεία χωρίς τύπο με κατάληξη εικόνας (`isImageFile` + tests), JPEG 0,85. Χωρίς SQL |
+| _(branch `claude/vehicle-photos`)_ | Φωτογραφίες οχήματος με Cloudinary: signed upload, έως 10, κύρια = πρώτη, «Πάνω/Κάτω», gallery + lightbox, μόνο Admin αλλάζει, διαγραφή και από Cloudinary (και με τη διαγραφή οχήματος). Migration `18` + env `CLOUDINARY_*` + `tests/vehicle-photos.test.mjs` |
+| `1124541` | Merge του PR #18 (κάμερα σε iPhone) |
+| _(PR #18, `claude/ios-camera-fix`)_ | «Κάμερα»/«Συλλογή» σε iPhone: `<label>` + οπτικά κρυμμένο input αντί για `hidden` + `click()`, δεκτά αρχεία χωρίς τύπο με κατάληξη εικόνας (`isImageFile` + tests), JPEG 0,85. Χωρίς SQL |
 | `14ab7da` | Merge του PR #17 (αποστολή συμβολαίου στον πελάτη: email + PDF). Migration `17` |
 | _(PR #17, `claude/contract-email-send`)_ | «Αποστολή στον πελάτη»: email (Resend) στον κύριο οδηγό με link πελάτη και PDF (`pdf-lib` + DejaVu subset, χωρίς Chromium), ΕΛ/EN, μόνο Διαχειριστής/Προσωπικό, όριο 5/ώρα, κάρτα μόνο •••• 1234 + αφαίρεση 13+ ψηφίων από ελεύθερο κείμενο. Migration `17` (έχει τρέξει) + `tests/contract-email.test.mjs` |
 | `6b054e6` | Merge του PR #16 (4 commits: `3c9f4f5` handoff, `f27af09` τοποθεσίες + τύπος καυσίμου, `baa5e83` επιστροφή/κάρτα/υποχρεωτικά, `e58d61f` χειροκίνητο ενοίκιο + link πελάτη). Migrations `15`, `16` |

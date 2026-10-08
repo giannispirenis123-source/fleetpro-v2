@@ -19,9 +19,25 @@ export const MAX_DAMAGE_PHOTOS = 20;
 
 /** Συμπίεση στον client. */
 export const PHOTO_MAX_SIDE = 1600;
-export const PHOTO_JPEG_QUALITY = 0.8;
+export const PHOTO_JPEG_QUALITY = 0.85;
 
 export const PHOTO_NOTE_MAX = 200;
+
+/** Καταλήξεις εικόνας (και του iPhone: HEIC/HEIF) — για αρχεία χωρίς τύπο. */
+const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i;
+
+/**
+ * Δεκτό αρχείο για «Κάμερα»/«Συλλογή»: τύπος image/*, Ή κενός/γενικός τύπος
+ * (το iOS δίνει συχνά κενό file.type, π.χ. σε HEIC) με κατάληξη εικόνας, Ή
+ * κενός τύπος χωρίς όνομα (φωτογραφία κάμερας). Ό,τι περνά εδώ μετατρέπεται
+ * σε JPEG στον browser (compressImage)· αν δεν διαβάζεται, βγαίνει μήνυμα.
+ */
+export function isImageFile(file: { type: string; name: string }): boolean {
+  const type = (file.type || "").toLowerCase();
+  if (type.startsWith("image/")) return true;
+  if (type && type !== "application/octet-stream") return false;
+  return !file.name || IMAGE_EXT_RE.test(file.name);
+}
 
 /** Μία φωτογραφία όπως τη βλέπει η οθόνη. */
 export interface PhotoItem {

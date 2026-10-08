@@ -816,6 +816,7 @@ export const en: Dictionary = {
     limitReached: "Photo limit reached; some were not added.",
     saveFirst: "Save the damage first to add photos.",
     errorRead: "Could not read the image. Try JPEG or PNG.",
+    notImage: "Some files are not images and were skipped.",
     errorUpload: "Upload failed. Please try again.",
     errorDelete: "Delete failed",
     errorSave: "Save failed",

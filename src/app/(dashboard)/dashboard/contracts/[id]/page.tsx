@@ -4,6 +4,7 @@ import { ADMIN_ROLE } from "@/lib/adminRole";
 import { db } from "@/lib/db";
 import { loadContract, refreshDraftSnapshot, tenantLocations, tenantLogoUrl } from "@/lib/contractForm";
 import { toExtraDTO } from "@/lib/extras";
+import { canSendContractEmail } from "@/lib/contractEmailSend";
 import ContractEditor from "./ContractEditor";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export default async function ContractPage({ params }: { params: { id: string } 
 
   await refreshDraftSnapshot(viewer, params.id);
 
-  const [contract, vehicles, extras, tenant, logoUrl, locations] = await Promise.all([
+  const [contract, vehicles, extras, tenant, logoUrl, locations, emailSent] = await Promise.all([
     loadContract(viewer, params.id),
     // Για την αλλαγή οχήματος: μόνο τα ενεργά οχήματα του στόλου.
     db.vehicle.findMany({
@@ -34,6 +35,11 @@ export default async function ContractPage({ params }: { params: { id: string } 
     }),
     tenantLogoUrl(session.tenantId!),
     tenantLocations(session.tenantId!),
+    // Τελευταία αποστολή στον πελάτη (email + PDF).
+    db.contract.findFirst({
+      where: { id: params.id, tenantId: session.tenantId },
+      select: { emailSentAt: true, emailSentTo: true },
+    }),
   ]);
   if (!contract) notFound();
 
@@ -52,12 +58,19 @@ export default async function ContractPage({ params }: { params: { id: string } 
       roundUpTotal={tenant?.roundUpTotal ?? false}
       logoUrl={logoUrl}
       locations={locations}
+      emailSent={
+        emailSent?.emailSentAt
+          ? { sentAt: emailSent.emailSentAt.toISOString(), sentTo: emailSent.emailSentTo ?? "" }
+          : null
+      }
       can={{
         edit: viewerCan(viewer, "contracts.edit"),
         delete: viewerCan(viewer, "contracts.delete"),
         price: viewerCan(viewer, "contracts.price"),
         // Πλήρης αριθμός κάρτας: ΜΟΝΟ Διαχειριστής εταιρίας.
         revealCard: viewer.role === ADMIN_ROLE,
+        // Αποστολή στον πελάτη: Διαχειριστής και Προσωπικό, όχι συνεργάτης.
+        sendEmail: canSendContractEmail(viewer.role),
       }}
     />
   );

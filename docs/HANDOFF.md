@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 06/10/2026 · **main:** `f9b78b6` (PR #15, squash — επιλογή οχήματος με αναζήτηση + χειροκίνητη τελική τιμή). Σειρά: `d30c20d` (#11) → `27ede67` (#12) → `9276dd3` (#13) → `3e611ea` (#14) → `f9b78b6` (#15). **Τελευταίο SQL που έχει τρέξει στη Supabase: `14`.** Το branch `claude/handoff-docs-update-7s4x3u` (PR #16) φέρνει τα **`15-contract-fuel-type`** και **`16-contract-card-number`** (δεν έχουν τρέξει ακόμα — πρέπει να τρέξουν, με τη σειρά, πριν το merge) και θέλει το νέο env **`CARD_ENCRYPTION_KEY`** στο Vercel. Επόμενος ελεύθερος: `17`.
+**Ημερομηνία:** 06/10/2026 · **main:** `f9b78b6` (PR #15, squash — επιλογή οχήματος με αναζήτηση + χειροκίνητη τελική τιμή). Σειρά: `d30c20d` (#11) → `27ede67` (#12) → `9276dd3` (#13) → `3e611ea` (#14) → `f9b78b6` (#15). **Τελευταίο SQL που έχει τρέξει στη Supabase: `14`.** Το branch `claude/handoff-docs-update-7s4x3u` (PR #16) φέρνει τα **`15-contract-fuel-type`** και **`16-contract-card-number`** (δεν έχουν τρέξει ακόμα — πρέπει να τρέξουν, με τη σειρά, πριν το merge) και θέλει το νέο env **`CARD_ENCRYPTION_KEY`** στο Vercel. Το branch `claude/contract-email-send` (PR πάνω στο #16) φέρνει την **«Αποστολή στον πελάτη»** (email + PDF, Resend) με το **`17-contract-email-sent`**, που **έχει ήδη τρέξει** στη Supabase, και τα env **`RESEND_API_KEY`**/**`EMAIL_FROM`** (ήδη στο Vercel). Επόμενος ελεύθερος: `18`.
 
 > **Επόμενο βήμα:** Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
@@ -35,6 +35,8 @@ Push πριν το SQL = σπασμένη παραγωγή (ο κώδικας ζ
 | `DIRECT_URL` | Απευθείας σύνδεση (πόρτα 5432) — το ζητά το `schema.prisma` | Vercel + `.env.local` |
 | `JWT_SECRET` | Υπογραφή JWT (≥32 χαρακτήρες· χωρίς αυτό η εφαρμογή σταματά) | Vercel + `.env.local` |
 | `CARD_ENCRYPTION_KEY` | Κλειδί AES-256-GCM για τον πλήρη αριθμό κάρτας: 32 τυχαία bytes σε base64 (`openssl rand -base64 32`). Χωρίς αυτό η αποθήκευση **πλήρους αριθμού** αποτυγχάνει με καθαρό μήνυμα· όλα τα άλλα δουλεύουν. **Ποτέ αλλαγή/απώλεια** μετά τη χρήση: οι αποθηκευμένοι αριθμοί δεν θα αποκρυπτογραφούνται. | Vercel (Production + Preview) |
+| `RESEND_API_KEY` | Κλειδί του Resend για την «Αποστολή στον πελάτη» (email + PDF). Χωρίς αυτό η αποστολή απαντά 500 με καθαρό μήνυμα και **δεν** μετρά στο όριο 5/ώρα· όλα τα άλλα δουλεύουν. Το πακέτο `resend` θέλει **Node 20+**. | Vercel (Production + Preview) |
+| `EMAIL_FROM` | Αποστολέας, σήμερα `onboarding@resend.dev` (το Resend στέλνει τότε **μόνο** στο email του λογαριασμού Resend). Για πραγματικούς πελάτες: επαλήθευση δικού σας domain στο Resend και αλλαγή εδώ. Κενό → `onboarding@resend.dev`. | Vercel (Production + Preview) |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | Διαβάζονται **μόνο** από το `prisma/seed.ts` — η εφαρμογή δεν τα χρειάζεται | τοπικά, αν τρέξει το seed |
 | `SUPABASE_URL` | Η διεύθυνση του project, **ακριβώς `https://<ref>.supabase.co`** (χωρίς διαδρομή). Supabase → Project Settings → API (Data API) → Project URL | Vercel (όλα τα environments) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Κλειδί **μόνο για τον server** (Storage). Supabase → Project Settings → API Keys → `service_role` (legacy, `eyJ…`) **ή** ένα νέο Secret key (`sb_secret_…`) — δουλεύουν και τα δύο. **Ποτέ** με πρόθεμα `NEXT_PUBLIC_`, ποτέ στον client | Vercel (όλα τα environments) |
@@ -265,6 +267,13 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - **Ασφάλεια:** το middleware αφήνει ελεύθερη **μόνο** τη διαδρομή `/c/<ένα τμήμα base64url>` και βάζει `X-Robots-Tag: noindex`, `Cache-Control: no-store`, `Referrer-Policy: no-referrer`· επιπλέον meta robots/referrer.
   - **Γνωστό όριο:** τα signed URLs της Supabase περιέχουν τη διαδρομή του αρχείου, άρα στα `src` των εικόνων φαίνονται `tenantId`/`contractId`. Στα δεδομένα/κείμενο της σελίδας δεν υπάρχει κανένα id.
   - **QR στο Α4:** μικρό QR (20mm) δίπλα στις υπογραφές, μόνο με ενεργό link — SVG στον server με το πακέτο `qrcode` (`src/lib/contractQr.ts`).
+- **Αποστολή στον πελάτη (email + PDF, branch `claude/contract-email-send`):**
+  - Ενότητα «Αποστολή στον πελάτη» στη φόρμα, **μόνο για COMPANY_ADMIN και STAFF** (όχι PARTNER — και ο server απαντά 403). Κουμπί ενεργό μόνο σε SIGNED/COMPLETED **και** με email κύριου οδηγού **και** ενεργό link· αλλιώς ανενεργό με τον λόγο («Λείπει email πελάτη» κ.λπ.). Δίπλα επιλογή γλώσσας: προτείνεται από τη χώρα του κύριου οδηγού (κενή ή Ελλάδα → ελληνικά, αλλιώς αγγλικά). Μετά: «Στάλθηκε στο <email> στις <ώρα>» και «Αποστολή ξανά».
+  - `POST /api/contracts/[id]/email { lang }` (`contracts.view` + ρόλος, `contractScope`). Η ροή ζει στο `src/lib/contractEmailSend.ts` με εγχυόμενες εξαρτήσεις (βάση/Resend/PDF) ώστε να ελέγχεται πλήρως από τα tests. Σειρά: 403 ρόλος → 404 → 409 χωρίς υπογραφή → 400 χωρίς email → 409 ανενεργό link → 500 χωρίς `RESEND_API_KEY` (δεν μετρά) → 429 όριο → PDF → Resend (502 σε άρνηση του παρόχου).
+  - **Όριο 5 προσπάθειες/συμβόλαιο/ώρα** (μετρούν και οι αποτυχημένες προς το Resend): ατομικό `UPDATE … WHERE (πλήθος τελευταίας ώρας) < 5 RETURNING` στο `contracts."emailSendLog"`, οπότε δύο ταυτόχρονα κλικ δεν περνούν το όριο. Όλες οι εγγραφές με raw SQL **χωρίς** αλλαγή `updatedAt`. Σε επιτυχία `emailSentAt`/`emailSentTo`.
+  - Email: θέμα/κείμενο ΕΛ ή EN (`src/lib/contractEmail.ts`), link `/c/<token>` (ίδιο origin με το QR, `requestBaseUrl`), συνημμένο `contract-<κωδικός>.pdf`.
+  - **PDF** (`src/lib/contractPdf.ts`): `pdf-lib` + `@pdf-lib/fontkit`, DejaVu Sans κανονική/έντονη ως subset (`src/lib/pdfFonts.ts`, base64 — χωρίς ανάγνωση αρχείου στο Vercel), **χωρίς headless browser**, ~20–30 KB. Ίδια στοιχεία με το Α4 (print), μία στήλη, ετικέτα/τιμή με ξεχωριστή αναδίπλωση, αρίθμηση σελίδων, υπογραφές (PNG). Φωτογραφίες ζημιών **όχι** — μόνο πλήθος και σημείωση ότι είναι στο link· αντί για QR γράφεται το link.
+  - **Ασφάλεια:** κάρτα μόνο «Visa •••• 1234» (χωρίς κάτοχο/λήξη)· ο πλήρης αριθμός δεν φτάνει καν στο DTO. Επιπλέον **κάθε** κείμενο του PDF/email περνά από `stripCardNumbers` (σειρές 13+ ψηφίων, και με κενά/παύλες/τελείες → «[•••]»). Τα console logs γράφουν μόνο κωδικούς (π.χ. `validation_error`), ποτέ email πελάτη ή κάρτα· στο `emailSendLog` το email είναι μασκαρισμένο (`m***@example.com`).
 
 ## 6. Migrations
 
@@ -277,6 +286,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - **12-contracts-update:** έχει τρέξει (verification `3 | 1 | 1`).
 - **13-contract-photos:** έχει τρέξει (verification `3 | 0`). `contracts."damagePhotos"` (JSONB, default `[]`), `"damageNotesPickup"`, `"damageNotesReturn"` (TEXT).
 - **14-contract-branding-link:** έχει τρέξει (verification `1 | 2 | 1`).
+- **17-contract-email-sent: έχει τρέξει** (σύμφωνα με τον Giannis, πριν το push). `contracts."emailSentAt" TIMESTAMP(3)`, `"emailSentTo" TEXT` (nullable), `"emailSendLog" JSONB NOT NULL DEFAULT '[]'`. Idempotent. Αναμενόμενο verification `3 | 1`.
 - **16-contract-card-number: ΔΕΝ έχει τρέξει ακόμα** (μετά το `15`). `contracts."cardNumberEnc" TEXT` (nullable). Αναμενόμενο verification `1 | 1` (η 2η στήλη ελέγχει ότι έτρεξε το `15`). Τοπικά (PostgreSQL, `01 → 16`): «empty migration», idempotent.
 - **15-contract-fuel-type: ΔΕΝ έχει τρέξει ακόμα.** `contracts."fuelType" "FuelType"` (nullable). Αναμενόμενο verification `1 | 2`. Τοπικά (PostgreSQL, `01 → 15`): «empty migration».
 - **Επιλογή οχήματος + χειροκίνητη τιμή (PR #15): κανένα νέο SQL.** Το `contracts.price` είναι κλειδί στο JSON δικαιωμάτων των χρηστών (χωρίς backfill)· το ιστορικό τιμής ζει στο υπάρχον `contracts.snapshot`.
@@ -299,6 +309,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🔴 Υψηλή | **Rotate** κωδικού Supabase DB και `JWT_SECRET` — παλιές τιμές υπάρχουν στο git history. |
 | 🟠 Πριν την πραγματική χρήση | **Καθάρισμα demo κωδικών/δεδομένων** (demo εταιρία «Fleet-Pro Car Rental», demo χρήστες/κρατήσεις/συμβόλαια). Μέχρι τότε οι demo/Super Admin κωδικοί μένουν ως έχουν. |
 | 🟠 Αδοκίμαστα στην παραγωγή | Μετονομασία tenant (§5), δεύτερος Διαχειριστής, link πελάτη `/c/[token]` + QR (πλέον από το domain της εφαρμογής, χωρίς env), κάμερα σε iPhone (φωτογραφίες ζημιών/διπλώματος). |
+| 🟠 Αδοκίμαστα στην παραγωγή | **Αποστολή στον πελάτη:** πραγματική παράδοση μέσω Resend δεν δοκιμάστηκε (τα tests χρησιμοποιούν mock). Με `EMAIL_FROM=onboarding@resend.dev` το Resend δέχεται **μόνο** τον email του λογαριασμού Resend ως παραλήπτη — για πελάτες χρειάζεται επαληθευμένο domain. |
 | 🟡 Χαμηλή | Παλιό branch `claude/graphify-setup-install-hwt5im` στο GitHub — να σβηστεί. |
 | 🟠 PCI DSS | Με αποθήκευση πλήρους αριθμού κάρτας η εταιρία μπαίνει σε πλήρες πεδίο PCI DSS (κρυπτογράφηση ✅, ρόλος ✅· απομένουν: διαχείριση/εναλλαγή κλειδιού, καταγραφή κάθε «Εμφάνισης» σε audit log, πολιτική διαγραφής μετά το τέλος της ενοικίασης). |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
@@ -323,6 +334,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
+| _(branch `claude/contract-email-send`)_ | «Αποστολή στον πελάτη»: email (Resend) στον κύριο οδηγό με link πελάτη και PDF (`pdf-lib` + DejaVu subset, χωρίς Chromium), ΕΛ/EN, μόνο Διαχειριστής/Προσωπικό, όριο 5/ώρα, κάρτα μόνο •••• 1234 + αφαίρεση 13+ ψηφίων από ελεύθερο κείμενο. Migration `17` (έχει τρέξει) + `tests/contract-email.test.mjs` |
 | _(branch, PR #16, 2ο commit)_ | Χειροκίνητη τιμή = **τιμή ενοικίου**· σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση (`totalWithRental`/`withManualRental`/`manualRentalOf` + tests), συμβατό με τα παλιά συμβόλαια. Link πελάτη/QR από το origin της εφαρμογής, όχι από `NEXT_PUBLIC_APP_URL`· ίδιος έλεγχος διαδρομής με το middleware (`PUBLIC_CONTRACT_PATH_RE` + test). Χωρίς SQL |
 | _(branch, PR #16)_ | Επιστροφή πάντα επεξεργάσιμη· χειροκίνητη τιμή χωρίς «Προσαρμογή» (απορρόφηση στο ενοίκιο, `withManualTotal` + test)· πλήρης αριθμός κάρτας κρυπτογραφημένος (AES-256-GCM, `cardCrypto.ts`/`cardNumber.ts` + tests, «Εμφάνιση» μόνο COMPANY_ADMIN)· υποχρεωτικά σε κόκκινο με 2ο πάτημα «ούτως ή άλλως». Migration `16` |
 | `f27af09` | Τοποθεσίες παραλαβής/επιστροφής (combobox, `LocationFields.tsx`, `contractLocations.ts` + tests) + τύπος καυσίμου (`contracts.fuelType`). Migration `15` |

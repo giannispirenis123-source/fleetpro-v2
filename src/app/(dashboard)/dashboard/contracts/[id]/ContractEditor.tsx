@@ -38,6 +38,7 @@ import {
   Ban,
   FileSignature,
   UserCheck,
+  Mail,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -69,6 +70,7 @@ import {
   type LicensePhotoDTO,
 } from "@/lib/contracts";
 import { publicContractUrl, type PublicLinkDTO } from "@/lib/contractLink";
+import { isEmail, suggestEmailLang, type EmailLang } from "@/lib/contractEmail";
 import { computePrice, toDisplayBreakdown, type PricedExtraInput } from "@/lib/pricing";
 import { splitVatInclusive } from "@/lib/invoices";
 import {
@@ -376,6 +378,7 @@ export default function ContractEditor({
   logoUrl,
   locations,
   walkIn,
+  emailSent = null,
 }: {
   /** null = νέο συμβόλαιο (walk-in), πριν την πρώτη αποθήκευση. */
   initialContract: ContractDTO | null;
@@ -386,13 +389,16 @@ export default function ContractEditor({
   roundUpTotal: boolean;
   /** price = contracts.price (αλλαγή τελικής τιμής). */
   /** revealCard = Διαχειριστής: βλέπει τον πλήρη αριθμό κάρτας με «Εμφάνιση». */
-  can: { edit: boolean; delete: boolean; price: boolean; revealCard: boolean };
+  /** sendEmail = Διαχειριστής/Προσωπικό: «Αποστολή στον πελάτη». */
+  can: { edit: boolean; delete: boolean; price: boolean; revealCard: boolean; sendEmail?: boolean };
   /** Τρέχον λογότυπο εταιρίας (signed URL) ή null. */
   logoUrl: string | null;
   /** Σημεία παραλαβής/επιστροφής της εταιρίας (tenantLocations). */
   locations: string[];
   /** Μόνο στο νέο συμβόλαιο. Κενό `partners` για συνεργάτη. */
   walkIn?: { partners: { id: string; name: string }[]; canOverride: boolean };
+  /** Τελευταία επιτυχής αποστολή στον πελάτη (email + PDF). */
+  emailSent?: { sentAt: string; sentTo: string } | null;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -418,6 +424,11 @@ export default function ContractEditor({
   const [licenses, setLicenses] = useState<LicensePhotoDTO[]>(initialContract?.licensePhotos ?? []);
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkMsg, setLinkMsg] = useState("");
+  const [lastEmail, setLastEmail] = useState(emailSent);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailLang, setEmailLang] = useState<EmailLang>(() =>
+    suggestEmailLang(initialContract?.drivers[0]?.country)
+  );
   // Κλειστές ενότητες: όλες κλειστές από προεπιλογή.
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const toggle = (key: string) => setOpen((o) => ({ ...o, [key]: !o[key] }));
@@ -1105,6 +1116,42 @@ export default function ContractEditor({
       setError(tr("contracts.errorConnection"));
     } finally {
       setLinkBusy(false);
+    }
+  };
+
+  /* ── Αποστολή στον πελάτη (email + PDF) ── */
+  // Ίδιοι έλεγχοι με τον server· ο server αποφασίζει πάντα.
+  const customerEmail = contract?.drivers[0]?.email.trim() ?? "";
+  const emailBlock: string | null = !contract
+    ? null
+    : contract.status === "DRAFT"
+      ? tr("contracts.emailNotSigned")
+      : !isEmail(customerEmail)
+        ? tr("contracts.emailMissing")
+        : link?.state !== "active"
+          ? tr("contracts.emailLinkInactive")
+          : null;
+
+  const sendEmail = async () => {
+    if (!contract || emailBlock) return;
+    setEmailBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/contracts/${contract.id}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lang: emailLang }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || tr("contracts.errorSave"));
+        return;
+      }
+      setLastEmail({ sentAt: data.data.sentAt, sentTo: data.data.sentTo });
+    } catch {
+      setError(tr("contracts.errorConnection"));
+    } finally {
+      setEmailBusy(false);
     }
   };
 
@@ -1980,6 +2027,54 @@ export default function ContractEditor({
             )}
           </div>
           {linkMsg && <span className="dash-count">{linkMsg}</span>}
+        </section>
+      )}
+
+      {/* ── Αποστολή στον πελάτη (Διαχειριστής/Προσωπικό) ── */}
+      {contract && can.sendEmail && (
+        <section className="dash-panel dash-contract-section">
+          <h2 className="dash-section-title">
+            <Mail size={17} /> {tr("contracts.emailTitle")}
+          </h2>
+          <p className="dash-form-note">{tr("contracts.emailNote")}</p>
+          <div className="dash-link-actions">
+            <button
+              type="button"
+              className="dash-btn dash-btn--primary"
+              disabled={emailBusy || Boolean(emailBlock)}
+              title={emailBlock ?? undefined}
+              onClick={sendEmail}
+            >
+              <Mail size={16} />{" "}
+              {emailBusy
+                ? tr("contracts.emailSending")
+                : lastEmail
+                  ? tr("contracts.emailResend")
+                  : tr("contracts.emailSend")}
+            </button>
+            <label className="dash-field dash-field--inline">
+              <select
+                aria-label={tr("contracts.emailLang")}
+                value={emailLang}
+                disabled={emailBusy}
+                onChange={(e) => setEmailLang(e.target.value === "en" ? "en" : "el")}
+              >
+                <option value="el">{tr("contracts.emailLang_el")}</option>
+                <option value="en">{tr("contracts.emailLang_en")}</option>
+              </select>
+            </label>
+          </div>
+          {emailBlock && <p className="dash-form-note dash-required-warn">{emailBlock}</p>}
+          {lastEmail && (
+            <p className="dash-alert-ok">
+              {tr("contracts.emailSentTo")} {lastEmail.sentTo} {tr("contracts.emailSentAt")}{" "}
+              {new Date(lastEmail.sentAt).toLocaleString(INTL[locale] ?? "el-GR", {
+                timeZone: "Europe/Athens",
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
+            </p>
+          )}
         </section>
       )}
 

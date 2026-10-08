@@ -6,17 +6,17 @@
 import type { PhotoItem } from "./photoShared";
 
 /** Ανέβασμα με XHR για να έχουμε πρόοδο (το fetch δεν δίνει upload progress). */
-export function sendPhoto(
+export function sendPhoto<B = { message?: string; data?: { photo: PhotoItem } }>(
   url: string,
   form: FormData,
   onProgress: (p: number) => void
-): Promise<{ status: number; body: { message?: string; data?: { photo: PhotoItem } } }> {
+): Promise<{ status: number; body: B }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {
-      let body = {};
+      let body = {} as B;
       try {
         body = JSON.parse(xhr.responseText);
       } catch {

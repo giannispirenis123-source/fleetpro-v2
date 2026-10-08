@@ -15,9 +15,12 @@
 // · Κάθε φωτογραφία συμπιέζεται ΣΤΟΝ BROWSER (~1600px, JPEG 0.8) και
 //   ανεβαίνει μία-μία με ένδειξη προόδου. Αποτυχία = καθαρό μήνυμα και
 //   «Ξανά»· η φόρμα γύρω της δεν επηρεάζεται.
+// · Οχήματα (Cloudinary): `upload` αντί για το uploadUrl, «Πάνω/Κάτω» για
+//   τη σειρά (onMove), πάτημα στη φωτογραφία = lightbox (onOpen) και
+//   μικρογραφίες με transformations (thumb). Η πρώτη έχει την ένδειξη `mainLabel`.
 
 import { useRef, useState } from "react";
-import { ImagePlus, RotateCcw, Trash2, X, ImageOff } from "lucide-react";
+import { ImagePlus, RotateCcw, Trash2, X, ImageOff, ChevronUp, ChevronDown } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import { compressImage } from "@/lib/imageCompress";
 import { PHOTO_NOTE_MAX, isImageFile, type PhotoItem } from "@/lib/photoShared";
@@ -74,6 +77,12 @@ export default function PhotoManager({
   onStagedRemove,
   onStagedNote,
   onStagedRetry,
+  upload,
+  onMove,
+  moving = false,
+  onOpen,
+  thumb,
+  mainLabel,
 }: {
   photos: PhotoItem[];
   /** POST multipart εδώ (πεδίο file + `fields`). */
@@ -111,6 +120,21 @@ export default function PhotoManager({
   onStagedRemove?: (key: string) => void;
   onStagedNote?: (key: string, note: string) => void;
   onStagedRetry?: (key: string) => void;
+  /**
+   * Δικό του ανέβασμα (π.χ. υπογεγραμμένο στο Cloudinary) αντί για POST στο
+   * uploadUrl. Επιστρέφει τη φωτογραφία ή πετά Error με μήνυμα για τον χρήστη.
+   */
+  upload?: (blob: Blob, onProgress: (p: number) => void) => Promise<PhotoItem>;
+  /** «Πάνω»/«Κάτω» — η σειρά αλλάζει από τον γονέα. */
+  onMove?: (id: string, dir: -1 | 1) => void;
+  /** Αλλαγή σειράς σε εξέλιξη (κλειδώνει τα κουμπιά). */
+  moving?: boolean;
+  /** Πάτημα στη φωτογραφία (π.χ. lightbox) αντί για άνοιγμα σε νέα καρτέλα. */
+  onOpen?: (index: number) => void;
+  /** URL μικρογραφίας για το πλέγμα. */
+  thumb?: (url: string) => string;
+  /** Ένδειξη στην πρώτη φωτογραφία (π.χ. «Κύρια»). */
+  mainLabel?: string;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -154,6 +178,19 @@ export default function PhotoManager({
       return;
     }
     patch(item.key, { status: "uploading" });
+    if (upload) {
+      try {
+        const photo = await upload(blob, (p) => patch(item.key, { progress: p }));
+        update((q) => q.filter((i) => i.key !== item.key));
+        onAdded(photo);
+      } catch (e) {
+        patch(item.key, {
+          status: "error",
+          message: e instanceof Error && e.message ? e.message : tr("photos.errorUpload"),
+        });
+      }
+      return;
+    }
     const form = new FormData();
     form.append("file", blob, "photo.jpg");
     form.append("takenAt", takenAt);
@@ -341,12 +378,18 @@ export default function PhotoManager({
         <p className="dash-form-note">{tr("photos.none")}</p>
       ) : (
         <div className="dash-photo-grid">
-          {photos.map((p) => (
+          {photos.map((p, index) => (
             <figure key={p.id} className="dash-photo">
-              {p.url ? (
+              {mainLabel && index === 0 && <span className="dash-photo-main">{mainLabel}</span>}
+              {p.url && onOpen ? (
+                <button type="button" className="dash-photo-open" onClick={() => onOpen(index)} aria-label={tr("photos.open")}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumb ? thumb(p.url) : p.url} alt={p.note || tr("photos.photo")} loading="lazy" />
+                </button>
+              ) : p.url ? (
                 <a href={p.url} target="_blank" rel="noopener noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt={p.note || tr("photos.photo")} loading="lazy" />
+                  <img src={thumb ? thumb(p.url) : p.url} alt={p.note || tr("photos.photo")} loading="lazy" />
                 </a>
               ) : (
                 <span className="dash-photo-missing">
@@ -367,6 +410,30 @@ export default function PhotoManager({
                   ) : (
                     p.note && <span className="dash-photo-note">{p.note}</span>
                   ))}
+                {onMove && editable && photos.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      className="dash-icon-btn"
+                      disabled={moving || index === 0}
+                      onClick={() => onMove(p.id, -1)}
+                      aria-label={tr("photos.moveUp")}
+                      title={tr("photos.moveUp")}
+                    >
+                      <ChevronUp size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="dash-icon-btn"
+                      disabled={moving || index === photos.length - 1}
+                      onClick={() => onMove(p.id, 1)}
+                      aria-label={tr("photos.moveDown")}
+                      title={tr("photos.moveDown")}
+                    >
+                      <ChevronDown size={15} />
+                    </button>
+                  </>
+                )}
                 {deletable && (
                   <button
                     type="button"

@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 // αλλιώς μια εταιρία θα μπορούσε να πειράξει όχημα άλλης μαντεύοντας id.
 
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   ok,
@@ -21,6 +22,8 @@ import {
   VEHICLE_STATUSES,
   toVehicleDTO,
 } from "@/lib/vehicles";
+import { readVehiclePhotos } from "@/lib/vehiclePhotos";
+import { destroyAllPhotos } from "@/lib/vehiclePhotoServer";
 
 const dateField = z
   .union([
@@ -144,7 +147,8 @@ export const PATCH = withPermission(
 
 // DELETE /api/vehicles/[id] — ήπια διαγραφή.
 // Το όχημα μένει στη βάση ώστε να μη σπάσουν κρατήσεις, συμβόλαια και τιμολόγια
-// που το αναφέρουν· απλώς βγαίνει από τον ενεργό στόλο.
+// που το αναφέρουν· απλώς βγαίνει από τον ενεργό στόλο. Οι φωτογραφίες του
+// σβήνονται από το Cloudinary· όσες αποτύχουν μένουν καταγεγραμμένες.
 export const DELETE = withPermission(
   async (_req, session, params) => {
     try {
@@ -153,9 +157,15 @@ export const DELETE = withPermission(
       });
       if (!current) return notFound("Το όχημα δεν βρέθηκε");
 
+      const keptPhotos = await destroyAllPhotos(readVehiclePhotos(current.photos));
+
       const vehicle = await db.vehicle.update({
         where: { id: current.id },
-        data: { isActive: false, status: "INACTIVE" },
+        data: {
+          isActive: false,
+          status: "INACTIVE",
+          photos: keptPhotos as unknown as Prisma.InputJsonValue,
+        },
       });
 
       return ok({ vehicle: toVehicleDTO(vehicle) });

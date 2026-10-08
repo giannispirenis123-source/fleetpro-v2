@@ -3,6 +3,7 @@
 // και η σελίδα του στόλου, ώστε το σχήμα των δεδομένων να μην αποκλίνει.
 
 import type { Vehicle } from "@prisma/client";
+import { readVehiclePhotos, toPhotoViews, type VehiclePhotoView } from "./vehiclePhotos";
 
 export const VEHICLE_STATUSES = [
   "AVAILABLE",
@@ -68,6 +69,8 @@ export interface VehicleDTO {
   insuranceExpiry: string | null;
   kteoExpiry: string | null;
   notes: string | null;
+  /** Με τη σειρά τους· η πρώτη είναι η κύρια. */
+  photos: VehiclePhotoView[];
 }
 
 const toDateInput = (d: Date | null): string | null =>
@@ -95,6 +98,7 @@ export function toVehicleDTO(v: Vehicle): VehicleDTO {
     insuranceExpiry: toDateInput(v.insuranceExpiry),
     kteoExpiry: toDateInput(v.kteoExpiry),
     notes: v.notes,
+    photos: toPhotoViews(readVehiclePhotos(v.photos)),
   };
 }
 

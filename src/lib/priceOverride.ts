@@ -1,16 +1,22 @@
 // src/lib/priceOverride.ts
-// Χειροκίνητη (τελική) τιμή συμβολαίου — καθαρή λογική, χωρίς runtime
+// Χειροκίνητη τιμή ΕΝΟΙΚΙΟΥ συμβολαίου — καθαρή λογική, χωρίς runtime
 // imports (τη φορτώνουν server, client και τα tests).
 //
-//  · Ο χρήστης δίνει ΜΟΝΟ το τελικό σύνολο ΜΕ ΦΠΑ (> 0, 2 δεκαδικά) και
-//    προαιρετικό λόγο. Ο server ελέγχει δικαίωμα (contracts.price) και
-//    κλείδωμα, και υπολογίζει ο ίδιος τη διαφορά από την υπολογισμένη τιμή.
-//  · Η χειροκίνητη τιμή γίνεται το total της κράτησης (ΕΝΑ σύνολο παντού).
-//    Η roundUpTotal ΔΕΝ εφαρμόζεται πάνω της. Οι γραμμές (ενοίκιο, πρόσθετα,
-//    ασφάλεια, έκπτωση) μένουν όπως υπολογίστηκαν· η διαφορά ώστε να
-//    αθροίζουν ακριβώς στο σύνολο ΑΠΟΡΡΟΦΑΤΑΙ στο ενοίκιο (withManualTotal)
-//    — καμία γραμμή «Προσαρμογή τιμής» σε φόρμα, Α4 ή σελίδα πελάτη.
-//  · Το ιστορικό (υπολογισμένη, χειροκίνητη, ποιος, πότε, γιατί) ζει στο
+//  · Ο χρήστης δίνει ΜΟΝΟ την τιμή του ΕΝΟΙΚΙΟΥ με ΦΠΑ (η βάση, χωρίς
+//    πρόσθετα/ασφάλεια, > 0, 2 δεκαδικά) και προαιρετικό λόγο. Ο server
+//    ελέγχει δικαίωμα (contracts.price) και κλείδωμα.
+//  · Σύνολο = χειροκίνητο ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση
+//    (totalWithRental). Πρόσθετο που μπαίνει/βγαίνει αλλάζει αμέσως το
+//    σύνολο. Οι γραμμές αθροίζουν ΑΚΡΙΒΩΣ στο σύνολο — καμία «Προσαρμογή».
+//    Η roundUpTotal ΔΕΝ εφαρμόζεται. Η έκπτωση μένει όπως υπολογίστηκε.
+//  · Το σύνολο γίνεται το total της κράτησης (ΕΝΑ σύνολο: κράτηση,
+//    συμβόλαιο, τιμολόγιο). Οι γραμμές της κράτησης (και η προμήθεια)
+//    μένουν υπολογισμένες.
+//  · ΠΑΛΙΑ μορφή (έως 08/10/2026): `manualTotal` = χειροκίνητο ΤΕΛΙΚΟ
+//    σύνολο. Μετατρέπεται σε ενοίκιο με τις γραμμές που ίσχυαν μαζί του
+//    (manualRentalOf): ίδιο σύνολο σήμερα, και από εκεί και πέρα τα
+//    πρόσθετα προστίθενται κανονικά.
+//  · Το ιστορικό (υπολογισμένο, χειροκίνητο, ποιος, πότε, γιατί) ζει στο
 //    snapshot του συμβολαίου (JSON) — χωρίς νέα στήλη.
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
@@ -20,11 +26,15 @@ export const PRICE_MAX = 1_000_000;
 
 /** Όπως αποθηκεύεται στο snapshot του συμβολαίου (`snapshot.priceOverride`). */
 export interface PriceOverride {
-  /** Η τελική τιμή με ΦΠΑ που όρισε ο χρήστης. */
-  manualTotal: number;
-  /** Η υπολογισμένη τιμή τη στιγμή της αλλαγής (μόνο εσωτερικά). */
+  /** Η τιμή ΕΝΟΙΚΙΟΥ με ΦΠΑ που όρισε ο χρήστης. */
+  manualRental?: number;
+  /** ΠΑΛΙΑ μορφή: χειροκίνητο ΤΕΛΙΚΟ σύνολο (βλ. manualRentalOf). */
+  manualTotal?: number;
+  /** Το υπολογισμένο ενοίκιο τη στιγμή της αλλαγής (μόνο εσωτερικά). */
+  computedRental?: number;
+  /** ΠΑΛΙΑ μορφή: η υπολογισμένη τελική τιμή τη στιγμή της αλλαγής. */
   computedTotal?: number;
-  /** manualTotal − computedTotal (μόνο εσωτερικά). */
+  /** ΠΑΛΙΑ μορφή: manualTotal − computedTotal. */
   diff?: number;
   userId?: string;
   userName?: string;
@@ -51,30 +61,52 @@ export const computedTotalOf = (b: PriceParts, roundUpTotal: boolean) => {
   return roundUpTotal ? Math.ceil(exact) : exact;
 };
 
-/** «Προσαρμογή τιμής»: ό,τι λείπει/περισσεύει ώστε οι γραμμές = σύνολο. */
-export const adjustmentOf = (b: PriceParts, manualTotal: number) =>
-  round2(manualTotal - exactTotalOf(b));
+/** Ό,τι μπαίνει πάνω στο ενοίκιο: πρόσθετα + ασφάλεια − έκπτωση. */
+const restOf = (b: PriceParts) => round2(b.extrasTotal + b.insuranceCost - b.discountAmount);
+
+/** Σύνολο με χειροκίνητο ενοίκιο: ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση. */
+export const totalWithRental = (b: PriceParts, rental: number) => round2(rental + restOf(b));
 
 /**
- * Για εμφάνιση: η διαφορά από τη χειροκίνητη τιμή μπαίνει στο ενοίκιο, ώστε
- * «Ενοίκιο» + πρόσθετα + ασφάλεια − έκπτωση = ακριβώς το τελικό σύνολο.
+ * Το χειροκίνητο ενοίκιο. Παλιά μορφή (τελικό σύνολο): ενοίκιο = σύνολο −
+ * (πρόσθετα + ασφάλεια − έκπτωση) με τις γραμμές που ίσχυαν ΜΑΖΙ του
+ * (`partsWithIt`: οι γραμμές της κράτησης ΠΡΙΝ από οποιαδήποτε νέα αλλαγή).
  */
-export const withManualTotal = <T extends PriceParts>(b: T, manualTotal: number) => ({
+export function manualRentalOf(p: PriceOverride | undefined, partsWithIt: PriceParts): number | undefined {
+  if (!p) return undefined;
+  if (p.manualRental !== undefined) return p.manualRental;
+  if (p.manualTotal !== undefined) return round2(p.manualTotal - restOf(partsWithIt));
+  return undefined;
+}
+
+/** Παλιά μορφή → νέα (για αποθήκευση): ίδιο σύνολο, ενοίκιο αντί για σύνολο. */
+export function toRentalOverride(p: PriceOverride, partsWithIt: PriceParts): PriceOverride {
+  const { manualTotal: _t, computedTotal: _c, diff: _d, ...rest } = p;
+  return { ...rest, manualRental: manualRentalOf(p, partsWithIt) };
+}
+
+/** Για εμφάνιση: το ενοίκιο είναι το χειροκίνητο, το σύνολο = άθροισμα γραμμών. */
+export const withManualRental = <T extends PriceParts>(b: T, rental: number) => ({
   ...b,
-  subtotal: round2(b.subtotal + adjustmentOf(b, manualTotal)),
-  total: manualTotal,
+  subtotal: rental,
+  total: totalWithRental(b, rental),
 });
 
 /** Αμυντική ανάγνωση από το Json. */
 export function readPriceOverride(v: unknown): PriceOverride | undefined {
   if (!v || typeof v !== "object") return undefined;
   const o = v as Record<string, unknown>;
-  const manualTotal = Number(o.manualTotal);
-  if (!Number.isFinite(manualTotal) || manualTotal <= 0) return undefined;
   const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : undefined);
   const str = (x: unknown) => (typeof x === "string" ? x : undefined);
+  const positive = (x: unknown) => {
+    const n = num(typeof x === "string" ? Number(x) : x);
+    return n !== undefined && n > 0 ? n : undefined;
+  };
+  const manualRental = positive(o.manualRental);
+  const manualTotal = manualRental === undefined ? positive(o.manualTotal) : undefined;
+  if (manualRental === undefined && manualTotal === undefined) return undefined;
   return {
-    manualTotal,
+    ...(manualRental !== undefined ? { manualRental, computedRental: num(o.computedRental) } : { manualTotal }),
     computedTotal: num(o.computedTotal),
     diff: num(o.diff),
     userId: str(o.userId),
@@ -84,12 +116,8 @@ export function readPriceOverride(v: unknown): PriceOverride | undefined {
   };
 }
 
-/** Μόνο για τη σελίδα πελάτη: η τελική τιμή, χωρίς ποιος/γιατί/διαφορά. */
-export const publicPriceOverride = (p: PriceOverride | undefined): PriceOverride | undefined =>
-  p ? { manualTotal: p.manualTotal } : undefined;
-
 /** Έγκυρο ποσό: > 0, έως 2 δεκαδικά, λογικό άνω όριο. */
-export function validManualTotal(n: unknown): n is number {
+export function validManualPrice(n: unknown): n is number {
   return (
     typeof n === "number" &&
     Number.isFinite(n) &&
@@ -99,7 +127,8 @@ export function validManualTotal(n: unknown): n is number {
   );
 }
 
-export type PriceRequest = { total: number; reason?: string } | null;
+/** Από τον client: ΜΟΝΟ η τιμή ενοικίου + λόγος (ή null = επαναφορά). */
+export type PriceRequest = { rental: number; reason?: string } | null;
 
 export type PriceDecision =
   | { ok: true; total: number; override: PriceOverride | null }
@@ -113,8 +142,8 @@ const LOCK_MESSAGE: Record<string, string> = {
 
 /**
  * Η απόφαση του server για μια αλλαγή τιμής. Από τον client λαμβάνεται
- * ΜΟΝΟ το τελικό ποσό και ο λόγος· όλα τα άλλα (διαφορά, υπολογισμένη
- * τιμή, ποιος, πότε) τα βάζει ο server.
+ * ΜΟΝΟ η τιμή ενοικίου και ο λόγος· όλα τα άλλα (σύνολο, υπολογισμένο
+ * ενοίκιο, ποιος, πότε) τα βάζει ο server.
  *
  *  · `requested = null` → επαναφορά: total = η υπολογισμένη τιμή.
  *  · Δικαίωμα → 403. Κλείδωμα (υπογραφή / τιμολόγιο / κλειστή) → 409.
@@ -133,25 +162,29 @@ export function decidePriceOverride(input: {
   }
   if (input.lock) return { ok: false, status: 409, message: LOCK_MESSAGE[input.lock] };
 
-  const computedTotal = computedTotalOf(input.parts, input.roundUpTotal);
-  if (input.requested === null) return { ok: true, total: computedTotal, override: null };
+  if (input.requested === null) {
+    return { ok: true, total: computedTotalOf(input.parts, input.roundUpTotal), override: null };
+  }
 
-  const { total, reason } = input.requested;
-  if (!validManualTotal(total)) {
-    return { ok: false, status: 400, message: "Η τιμή πρέπει να είναι ποσό > 0 με έως 2 δεκαδικά" };
+  const { rental, reason } = input.requested;
+  if (!validManualPrice(rental)) {
+    return { ok: false, status: 400, message: "Η τιμή ενοικίου πρέπει να είναι ποσό > 0 με έως 2 δεκαδικά" };
   }
   const why = (reason ?? "").trim();
   if (why.length > PRICE_REASON_MAX) {
     return { ok: false, status: 400, message: `Ο λόγος έως ${PRICE_REASON_MAX} χαρακτήρες` };
   }
+  // ΚΑΜΙΑ στρογγυλοποίηση: σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση.
+  const total = totalWithRental(input.parts, rental);
+  if (!(total > 0)) {
+    return { ok: false, status: 400, message: "Με αυτό το ενοίκιο το σύνολο βγαίνει μηδέν ή αρνητικό" };
+  }
   return {
     ok: true,
-    // ΚΑΜΙΑ στρογγυλοποίηση πάνω στη χειροκίνητη τιμή.
     total,
     override: {
-      manualTotal: total,
-      computedTotal,
-      diff: round2(total - computedTotal),
+      manualRental: rental,
+      computedRental: input.parts.subtotal,
       userId: input.actor.userId,
       userName: input.actor.userName,
       at: input.now.toISOString(),
@@ -161,8 +194,8 @@ export function decidePriceOverride(input: {
 }
 
 /**
- * Η χειροκίνητη τιμή «δεν ακολουθεί τις αλλαγές»: η υπολογισμένη τιμή
- * σήμερα διαφέρει από αυτή που ίσχυε όταν ορίστηκε.
+ * Το χειροκίνητο ενοίκιο «δεν ακολουθεί» αλλαγές ημερομηνιών/οχήματος:
+ * το υπολογισμένο ενοίκιο σήμερα διαφέρει από αυτό που ίσχυε όταν ορίστηκε.
  */
-export const overrideIsStale = (p: PriceOverride | undefined, computedNow: number) =>
-  !!p && p.computedTotal !== undefined && Math.abs(p.computedTotal - computedNow) > 0.004;
+export const overrideIsStale = (p: PriceOverride | undefined, computedRentalNow: number) =>
+  !!p && p.computedRental !== undefined && Math.abs(p.computedRental - computedRentalNow) > 0.004;

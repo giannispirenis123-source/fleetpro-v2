@@ -68,14 +68,14 @@ import {
   licenseLockOf,
   type LicensePhotoDTO,
 } from "@/lib/contracts";
-import { appBaseUrl, publicContractUrl, type PublicLinkDTO } from "@/lib/contractLink";
+import { publicContractUrl, type PublicLinkDTO } from "@/lib/contractLink";
 import { computePrice, toDisplayBreakdown, type PricedExtraInput } from "@/lib/pricing";
 import { splitVatInclusive } from "@/lib/invoices";
 import {
   PRICE_REASON_MAX,
-  withManualTotal,
+  withManualRental,
   computedTotalOf,
-  validManualTotal,
+  validManualPrice,
 } from "@/lib/priceOverride";
 import { phoneDigits, type CustomerSearchField } from "@/lib/customerMatch";
 import type { ExtraDTO } from "@/lib/extras";
@@ -159,10 +159,11 @@ interface FormState {
   gdprConsent: boolean;
   extraIds: string[];
   /**
-   * Χειροκίνητη τελική τιμή με ΦΠΑ (contracts.price) ή null = υπολογισμένη.
-   * `base` = η υπολογισμένη τιμή όταν ορίστηκε (για την προειδοποίηση).
+   * Χειροκίνητη τιμή ΕΝΟΙΚΙΟΥ με ΦΠΑ (contracts.price) ή null = υπολογισμένη.
+   * Σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση.
+   * `base` = το υπολογισμένο ενοίκιο όταν ορίστηκε (για την προειδοποίηση).
    */
-  price: { total: string; reason: string; base?: number } | null;
+  price: { rental: string; reason: string; base?: number } | null;
 }
 
 /**
@@ -223,13 +224,15 @@ const fromContract = (c: ContractDTO): FormState => ({
   depositCard: cardFromDTO(c.depositCard),
   gdprConsent: c.gdprConsent,
   extraIds: [...c.bookingExtraIds].sort(),
-  price: c.snapshot?.priceOverride
-    ? {
-        total: String(c.snapshot.priceOverride.manualTotal),
-        reason: c.snapshot.priceOverride.reason ?? "",
-        base: c.snapshot.priceOverride.computedTotal,
-      }
-    : null,
+  // Το DTO έχει πάντα manualRental (και για την παλιά μορφή «τελικό σύνολο»).
+  price:
+    c.snapshot?.priceOverride?.manualRental !== undefined
+      ? {
+          rental: String(c.snapshot.priceOverride.manualRental),
+          reason: c.snapshot.priceOverride.reason ?? "",
+          base: c.snapshot.priceOverride.computedRental,
+        }
+      : null,
 });
 
 /** Νέο συμβόλαιο: προεπιλογές — μετρητά, εγγύηση χωρίς ποσό, ένας οδηγός. */
@@ -277,9 +280,9 @@ const pickupPart = (f: FormState) =>
 
 const extrasPart = (f: FormState) => f.extraIds.join(",");
 
-/** Η χειροκίνητη τιμή όπως τη στέλνει ο client: ΜΟΝΟ ποσό + λόγος. */
+/** Η χειροκίνητη τιμή όπως τη στέλνει ο client: ΜΟΝΟ ενοίκιο + λόγος. */
 const pricePayload = (f: FormState) =>
-  f.price ? { total: Number(f.price.total), reason: f.price.reason.trim() } : null;
+  f.price ? { rental: Number(f.price.rental), reason: f.price.reason.trim() } : null;
 const pricePart = (f: FormState) => JSON.stringify(pricePayload(f));
 
 const afterPart = (f: FormState) =>
@@ -534,26 +537,29 @@ export default function ContractEditor({
     };
   }, [isNew, draft.preview, s, extras, extrasDirty, form.extraIds, roundUpTotal, vatRate]);
 
-  /* ── Χειροκίνητη τιμή: η διαφορά απορροφάται στο ενοίκιο ── */
-  const manualTotal =
-    form.price && validManualTotal(Number(form.price.total)) ? Number(form.price.total) : null;
+  /* ── Χειροκίνητο ενοίκιο: σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση ──
+     Τα πρόσθετα (και στην προεπισκόπηση) αλλάζουν αμέσως το σύνολο. */
+  const manualRental =
+    form.price && validManualPrice(Number(form.price.rental)) ? Number(form.price.rental) : null;
   const shown = money
-    ? manualTotal !== null
-      ? withManualTotal(money.parts, manualTotal)
+    ? manualRental !== null
+      ? withManualRental(money.parts, manualRental)
       : money.display
     : null;
   const savedOverride = contract?.snapshot?.priceOverride;
+  // Το υπολογισμένο ενοίκιο άλλαξε (ημερομηνίες/όχημα) από τότε που ορίστηκε.
   const priceStale =
-    manualTotal !== null &&
+    manualRental !== null &&
     !!money &&
     form.price?.base !== undefined &&
-    Math.abs(form.price.base - money.computed) > 0.004;
+    Math.abs(form.price.base - money.parts.subtotal) > 0.004;
   // Ίδιο κλείδωμα με τα πρόσθετα: υπογραφή / τιμολόγιο / κλειστή κράτηση.
   const priceLock = isNew ? null : locked ? "signed" : contract?.extrasLock ?? null;
   const canChangePrice = can.price && !readOnly && priceLock === null;
   const [priceOpen, setPriceOpen] = useState(false);
-  const [priceDraft, setPriceDraft] = useState({ total: "", reason: "" });
-  const priceDraftValid = validManualTotal(Number(priceDraft.total)) && priceDraft.reason.length <= PRICE_REASON_MAX;
+  const [priceDraft, setPriceDraft] = useState({ rental: "", reason: "" });
+  const priceDraftValid =
+    validManualPrice(Number(priceDraft.rental)) && priceDraft.reason.length <= PRICE_REASON_MAX;
 
   const vat = shown && money ? splitVatInclusive(shown.total, money.vatRate) : null;
   const totalChangedAfterSign =
@@ -1047,7 +1053,7 @@ export default function ContractEditor({
   useEffect(() => setOrigin(window.location.origin), []);
   const linkUrl =
     link && link.state === "active" && link.token && origin
-      ? publicContractUrl(appBaseUrl(process.env.NEXT_PUBLIC_APP_URL, origin), link.token)
+      ? publicContractUrl(origin, link.token)
       : null;
 
   const copyLink = async () => {
@@ -1255,7 +1261,7 @@ export default function ContractEditor({
               <span>
                 {tr("contracts.rental")} · {money.totalDays}
                 {/* Χειροκίνητη τιμή: το ενοίκιο δεν είναι πια ημέρες × τιμή. */}
-                {manualTotal !== null ? ` ${tr("bookings.days")}` : ` × ${eur(money.dailyRate, locale)}`}
+                {manualRental !== null ? ` ${tr("bookings.days")}` : ` × ${eur(money.dailyRate, locale)}`}
               </span>
               <span>{eur(shown.subtotal, locale)}</span>
             </div>
@@ -1288,7 +1294,7 @@ export default function ContractEditor({
             <div className="dash-contract-line dash-contract-total">
               <span>
                 {tr("contracts.total")}
-                {manualTotal !== null && (
+                {manualRental !== null && (
                   <span className="dash-status dash-status--warn dash-price-tag">{tr("contracts.manualPrice")}</span>
                 )}
               </span>
@@ -1305,7 +1311,7 @@ export default function ContractEditor({
             </p>
 
             {/* ── Αλλαγή τιμής (contracts.price) ── */}
-            {manualTotal !== null && savedOverride && !priceDirty && (
+            {manualRental !== null && savedOverride && !priceDirty && (
               <p className="dash-form-note dash-price-who">
                 {tr("contracts.priceSetBy")} {savedOverride.userName || "—"}
                 {savedOverride.at &&
@@ -1315,7 +1321,7 @@ export default function ContractEditor({
             )}
             {priceStale && (
               <div className="dash-contract-warn">
-                <AlertTriangle size={15} /> {tr("contracts.priceStale")} ({eur(money.computed, locale)})
+                <AlertTriangle size={15} /> {tr("contracts.priceStale")} ({eur(money.parts.subtotal, locale)})
                 {canChangePrice && (
                   <button type="button" className="dash-link-btn" onClick={() => set("price", null)}>
                     {tr("contracts.priceReset")}
@@ -1335,7 +1341,7 @@ export default function ContractEditor({
                   className="dash-btn dash-btn--sm"
                   onClick={() => {
                     setPriceDraft({
-                      total: form.price?.total ?? shown.total.toFixed(2),
+                      rental: form.price?.rental ?? shown.subtotal.toFixed(2),
                       reason: form.price?.reason ?? "",
                     });
                     setPriceOpen(true);
@@ -1354,14 +1360,14 @@ export default function ContractEditor({
               <div className="dash-card-box dash-price-box">
                 <div className="dash-form-grid">
                   <label className="dash-field">
-                    {tr("contracts.priceFinal")}
+                    {tr("contracts.priceRental")}
                     <input
                       type="number"
                       inputMode="decimal"
                       min="0.01"
                       step="0.01"
-                      value={priceDraft.total}
-                      onChange={(e) => setPriceDraft((d) => ({ ...d, total: e.target.value }))}
+                      value={priceDraft.rental}
+                      onChange={(e) => setPriceDraft((d) => ({ ...d, rental: e.target.value }))}
                     />
                   </label>
                   <label className="dash-field dash-field--wide">
@@ -1373,7 +1379,7 @@ export default function ContractEditor({
                     />
                   </label>
                 </div>
-                {priceDraft.total !== "" && !validManualTotal(Number(priceDraft.total)) && (
+                {priceDraft.rental !== "" && !validManualPrice(Number(priceDraft.rental)) && (
                   <span className="dash-field-error">{tr("contracts.priceInvalid")}</span>
                 )}
                 <div className="dash-price-actions">
@@ -1383,9 +1389,9 @@ export default function ContractEditor({
                     disabled={!priceDraftValid}
                     onClick={() => {
                       set("price", {
-                        total: Number(priceDraft.total).toFixed(2),
+                        rental: Number(priceDraft.rental).toFixed(2),
                         reason: priceDraft.reason.trim(),
-                        base: money.computed,
+                        base: money.parts.subtotal,
                       });
                       setPriceOpen(false);
                     }}

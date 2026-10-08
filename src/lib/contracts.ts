@@ -393,9 +393,10 @@ export interface ContractSnapshot {
   /** ΦΠΑ % της εταιρίας τη στιγμή του snapshot (οι τιμές το ΠΕΡΙΕΧΟΥΝ). */
   vatRate?: number;
   /**
-   * Χειροκίνητη τελική τιμή (contracts.price). Όταν υπάρχει, το
-   * booking.total ΕΙΝΑΙ αυτή η τιμή· οι γραμμές μένουν υπολογισμένες.
-   * Ποιος/πότε/γιατί ΜΟΝΟ στη φόρμα — η σελίδα πελάτη παίρνει μόνο το ποσό.
+   * Χειροκίνητη τιμή ενοικίου (contracts.price). Όταν υπάρχει, το
+   * booking.total = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση· οι γραμμές της
+   * κράτησης μένουν υπολογισμένες. Ποιος/πότε/γιατί ΜΟΝΟ στη φόρμα — η
+   * σελίδα πελάτη παίρνει μόνο το ενοίκιο.
    */
   priceOverride?: PriceOverride;
   /** ISO — πότε πάρθηκε. */
@@ -416,7 +417,9 @@ export function readSnapshot(value: unknown): ContractSnapshot | null {
     terms: s.terms ?? { el: "", en: "" },
     vatRate: typeof s.vatRate === "number" ? s.vatRate : undefined,
     priceOverride:
-      s.priceOverride && typeof s.priceOverride === "object" && Number(s.priceOverride.manualTotal) > 0
+      s.priceOverride &&
+      typeof s.priceOverride === "object" &&
+      (Number(s.priceOverride.manualRental) > 0 || Number(s.priceOverride.manualTotal) > 0)
         ? s.priceOverride
         : undefined,
     takenAt: s.takenAt ?? "",

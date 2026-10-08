@@ -21,7 +21,14 @@ import { photoIdOf } from "./photoShared";
 import { mergeLocations } from "./contractLocations";
 import { normalizeCardNumber } from "./cardNumber";
 import { nextCardNumbersEnc, storedCardNumbers } from "./cardCrypto";
-import { PRICE_REASON_MAX, readPriceOverride, type PriceOverride } from "./priceOverride";
+import {
+  PRICE_REASON_MAX,
+  manualRentalOf,
+  readPriceOverride,
+  toRentalOverride,
+  type PriceOverride,
+  type PriceParts,
+} from "./priceOverride";
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
 import { discountOfBooking, priceBooking } from "./bookingPricing";
@@ -186,7 +193,7 @@ export const contractPatchSchema = z.object({
   extraIds: z.array(z.string().min(1)).max(50).optional(),
 
   /**
-   * Χειροκίνητη τελική τιμή ΜΕ ΦΠΑ (contracts.price): ΜΟΝΟ ποσό + λόγος —
+   * Χειροκίνητη τιμή ΕΝΟΙΚΙΟΥ ΜΕ ΦΠΑ (contracts.price): ΜΟΝΟ ποσό + λόγος —
    * strict, κανένα άλλο ποσό δεν περνά. null = επαναφορά υπολογισμένης.
    * Ελέγχεται και εφαρμόζεται από το decidePriceOverride στον server.
    */
@@ -194,7 +201,7 @@ export const contractPatchSchema = z.object({
     .union([
       z
         .object({
-          total: z.number(),
+          rental: z.number(),
           reason: z.string().max(PRICE_REASON_MAX, `Ο λόγος έως ${PRICE_REASON_MAX} χαρακτήρες`).optional(),
         })
         .strict(),
@@ -407,15 +414,55 @@ export const priceOverrideOf = (snapshot: unknown): PriceOverride | undefined =>
     : undefined;
 
 /**
- * Η χειροκίνητη τιμή της κράτησης (από το συμβόλαιό της). Όσο υπάρχει,
- * κάθε ξαναϋπολογισμός (ημερομηνίες, όχημα, πρόσθετα) κρατά το total ίδιο.
+ * Χειροκίνητη τιμή στο DTO: ΠΑΝΤΑ με `manualRental` — η παλιά μορφή
+ * (τελικό σύνολο) μετατρέπεται με τις γραμμές του ίδιου snapshot, ώστε
+ * φόρμα, Α4 και σελίδα πελάτη να βλέπουν μία μορφή.
  */
-export async function manualTotalOfBooking(
+function withRentalOverride(s: ContractSnapshot | null): ContractSnapshot | null {
+  if (!s?.priceOverride || s.priceOverride.manualRental !== undefined) return s;
+  return { ...s, priceOverride: toRentalOverride(s.priceOverride, s.booking) };
+}
+
+/** Οι γραμμές μιας κράτησης (Decimal → number). */
+export const pricePartsOf = (b: {
+  subtotal?: unknown;
+  extrasTotal?: unknown;
+  insuranceCost?: unknown;
+  discountAmount?: unknown;
+}): PriceParts => ({
+  subtotal: Number(b.subtotal),
+  extrasTotal: Number(b.extrasTotal),
+  insuranceCost: Number(b.insuranceCost),
+  discountAmount: Number(b.discountAmount),
+});
+
+/**
+ * Το χειροκίνητο ενοίκιο της κράτησης (από το συμβόλαιό της). Όσο υπάρχει,
+ * κάθε ξαναϋπολογισμός (ημερομηνίες, όχημα, πρόσθετα) κρατά το ΕΝΟΙΚΙΟ
+ * ίδιο και το σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση.
+ *
+ * `before` = οι γραμμές της κράτησης ΠΡΙΝ την αλλαγή. Παλιά μορφή (τελικό
+ * σύνολο) μετατρέπεται με αυτές και ΑΠΟΘΗΚΕΥΕΤΑΙ ως ενοίκιο, ώστε η
+ * επόμενη αλλαγή να μη χρειαστεί ξανά τις παλιές γραμμές. Χωρίς αλλαγή
+ * του "updatedAt" (η ανοιχτή φόρμα δεν «χαλάει»).
+ */
+export async function manualRentalOfBooking(
   client: Client,
-  bookingId: string
+  bookingId: string,
+  before: PriceParts
 ): Promise<number | null> {
-  const c = await client.contract.findUnique({ where: { bookingId }, select: { snapshot: true } });
-  return priceOverrideOf(c?.snapshot)?.manualTotal ?? null;
+  const c = await client.contract.findUnique({ where: { bookingId }, select: { id: true, snapshot: true } });
+  const override = priceOverrideOf(c?.snapshot);
+  if (!c || !override) return null;
+  if (override.manualRental === undefined) {
+    const converted = JSON.stringify(toRentalOverride(override, before));
+    await client.$executeRaw(Prisma.sql`
+      UPDATE "contracts"
+      SET "snapshot" = jsonb_set("snapshot", '{priceOverride}', ${converted}::jsonb)
+      WHERE "id" = ${c.id}
+    `);
+  }
+  return manualRentalOf(override, before) ?? null;
 }
 
 /** Ο κύριος οδηγός, προσυμπληρωμένος από τον πελάτη της κράτησης. */
@@ -738,7 +785,7 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     bookingNumber: c.booking.bookingNumber,
     bookingStatus: c.booking.status,
     createdByName: c.createdByName,
-    snapshot: readSnapshot(c.snapshot),
+    snapshot: withRentalOverride(readSnapshot(c.snapshot)),
     drivers,
     pickupLocation: c.pickupLocation ?? "",
     returnLocation: c.returnLocation ?? "",

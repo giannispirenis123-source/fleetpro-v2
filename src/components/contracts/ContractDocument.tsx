@@ -28,7 +28,7 @@ import {
   type ContractDriver,
 } from "@/lib/contracts";
 import { toDisplayBreakdown } from "@/lib/pricing";
-import { withManualTotal } from "@/lib/priceOverride";
+import { withManualRental } from "@/lib/priceOverride";
 import { splitVatInclusive } from "@/lib/invoices";
 import DamageSketch from "./DamageSketch";
 import "./contract-document.css";
@@ -117,11 +117,12 @@ export default function ContractDocument({
   const s = contract.snapshot;
   // Η στρογγυλοποίηση απορροφάται στις γραμμές, όπως στις κρατήσεις: οι
   // γραμμές αθροίζουν ΑΚΡΙΒΩΣ στο σύνολο.
-  // Χειροκίνητη τιμή: η διαφορά απορροφάται στο ενοίκιο (καμία γραμμή
-  // «Προσαρμογή τιμής»)· ποιος/γιατί ΔΕΝ τυπώνονται.
+  // Χειροκίνητο ενοίκιο: «Ενοίκιο» = το χειροκίνητο και σύνολο = ενοίκιο +
+  // πρόσθετα + ασφάλεια − έκπτωση (καμία «Προσαρμογή»)· ποιος/γιατί ΔΕΝ τυπώνονται.
+  const manualRental = s?.priceOverride?.manualRental;
   const money = s
-    ? s.priceOverride
-      ? withManualTotal(s.booking, s.booking.total)
+    ? manualRental !== undefined
+      ? withManualRental(s.booking, manualRental)
       : toDisplayBreakdown(s.booking)
     : null;
   const vatRate = s?.vatRate ?? fallbackVatRate;

@@ -75,14 +75,20 @@ export function publicLinkDTO(
   };
 }
 
-/** Βασικό URL: NEXT_PUBLIC_APP_URL αν υπάρχει, αλλιώς ό,τι δώσει ο καλών (host). */
-export function appBaseUrl(envUrl: string | null | undefined, fallback: string): string {
-  const env = String(envUrl ?? "").trim().replace(/\/+$/, "");
-  return /^https?:\/\/[^\s/]+/i.test(env) ? env : fallback.replace(/\/+$/, "");
-}
+/**
+ * Η ΜΟΝΗ δημόσια διαδρομή του πελάτη: /c/<token> (ένα τμήμα, base64url).
+ * Τη χρησιμοποιεί και το middleware για να την αφήσει χωρίς login.
+ */
+export const PUBLIC_CONTRACT_PATH_RE = /^\/c\/[A-Za-z0-9_-]{1,128}$/;
 
-export const publicContractUrl = (base: string, token: string) =>
-  `${base.replace(/\/+$/, "")}/c/${token}`;
+/**
+ * Το link πελάτη. Βάση = το origin από το οποίο δουλεύει ο χρήστης (το ίδιο
+ * domain που σερβίρει την εφαρμογή — production ή preview). ΔΕΝ διαβάζεται
+ * env (π.χ. NEXT_PUBLIC_APP_URL): μια λάθος/παλιά τιμή εκεί (το SETUP.md
+ * έλεγε «https://your-repl.replit.app») στέλνει τον πελάτη σε άσχετη σελίδα.
+ */
+export const publicContractUrl = (origin: string, token: string) =>
+  `${origin.replace(/\/+$/, "")}/c/${token}`;
 
 /**
  * Το συμβόλαιο όπως το βλέπει ο ΠΕΛΑΤΗΣ. Ό,τι δεν χρειάζεται φεύγει ΕΔΩ,
@@ -121,7 +127,9 @@ export function toPublicContract(c: ContractDTO): ContractDTO {
           booking: { ...s.booking, number: "" },
           vehicle: { ...s.vehicle, id: "" },
           // Ο πελάτης βλέπει ΜΟΝΟ την τελική τιμή — όχι ποιος/γιατί/διαφορά.
-          priceOverride: s.priceOverride ? { manualTotal: s.priceOverride.manualTotal } : undefined,
+          // Μόνο το ενοίκιο (το toContractDTO το έχει ήδη υπολογίσει και για
+          // την παλιά μορφή «τελικό σύνολο»).
+          priceOverride: s.priceOverride ? { manualRental: s.priceOverride.manualRental } : undefined,
         }
       : null,
     drivers,

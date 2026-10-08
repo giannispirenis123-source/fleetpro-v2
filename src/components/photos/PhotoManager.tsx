@@ -4,7 +4,14 @@
 //
 // · «Κάμερα»: input capture="environment" → ανοίγει την πίσω κάμερα σε
 //   κινητό/tablet (σε υπολογιστή ανοίγει απλή επιλογή αρχείου).
-// · «Συλλογή»: πολλαπλή επιλογή αρχείων.
+// · «Συλλογή»: πολλαπλή επιλογή αρχείων, χωρίς capture.
+// · iPhone (Safari/Chrome iOS = WebKit): τα κουμπιά είναι <label> με το input
+//   ΜΕΣΑ τους, οπτικά κρυμμένο (όχι display:none / hidden). Το πάτημα ανοίγει
+//   το input απευθείας από τον browser — κανένα JS click(), καμία αναμονή. Με
+//   display:none + ref.click() το iOS μπορεί να μην ανοίξει την κάμερα.
+// · Μετά από κάθε επιλογή η τιμή μηδενίζεται: η 2η φωτογραφία δουλεύει κι αυτή.
+// · Αρχεία χωρίς τύπο (συχνό σε iOS/HEIC) γίνονται δεκτά με βάση την κατάληξη
+//   (isImageFile)· η συμπίεση τα κάνει JPEG πριν το ανέβασμα.
 // · Κάθε φωτογραφία συμπιέζεται ΣΤΟΝ BROWSER (~1600px, JPEG 0.8) και
 //   ανεβαίνει μία-μία με ένδειξη προόδου. Αποτυχία = καθαρό μήνυμα και
 //   «Ξανά»· η φόρμα γύρω της δεν επηρεάζεται.
@@ -13,7 +20,7 @@ import { useRef, useState } from "react";
 import { ImagePlus, RotateCcw, Trash2, X, ImageOff } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import { compressImage } from "@/lib/imageCompress";
-import { PHOTO_NOTE_MAX, type PhotoItem } from "@/lib/photoShared";
+import { PHOTO_NOTE_MAX, isImageFile, type PhotoItem } from "@/lib/photoShared";
 import { sendPhoto, uploadErrorFor } from "@/lib/photoUpload";
 
 /** Φωτογραφία που περιμένει την αποθήκευση (μόνο στη μνήμη του browser). */
@@ -107,8 +114,6 @@ export default function PhotoManager({
 }) {
   const tr = useT();
   const locale = useLocale();
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const galleryRef = useRef<HTMLInputElement>(null);
 
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const queueRef = useRef<QueueItem[]>([]);
@@ -186,7 +191,9 @@ export default function PhotoManager({
 
   const pick = (list: FileList | null) => {
     setError("");
-    const files = Array.from(list ?? []).filter((f) => f.type.startsWith("image/") || f.type === "");
+    const all = Array.from(list ?? []);
+    const files = all.filter(isImageFile);
+    if (files.length < all.length) setError(tr("photos.notImage"));
     if (files.length === 0) return;
     const allowed = files.slice(0, room);
     if (allowed.length < files.length) setError(tr("photos.limitReached"));
@@ -252,44 +259,36 @@ export default function PhotoManager({
     <div className="dash-photos">
       {editable && (
         <div className="dash-photos-actions">
-          <button
-            type="button"
-            className="dash-btn dash-btn--primary"
-            disabled={room === 0}
-            onClick={() => cameraRef.current?.click()}
-          >
+          {/* <label> + input μέσα: το iOS ανοίγει κάμερα/συλλογή μόνο από
+              άμεσο πάτημα — εδώ το κάνει ο ίδιος ο browser, χωρίς JS. */}
+          <label className={`dash-btn dash-btn--primary dash-file-btn ${room === 0 ? "is-disabled" : ""}`} aria-disabled={room === 0}>
             {tr("photos.camera")}
-          </button>
-          <button
-            type="button"
-            className="dash-btn"
-            disabled={room === 0}
-            onClick={() => galleryRef.current?.click()}
-          >
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="dash-file-input"
+              disabled={room === 0}
+              onChange={(e) => {
+                pick(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <label className={`dash-btn dash-file-btn ${room === 0 ? "is-disabled" : ""}`} aria-disabled={room === 0}>
             <ImagePlus size={16} /> {tr("photos.gallery")}
-          </button>
-          <input
-            ref={cameraRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            hidden
-            onChange={(e) => {
-              pick(e.target.files);
-              e.target.value = "";
-            }}
-          />
-          <input
-            ref={galleryRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/*"
-            multiple={!replace}
-            hidden
-            onChange={(e) => {
-              pick(e.target.files);
-              e.target.value = "";
-            }}
-          />
+            <input
+              type="file"
+              accept="image/*"
+              multiple={!replace}
+              className="dash-file-input"
+              disabled={room === 0}
+              onChange={(e) => {
+                pick(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </label>
           {!replace && (
             <span className="dash-form-note">{counter ?? `${photos.length}/${max}`}</span>
           )}

@@ -1266,6 +1266,29 @@
 .dash-inv-breakdown { margin: 0; }
 .dash-inv-foot { color: var(--text-4); }
 
+/* Λήψη PDF / αποστολή στον πελάτη (λίστα + λεπτομέρειες). */
+.dash-doc-lang select { min-width: 0; }
+.dash-invoice-sent {
+  flex-basis: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-4);
+}
+.dash-inv-docbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px 0;
+}
+.dash-inv-docbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .dash-settings-second { margin-top: 26px; }
 .dash-mode-name .dash-soon { margin-left: 8px; }
 
@@ -1289,7 +1312,8 @@
   .dash-topbar,
   .dash-overlay,
   .dash-modal-header,
-  .dash-modal-footer { display: none !important; }
+  .dash-modal-footer,
+  .dash-inv-docbar { display: none !important; }
 
   .dash-modal-overlay {
     position: absolute !important;

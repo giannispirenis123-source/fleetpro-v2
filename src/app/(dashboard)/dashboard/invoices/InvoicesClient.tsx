@@ -9,6 +9,8 @@ import {
   X,
   Undo2,
   FileText,
+  Download,
+  Mail,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -16,6 +18,8 @@ import {
   effectiveStatus,
   type InvoiceDTO,
 } from "@/lib/invoices";
+import { invoicePdfFilename, type DocLang } from "@/lib/invoiceDocument";
+import { isEmail } from "@/lib/contractEmail";
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
@@ -35,6 +39,14 @@ const shortDate = (iso: string, locale: string) =>
     timeZone: "UTC",
   }).format(new Date(`${iso}T00:00:00.000Z`));
 
+/** Ημερομηνία + ώρα Ελλάδας, π.χ. «11/10/26, 14:05». */
+const stamp = (iso: string, locale: string) =>
+  new Date(iso).toLocaleString(INTL_LOCALE[locale] ?? "el-GR", {
+    timeZone: "Europe/Athens",
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+
 export interface CompanyInfo {
   name: string;
   address: string | null;
@@ -47,12 +59,24 @@ export interface CompanyInfo {
 type Filter = "ALL" | "UNPAID" | "PAID" | "OVERDUE";
 const FILTERS: Filter[] = ["ALL", "UNPAID", "PAID", "OVERDUE"];
 
+/** Λήψη PDF / αποστολή στον πελάτη — κοινά για τη λίστα και τις λεπτομέρειες. */
+interface DocActions {
+  enabled: boolean;
+  lang: DocLang;
+  setLang: (l: DocLang) => void;
+  busy: { id: string; kind: "pdf" | "email" } | null;
+  download: (i: InvoiceDTO) => void;
+  send: (i: InvoiceDTO) => void;
+}
+
 export default function InvoicesClient({
   initialInvoices,
   company,
+  canExport = false,
 }: {
   initialInvoices: InvoiceDTO[];
   company: CompanyInfo;
+  canExport?: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -63,6 +87,11 @@ export default function InvoicesClient({
   const [open, setOpen] = useState<InvoiceDTO | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  // Γλώσσα του EMAIL (θέμα + κείμενο), προεπιλογή Ελληνικά. Το PDF είναι
+  // πάντα δίγλωσσο και δεν εξαρτάται από αυτήν.
+  const [docLang, setDocLang] = useState<DocLang>("el");
+  const [docBusy, setDocBusy] = useState<DocActions["busy"]>(null);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -75,7 +104,7 @@ export default function InvoicesClient({
           : state === filter);
       const matchesSearch =
         !q ||
-        [i.invoiceNumber, i.customerName, i.bookingNumber]
+        [i.invoiceCode, i.invoiceNumber, i.customerName, i.bookingNumber]
           .join(" ")
           .toLowerCase()
           .includes(q);
@@ -110,6 +139,77 @@ export default function InvoicesClient({
     } finally {
       setBusyId(null);
     }
+  };
+
+  const replace = (next: InvoiceDTO) => {
+    setInvoices((prev) => prev.map((x) => (x.id === next.id ? next : x)));
+    setOpen((current) => (current && current.id === next.id ? next : current));
+  };
+
+  const download = async (invoice: InvoiceDTO) => {
+    if (docBusy) return;
+    setDocBusy({ id: invoice.id, kind: "pdf" });
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}/pdf`, { cache: "no-store" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.message || tr("invoices.errorPdf"));
+        return;
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = invoicePdfFilename(invoice.invoiceCode);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch {
+      setError(tr("invoices.errorConnection"));
+    } finally {
+      setDocBusy(null);
+    }
+  };
+
+  const send = async (invoice: InvoiceDTO) => {
+    if (docBusy) return;
+    if (!isEmail(invoice.customerEmail)) {
+      setError(tr("invoices.emailMissing"));
+      return;
+    }
+    setDocBusy({ id: invoice.id, kind: "email" });
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lang: docLang }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || tr("invoices.errorSend"));
+        return;
+      }
+      const { sentAt, sentTo } = data.data as { sentAt: string; sentTo: string };
+      replace({ ...invoice, sentAt, emailSentAt: sentAt, emailSentTo: sentTo });
+      setNotice(`${tr("invoices.emailSentTo")} ${sentTo} ${tr("invoices.emailSentAt")} ${stamp(sentAt, locale)}`);
+    } catch {
+      setError(tr("invoices.errorConnection"));
+    } finally {
+      setDocBusy(null);
+    }
+  };
+
+  const docActions: DocActions = {
+    enabled: canExport,
+    lang: docLang,
+    setLang: setDocLang,
+    busy: docBusy,
+    download,
+    send,
   };
 
   return (
@@ -149,6 +249,7 @@ export default function InvoicesClient({
       </div>
 
       {error && <div className="dash-form-error">{error}</div>}
+      {notice && <div className="dash-alert-ok">{notice}</div>}
 
       {visible.length === 0 ? (
         <div className="dash-panel dash-empty">
@@ -173,6 +274,7 @@ export default function InvoicesClient({
               busy={busyId === i.id}
               onOpen={() => setOpen(i)}
               onPaid={() => setPaid(i, true)}
+              doc={docActions}
             />
           ))}
         </div>
@@ -187,6 +289,9 @@ export default function InvoicesClient({
           busy={busyId === open.id}
           onClose={() => setOpen(null)}
           onTogglePaid={(paid) => setPaid(open, paid)}
+          doc={docActions}
+          error={error}
+          notice={notice}
         />
       )}
     </>
@@ -204,6 +309,7 @@ function InvoiceRow({
   busy,
   onOpen,
   onPaid,
+  doc,
 }: {
   invoice: InvoiceDTO;
   locale: string;
@@ -211,6 +317,7 @@ function InvoiceRow({
   busy: boolean;
   onOpen: () => void;
   onPaid: () => void;
+  doc: DocActions;
 }) {
   const state = effectiveStatus(invoice);
 
@@ -218,7 +325,7 @@ function InvoiceRow({
     <div className="dash-invoice">
       <div className="dash-invoice-id">
         <span className="dash-invoice-number">
-          <Receipt size={15} /> {invoice.invoiceNumber}
+          <Receipt size={15} /> {invoice.invoiceCode}
         </span>
         <span
           className={`dash-status dash-status--${
@@ -262,8 +369,73 @@ function InvoiceRow({
         <button className="dash-btn" onClick={onOpen}>
           <FileText size={16} /> {tr("invoices.details")}
         </button>
+        <DocButtons invoice={invoice} doc={doc} tr={tr} />
       </div>
+      {invoice.emailSentAt && invoice.emailSentTo && (
+        <div className="dash-invoice-sent">
+          <Mail size={13} /> {tr("invoices.emailSentTo")} {invoice.emailSentTo}{" "}
+          {tr("invoices.emailSentAt")} {stamp(invoice.emailSentAt, locale)}
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   «Λήψη PDF» / «Αποστολή στον πελάτη» + γλώσσα
+   ───────────────────────────────────────────── */
+
+function DocButtons({
+  invoice,
+  doc,
+  tr,
+}: {
+  invoice: InvoiceDTO;
+  doc: DocActions;
+  tr: (key: string) => string;
+}) {
+  if (!doc.enabled) return null;
+  const mine = doc.busy?.id === invoice.id ? doc.busy.kind : null;
+  const noEmail = !isEmail(invoice.customerEmail);
+  const cancelled = invoice.status === "CANCELLED";
+
+  return (
+    <>
+      <button
+        type="button"
+        className="dash-btn"
+        onClick={() => doc.download(invoice)}
+        disabled={Boolean(doc.busy)}
+      >
+        <Download size={16} /> {mine === "pdf" ? tr("invoices.downloading") : tr("invoices.downloadPdf")}
+      </button>
+      <button
+        type="button"
+        className="dash-btn"
+        onClick={() => doc.send(invoice)}
+        disabled={Boolean(doc.busy) || noEmail || cancelled}
+        title={noEmail ? tr("invoices.emailMissing") : undefined}
+      >
+        <Mail size={16} />{" "}
+        {mine === "email"
+          ? tr("invoices.sending")
+          : invoice.emailSentAt
+            ? tr("invoices.resendEmail")
+            : tr("invoices.sendEmail")}
+      </button>
+      <label className="dash-field dash-field--inline dash-doc-lang">
+        <span>{tr("invoices.docLang")}</span>
+        <select
+          aria-label={tr("invoices.docLang")}
+          value={doc.lang}
+          disabled={Boolean(doc.busy)}
+          onChange={(e) => doc.setLang(e.target.value === "en" ? "en" : "el")}
+        >
+          <option value="el">{tr("invoices.docLang_el")}</option>
+          <option value="en">{tr("invoices.docLang_en")}</option>
+        </select>
+      </label>
+    </>
   );
 }
 
@@ -279,6 +451,9 @@ function InvoiceDetail({
   busy,
   onClose,
   onTogglePaid,
+  doc,
+  error,
+  notice,
 }: {
   invoice: InvoiceDTO;
   company: CompanyInfo;
@@ -287,6 +462,9 @@ function InvoiceDetail({
   busy: boolean;
   onClose: () => void;
   onTogglePaid: (paid: boolean) => void;
+  doc: DocActions;
+  error: string;
+  notice: string;
 }) {
   const state = effectiveStatus(invoice);
   const paid = invoice.status === "PAID";
@@ -296,7 +474,7 @@ function InvoiceDetail({
       <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
         <div className="dash-modal-header">
           <h2>
-            {tr("invoices.detailTitle")} {invoice.invoiceNumber}
+            {tr("invoices.detailTitle")} {invoice.invoiceCode}
           </h2>
           <button
             className="dash-modal-close"
@@ -315,7 +493,7 @@ function InvoiceDetail({
                 <div className="dash-inv-title">
                   {tr("invoices.detailTitle")}
                 </div>
-                <div className="dash-inv-number">{invoice.invoiceNumber}</div>
+                <div className="dash-inv-number">{invoice.invoiceCode}</div>
               </div>
               <div className="dash-inv-dates">
                 <div>
@@ -403,6 +581,24 @@ function InvoiceDetail({
             </p>
           </div>
         </div>
+
+        {(doc.enabled || error || notice) && (
+          <div className="dash-inv-docbar">
+            {doc.enabled && (
+              <div className="dash-inv-docbar-actions">
+                <DocButtons invoice={invoice} doc={doc} tr={tr} />
+              </div>
+            )}
+            {invoice.emailSentAt && invoice.emailSentTo && (
+              <p className="dash-form-note">
+                {tr("invoices.emailSentTo")} <strong>{invoice.emailSentTo}</strong>{" "}
+                {tr("invoices.emailSentAt")} <strong>{stamp(invoice.emailSentAt, locale)}</strong>
+              </p>
+            )}
+            {error && <div className="dash-form-error">{error}</div>}
+            {notice && <div className="dash-alert-ok">{notice}</div>}
+          </div>
+        )}
 
         <div className="dash-modal-footer">
           <button className="dash-btn" onClick={onClose}>

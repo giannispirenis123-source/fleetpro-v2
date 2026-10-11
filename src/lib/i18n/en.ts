@@ -1118,6 +1118,20 @@ export const en: Dictionary = {
 
     errorSave: "Could not save",
     errorConnection: "Connection error",
+
+    downloadPdf: "Download PDF",
+    downloading: "Creating PDF…",
+    sendEmail: "Send to customer",
+    resendEmail: "Send to customer again",
+    sending: "Sending…",
+    docLang: "Email language",
+    docLang_el: "Ελληνικά",
+    docLang_en: "English",
+    emailSentTo: "Sent to",
+    emailSentAt: "on",
+    emailMissing: "The customer has no email — add it in the customer's record",
+    errorPdf: "Could not download the PDF",
+    errorSend: "Sending failed",
   },
 
   chargeType: {

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { INVOICE_RELATIONS, toInvoiceDTO } from "@/lib/invoices";
+import { canExportInvoice } from "@/lib/invoiceEmail";
 import InvoicesClient from "./InvoicesClient";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export default async function InvoicesPage() {
   // κάτι που ο server θα αρνιόταν.
   const guard = await pageGuard("invoices.view");
   if (!guard) redirect("/dashboard");
-  const { session } = guard;
+  const { session, viewer } = guard;
 
   const tenantId = session.tenantId;
 
@@ -38,6 +39,8 @@ export default async function InvoicesPage() {
   return (
     <InvoicesClient
       initialInvoices={invoices.map(toInvoiceDTO)}
+      // Λήψη PDF / αποστολή: μόνο Διαχειριστής και Προσωπικό (ο server ξαναελέγχει).
+      canExport={canExportInvoice(viewer.role)}
       company={{
         name: tenant.name,
         address: tenant.address,

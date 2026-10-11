@@ -19,6 +19,15 @@ export const INVOICE_STATUS_CLASS: Record<string, string> = {
   CANCELLED: "muted",
 };
 
+/**
+ * Τι δείχνουμε σε οθόνες, PDF και email: ο κωδικός (invoiceCode, βλ.
+ * src/lib/invoiceCode.ts), ή ο παλιός αριθμός INV-… όσο δεν έχει κωδικό.
+ */
+export const displayInvoiceCode = (i: {
+  invoiceCode: string | null;
+  invoiceNumber: string;
+}): string => i.invoiceCode || i.invoiceNumber;
+
 /** Προθεσμία πληρωμής σε ημέρες από την έκδοση. */
 export const DUE_DAYS = 30;
 
@@ -63,7 +72,10 @@ export function splitVatInclusive(total: number, vatRate: number): VatSplit {
 
 export interface InvoiceDTO {
   id: string;
+  /** Παλιός αύξων αριθμός (INV-001) — ΔΕΝ εμφανίζεται· μένει για αναζήτηση. */
   invoiceNumber: string;
+  /** Ο κωδικός που εμφανίζεται παντού (π.χ. K7M2-X9PQ) — βλ. displayInvoiceCode. */
+  invoiceCode: string;
   status: string;
 
   bookingId: string;
@@ -78,6 +90,9 @@ export interface InvoiceDTO {
   dueDate: string;
   paidAt: string | null;
   sentAt: string | null;
+  /** Τελευταία επιτυχής αποστολή με email (ISO) και σε ποιο email. */
+  emailSentAt: string | null;
+  emailSentTo: string | null;
 
   /** Καθαρή αξία. Στη βάση λέγεται subtotal. */
   net: number;
@@ -129,6 +144,7 @@ export function toInvoiceDTO(i: InvoiceWithRelations): InvoiceDTO {
   return {
     id: i.id,
     invoiceNumber: i.invoiceNumber,
+    invoiceCode: displayInvoiceCode(i),
     status: i.status,
 
     bookingId: i.bookingId,
@@ -142,6 +158,8 @@ export function toInvoiceDTO(i: InvoiceWithRelations): InvoiceDTO {
     dueDate: toDateInput(i.dueDate)!,
     paidAt: toDateInput(i.paidAt),
     sentAt: i.sentAt ? i.sentAt.toISOString() : null,
+    emailSentAt: i.emailSentAt ? i.emailSentAt.toISOString() : null,
+    emailSentTo: i.emailSentTo,
 
     net: Number(i.subtotal),
     vatRate: Number(i.taxRate),

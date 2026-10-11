@@ -1119,6 +1119,20 @@ export const el = {
 
     errorSave: "Δεν ήταν δυνατή η αποθήκευση",
     errorConnection: "Σφάλμα σύνδεσης",
+
+    downloadPdf: "Λήψη PDF",
+    downloading: "Δημιουργία PDF…",
+    sendEmail: "Αποστολή στον πελάτη",
+    resendEmail: "Νέα αποστολή στον πελάτη",
+    sending: "Αποστολή…",
+    docLang: "Γλώσσα email",
+    docLang_el: "Ελληνικά",
+    docLang_en: "English",
+    emailSentTo: "Στάλθηκε στο",
+    emailSentAt: "στις",
+    emailMissing: "Ο πελάτης δεν έχει email — συμπληρώστε το στην καρτέλα του πελάτη",
+    errorPdf: "Δεν ήταν δυνατή η λήψη του PDF",
+    errorSend: "Η αποστολή απέτυχε",
   },
 
   chargeType: {

@@ -44,108 +44,82 @@ export function dmy(iso: string | null | undefined): string {
 export const pct = (n: number) => String(round2(n)).replace(".", ",");
 
 /* ─────────────────────────────────────────────
-   Ετικέτες
+   Ετικέτες του PDF — ΔΙΓΛΩΣΣΕΣ, σε ΕΝΑ σημείο
    ───────────────────────────────────────────── */
 
+/** Μία ετικέτα και στις δύο γλώσσες: τα ελληνικά τυπώνονται πρώτα, τα αγγλικά από κάτω. */
+export interface BiLabel {
+  el: string;
+  en: string;
+}
+
+/**
+ * ΟΛΕΣ οι σταθερές ετικέτες του PDF τιμολογίου. Το PDF είναι ΠΑΝΤΑ δίγλωσσο·
+ * για να αλλάξει ένα κείμενο, αλλάζει μόνο εδώ. (Το κείμενο του email ζει
+ * χωριστά, στο invoiceEmail.ts, και είναι σε μία γλώσσα.)
+ */
 export const INVOICE_LABELS = {
-  el: {
-    title: "ΤΙΜΟΛΟΓΙΟ",
-    docTitle: "Τιμολόγιο",
-    code: "Κωδικός τιμολογίου",
-    issueDate: "Ημερομηνία έκδοσης",
-    dueDate: "Ημερομηνία λήξης",
-    status: "Κατάσταση",
-    issuer: "Εκδότης",
-    customer: "Πελάτης",
-    vat: "ΑΦΜ",
-    taxOffice: "ΔΟΥ",
-    phone: "Τηλ.",
-    email: "Email",
-    iban: "IBAN",
-    booking: "Στοιχεία κράτησης",
-    bookingNo: "Κράτηση",
-    vehicle: "Όχημα",
-    plate: "Πινακίδα",
-    pickup: "Παραλαβή",
-    return: "Επιστροφή",
-    description: "Περιγραφή",
-    amount: "Ποσό (με ΦΠΑ)",
-    rental: "Ενοίκιο οχήματος",
-    day: "ημέρα",
-    days: "ημέρες",
-    extra: "Πρόσθετο",
-    extras: "Πρόσθετα",
-    insurance: "Ασφάλεια",
-    discount: "Έκπτωση",
-    services: "Υπηρεσίες ενοικίασης οχήματος",
-    net: "Καθαρό ποσό",
-    vatLine: "ΦΠΑ",
-    total: "Σύνολο",
-    paidAt: "Εξοφλήθηκε",
-    payment: "Τρόπος πληρωμής",
-    paymentIban: "Τραπεζική μεταφορά στο IBAN",
-    paymentRef: "Παρακαλούμε αναφέρετε τον κωδικό τιμολογίου στην αιτιολογία.",
-    vatNote: "Οι τιμές των γραμμών περιλαμβάνουν ΦΠΑ.",
-    issuedBy: "Εκδόθηκε ηλεκτρονικά με το FleetPro.",
-    status_PAID: "Πληρωμένο",
-    status_UNPAID: "Απλήρωτο",
-    status_OVERDUE: "Ληξιπρόθεσμο",
-    status_CANCELLED: "Ακυρωμένο",
+  title: { el: "ΤΙΜΟΛΟΓΙΟ", en: "INVOICE" },
+  docTitle: { el: "Τιμολόγιο", en: "Invoice" },
+  code: { el: "Κωδικός τιμολογίου", en: "Invoice code" },
+  issueDate: { el: "Ημερομηνία έκδοσης", en: "Issue date" },
+  dueDate: { el: "Ημερομηνία λήξης", en: "Due date" },
+  status: { el: "Κατάσταση", en: "Status" },
+  company: { el: "Στοιχεία εταιρείας", en: "Company details" },
+  customer: { el: "Στοιχεία πελάτη", en: "Customer details" },
+  vat: { el: "ΑΦΜ", en: "VAT no." },
+  taxOffice: { el: "ΔΟΥ", en: "Tax office" },
+  address: { el: "Διεύθυνση", en: "Address" },
+  phone: { el: "Τηλέφωνο", en: "Phone" },
+  email: { el: "Email", en: "Email" },
+  iban: { el: "IBAN", en: "IBAN" },
+  booking: { el: "Αναφορά κράτησης", en: "Booking reference" },
+  bookingNo: { el: "Κράτηση", en: "Booking" },
+  vehicle: { el: "Όχημα", en: "Vehicle" },
+  plate: { el: "Πινακίδα", en: "Plate" },
+  pickup: { el: "Παραλαβή", en: "Pick-up" },
+  return: { el: "Επιστροφή", en: "Return" },
+  description: { el: "Περιγραφή", en: "Description" },
+  amount: { el: "Ποσό (με ΦΠΑ)", en: "Amount (incl. VAT)" },
+  rental: { el: "Ενοίκιο οχήματος", en: "Vehicle rental" },
+  day: { el: "ημέρα", en: "day" },
+  days: { el: "ημέρες", en: "days" },
+  extra: { el: "Πρόσθετο", en: "Extra" },
+  extras: { el: "Πρόσθετα", en: "Extras" },
+  insurance: { el: "Ασφάλεια", en: "Insurance" },
+  discount: { el: "Έκπτωση", en: "Discount" },
+  services: { el: "Υπηρεσίες ενοικίασης οχήματος", en: "Vehicle rental services" },
+  net: { el: "Καθαρό ποσό", en: "Net amount" },
+  vatLine: { el: "ΦΠΑ", en: "VAT" },
+  total: { el: "Σύνολο", en: "Total" },
+  paidAt: { el: "Εξοφλήθηκε", en: "Paid on" },
+  payment: { el: "Τρόπος πληρωμής", en: "Payment" },
+  paymentIban: { el: "Τραπεζική μεταφορά στο IBAN", en: "Bank transfer to IBAN" },
+  paymentRef: {
+    el: "Παρακαλούμε αναφέρετε τον κωδικό τιμολογίου στην αιτιολογία.",
+    en: "Please quote the invoice code as the payment reference.",
   },
-  en: {
-    title: "INVOICE",
-    docTitle: "Invoice",
-    code: "Invoice code",
-    issueDate: "Issue date",
-    dueDate: "Due date",
-    status: "Status",
-    issuer: "From",
-    customer: "Bill to",
-    vat: "VAT No.",
-    taxOffice: "Tax office",
-    phone: "Tel.",
-    email: "Email",
-    iban: "IBAN",
-    booking: "Booking details",
-    bookingNo: "Booking",
-    vehicle: "Vehicle",
-    plate: "Plate",
-    pickup: "Pick-up",
-    return: "Return",
-    description: "Description",
-    amount: "Amount (incl. VAT)",
-    rental: "Vehicle rental",
-    day: "day",
-    days: "days",
-    extra: "Extra",
-    extras: "Extras",
-    insurance: "Insurance",
-    discount: "Discount",
-    services: "Vehicle rental services",
-    net: "Net amount",
-    vatLine: "VAT",
-    total: "Total",
-    paidAt: "Paid on",
-    payment: "Payment",
-    paymentIban: "Bank transfer to IBAN",
-    paymentRef: "Please quote the invoice code as the payment reference.",
-    vatNote: "Line amounts include VAT.",
-    issuedBy: "Issued electronically with FleetPro.",
-    status_PAID: "Paid",
-    status_UNPAID: "Unpaid",
-    status_OVERDUE: "Overdue",
-    status_CANCELLED: "Cancelled",
-  },
-} as const;
+  vatNote: { el: "Οι τιμές των γραμμών περιλαμβάνουν ΦΠΑ.", en: "Line amounts include VAT." },
+  issuedBy: { el: "Εκδόθηκε ηλεκτρονικά με το FleetPro.", en: "Issued electronically with FleetPro." },
+  status_PAID: { el: "Πληρωμένο", en: "Paid" },
+  status_UNPAID: { el: "Απλήρωτο", en: "Unpaid" },
+  status_OVERDUE: { el: "Ληξιπρόθεσμο", en: "Overdue" },
+  status_CANCELLED: { el: "Ακυρωμένο", en: "Cancelled" },
+} as const satisfies Record<string, BiLabel>;
 
-export type InvoiceLabels = { [K in keyof (typeof INVOICE_LABELS)["el"]]: string };
+export type InvoiceLabelKey = keyof typeof INVOICE_LABELS;
 
-export const invoiceLabels = (lang: DocLang): InvoiceLabels => INVOICE_LABELS[lang];
+export const L: Record<InvoiceLabelKey, BiLabel> = INVOICE_LABELS;
 
-export const statusLabel = (status: string, lang: DocLang): string => {
-  const l = invoiceLabels(lang) as Record<string, string>;
-  return l[`status_${status}`] ?? status;
-};
+/** Η κατάσταση και στις δύο γλώσσες (άγνωστη → ο κωδικός ως έχει). */
+export const statusLabel = (status: string): BiLabel =>
+  (INVOICE_LABELS as Record<string, BiLabel>)[`status_${status}`] ?? { el: status, en: status };
+
+/** «ΦΠΑ 24%» / «VAT 24%». */
+export const vatLabel = (rate: number): BiLabel => ({
+  el: `${L.vatLine.el} ${pct(rate)}%`,
+  en: `${L.vatLine.en} ${pct(rate)}%`,
+});
 
 /* ─────────────────────────────────────────────
    Δεδομένα του εγγράφου
@@ -272,26 +246,35 @@ export function invoiceLines(
   return sum(lines.map((l) => l.amount)) === round2(invoiceTotal) ? lines : fallback;
 }
 
-/** Το κείμενο της περιγραφής μιας γραμμής στη γλώσσα του εγγράφου. */
-export function lineLabel(line: InvoiceLine, lang: DocLang): string {
-  const L = invoiceLabels(lang);
+/**
+ * Η περιγραφή μιας γραμμής και στις δύο γλώσσες. Οι ΤΙΜΕΣ (όνομα πρόσθετου,
+ * κωδικός έκπτωσης, ημέρες, τιμή) γράφονται μία φορά, στην ελληνική γραμμή·
+ * η αγγλική είναι η ετικέτα, για να διαβάζεται από το εξωτερικό.
+ */
+export function lineLabel(line: InvoiceLine): BiLabel {
+  const bi = (k: InvoiceLabelKey, valueEl = "", valueEn = ""): BiLabel => ({
+    el: `${L[k].el}${valueEl}`,
+    en: `${L[k].en}${valueEn}`,
+  });
   switch (line.kind) {
     case "rental": {
       const days = line.days ?? 0;
-      const d = days > 0 ? ` · ${days} ${days === 1 ? L.day : L.days}` : "";
+      const unit = days === 1 ? L.day : L.days;
       const rate = line.dailyRate !== undefined && days > 0 ? ` × ${eurEl(line.dailyRate)}` : "";
-      return `${L.rental}${d}${rate}`;
+      return days > 0
+        ? bi("rental", ` · ${days} ${unit.el}${rate}`, ` · ${days} ${unit.en}`)
+        : bi("rental");
     }
     case "extra":
-      return `${L.extra}: ${line.name ?? ""}`.trim();
+      return line.name ? bi("extra", `: ${line.name}`) : bi("extra");
     case "extras":
-      return L.extras;
+      return bi("extras");
     case "insurance":
-      return line.name ? `${L.insurance}: ${line.name}` : L.insurance;
+      return line.name ? bi("insurance", `: ${line.name}`) : bi("insurance");
     case "discount":
-      return line.name ? `${L.discount} (${line.name})` : L.discount;
+      return line.name ? bi("discount", ` (${line.name})`) : bi("discount");
     case "services":
-      return L.services;
+      return bi("services");
   }
 }
 

@@ -88,7 +88,8 @@ export default function InvoicesClient({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  // Γλώσσα PDF/email: ανά λήψη/αποστολή, προεπιλογή Ελληνικά.
+  // Γλώσσα του EMAIL (θέμα + κείμενο), προεπιλογή Ελληνικά. Το PDF είναι
+  // πάντα δίγλωσσο και δεν εξαρτάται από αυτήν.
   const [docLang, setDocLang] = useState<DocLang>("el");
   const [docBusy, setDocBusy] = useState<DocActions["busy"]>(null);
 
@@ -151,7 +152,7 @@ export default function InvoicesClient({
     setError("");
     setNotice("");
     try {
-      const res = await fetch(`/api/invoices/${invoice.id}/pdf?lang=${docLang}`, { cache: "no-store" });
+      const res = await fetch(`/api/invoices/${invoice.id}/pdf`, { cache: "no-store" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.message || tr("invoices.errorPdf"));
@@ -423,6 +424,7 @@ function DocButtons({
             : tr("invoices.sendEmail")}
       </button>
       <label className="dash-field dash-field--inline dash-doc-lang">
+        <span>{tr("invoices.docLang")}</span>
         <select
           aria-label={tr("invoices.docLang")}
           value={doc.lang}

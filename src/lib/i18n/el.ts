@@ -1125,7 +1125,7 @@ export const el = {
     sendEmail: "Αποστολή στον πελάτη",
     resendEmail: "Νέα αποστολή στον πελάτη",
     sending: "Αποστολή…",
-    docLang: "Γλώσσα PDF και email",
+    docLang: "Γλώσσα email",
     docLang_el: "Ελληνικά",
     docLang_en: "English",
     emailSentTo: "Στάλθηκε στο",

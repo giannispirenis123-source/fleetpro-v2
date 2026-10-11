@@ -1124,7 +1124,7 @@ export const en: Dictionary = {
     sendEmail: "Send to customer",
     resendEmail: "Send to customer again",
     sending: "Sending…",
-    docLang: "PDF and email language",
+    docLang: "Email language",
     docLang_el: "Ελληνικά",
     docLang_en: "English",
     emailSentTo: "Sent to",

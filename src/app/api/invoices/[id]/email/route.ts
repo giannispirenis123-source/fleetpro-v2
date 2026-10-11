@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 // src/app/api/invoices/[id]/email/route.ts
 // «Αποστολή στον πελάτη»: email (Resend) στον πελάτη του τιμολογίου με
-// συνημμένο το PDF. ΜΟΝΟ Διαχειριστής και Προσωπικό (όχι συνεργάτης).
+// συνημμένο το (δίγλωσσο) PDF. Το lang αφορά ΜΟΝΟ θέμα και κείμενο του email. ΜΟΝΟ Διαχειριστής και Προσωπικό (όχι συνεργάτης).
 //
 // POST { lang: "el" | "en" } → { sentAt, sentTo, lang }
 // Η λογική ζει στο src/lib/invoiceEmailSend.ts (ελέγχεται από τα tests)·
@@ -90,8 +90,8 @@ export const POST = withPermission(
             `);
           }
         },
-        buildPdf: async (doc, lang) =>
-          buildInvoicePdf({ doc, lang, logo: await fetchLogoBytes(logoPath) }),
+        // Το συνημμένο είναι το ίδιο δίγλωσσο PDF· η γλώσσα αφορά μόνο το email.
+        buildPdf: async (doc) => buildInvoicePdf({ doc, logo: await fetchLogoBytes(logoPath) }),
         send: async (apiKey, email) => {
           try {
             const { error } = await new Resend(apiKey).emails.send(email);

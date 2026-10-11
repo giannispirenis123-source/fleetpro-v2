@@ -40,7 +40,8 @@ export interface InvoiceEmailDeps {
   reserveAttempt: (entry: EmailSendEntry) => Promise<ReserveResult>;
   /** Ενημερώνει την προσπάθεια και, σε επιτυχία, emailSentAt/To. */
   finishAttempt: (entryId: string, outcome: { ok: boolean; error?: string; sentTo?: string; at: Date }) => Promise<void>;
-  buildPdf: (doc: InvoiceDoc, lang: DocLang) => Promise<Uint8Array>;
+  /** Το δίγλωσσο PDF — ίδιο όποια γλώσσα κι αν έχει το email. */
+  buildPdf: (doc: InvoiceDoc) => Promise<Uint8Array>;
   /** Κωδικός σφάλματος ή null σε επιτυχία. ΔΕΝ ρίχνει. */
   send: (apiKey: string, email: OutgoingInvoiceEmail) => Promise<{ error: ProviderErrorCode | null }>;
   now: () => Date;
@@ -102,7 +103,7 @@ export async function sendInvoiceEmail(
 
   let pdf: Uint8Array;
   try {
-    pdf = await deps.buildPdf(doc, req.lang);
+    pdf = await deps.buildPdf(doc);
   } catch (e) {
     log(`αποτυχία PDF (${e instanceof Error ? e.name : "?"})`);
     await deps.finishAttempt(entryId, { ok: false, error: "pdf", at: deps.now() });

@@ -1,33 +1,32 @@
 export const dynamic = "force-dynamic";
 // src/app/api/invoices/[id]/pdf/route.ts
-// GET /api/invoices/[id]/pdf?lang=el|en → το τιμολόγιο ως PDF (λήψη).
+// GET /api/invoices/[id]/pdf → το τιμολόγιο ως ΔΙΓΛΩΣΣΟ PDF (λήψη). Το
+// παλιό ?lang=el|en γίνεται δεκτό αλλά δεν αλλάζει τίποτα.
 //
 // ΜΟΝΟ Διαχειριστής και Προσωπικό (ο συνεργάτης όχι, ακόμα κι αν έχει
 // δικαίωμα προβολής). Η εταιρία έρχεται ΜΟΝΟ από τη συνεδρία· τιμολόγιο
 // άλλης εταιρίας → 404.
 
 import { NextResponse } from "next/server";
-import { badRequest, forbidden, notFound, serverError } from "@/lib/api";
+import { forbidden, notFound, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { parseDocLang, invoicePdfFilename } from "@/lib/invoiceDocument";
+import { invoicePdfFilename } from "@/lib/invoiceDocument";
 import { INVOICE_EMAIL_MSG, canExportInvoice } from "@/lib/invoiceEmail";
 import { fetchLogoBytes, loadInvoiceDoc } from "@/lib/invoiceServer";
 import { buildInvoicePdf } from "@/lib/invoicePdf";
 
 export const GET = withPermission(
-  async (req, session, params, viewer) => {
+  async (_req, session, params, viewer) => {
     try {
       if (!canExportInvoice(viewer!.role) || !session.tenantId) return forbidden(INVOICE_EMAIL_MSG.role);
 
-      const lang = parseDocLang(req.nextUrl.searchParams.get("lang"));
-      if (!lang) return badRequest("Μη έγκυρη γλώσσα (el ή en)");
-
+      // Το ?lang= μένει για συμβατότητα αλλά ΑΓΝΟΕΙΤΑΙ: το PDF είναι πάντα
+      // δίγλωσσο (Ελληνικά + English).
       const loaded = await loadInvoiceDoc(session.tenantId, params!.id);
       if (!loaded) return notFound(INVOICE_EMAIL_MSG.notFound);
 
       const pdf = await buildInvoicePdf({
         doc: loaded.doc,
-        lang,
         logo: await fetchLogoBytes(loaded.logoPath),
       });
 

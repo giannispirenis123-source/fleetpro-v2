@@ -24,7 +24,7 @@ const {
   isInvoiceCodeConflict,
   withInvoiceCode,
 } = await import("../src/lib/invoiceCode.ts");
-const { eurEl, invoiceLines, lineLabel, invoicePdfFilename, parseDocLang } = await import(
+const { INVOICE_LABELS, eurEl, invoiceLines, lineLabel, invoicePdfFilename, parseDocLang, statusLabel, vatLabel } = await import(
   "../src/lib/invoiceDocument.ts"
 );
 const { buildInvoicePdf } = await import("../src/lib/invoicePdf.ts");
@@ -143,16 +143,20 @@ test("γραμμές: ενοίκιο, πρόσθετο, ασφάλεια, έκπ
       ["discount", -15],
     ]
   );
-  assert.equal(lineLabel(lines[0], "el"), "Ενοίκιο οχήματος · 5 ημέρες × 40,00 €");
-  assert.equal(lineLabel(lines[0], "en"), "Vehicle rental · 5 days × 40,00 €");
-  assert.equal(lineLabel(lines[3], "el"), "Έκπτωση (SUMMER)");
+  assert.deepEqual(lineLabel(lines[0]), {
+    el: "Ενοίκιο οχήματος · 5 ημέρες × 40,00 €",
+    en: "Vehicle rental · 5 days",
+  });
+  assert.deepEqual(lineLabel(lines[1]), { el: "Πρόσθετο: GPS", en: "Extra" });
+  assert.deepEqual(lineLabel(lines[2]), { el: "Ασφάλεια: Πλήρης ασφάλεια", en: "Insurance" });
+  assert.deepEqual(lineLabel(lines[3]), { el: "Έκπτωση (SUMMER)", en: "Discount" });
 });
 
 test("γραμμές: χειροκίνητο ενοίκιο συμβολαίου (χωρίς ημερήσια τιμή)", () => {
   const lines = invoiceLines({ ...booking, total: 300 }, 300, 240);
   assert.equal(lines[0].amount, 240);
   assert.equal(lines[0].dailyRate, undefined);
-  assert.equal(lineLabel(lines[0], "el"), "Ενοίκιο οχήματος · 5 ημέρες");
+  assert.equal(lineLabel(lines[0]).el, "Ενοίκιο οχήματος · 5 ημέρες");
 });
 
 test("γραμμές: αν δεν συμφωνούν με το ΑΠΟΘΗΚΕΥΜΕΝΟ σύνολο → μία γραμμή με το σύνολο", () => {
@@ -218,33 +222,55 @@ const PNG_1x1 = Uint8Array.from(
   )
 );
 
-test("PDF: ελληνικά και αγγλικά, έγκυρο αρχείο μίας σελίδας με τίτλο τον κωδικό", async () => {
-  for (const lang of ["el", "en"]) {
-    const bytes = await buildInvoicePdf({ doc: makeDoc(), lang, now: new Date("2026-10-11T10:00:00Z") });
-    assert.equal(Buffer.from(bytes.slice(0, 5)).toString(), "%PDF-");
-    const pdf = await PDFDocument.load(bytes);
-    assert.equal(pdf.getPageCount(), 1);
-    assert.equal(pdf.getTitle(), `${lang === "el" ? "Τιμολόγιο" : "Invoice"} K7M2-X9PQ`);
+test("ετικέτες: κάθε κλειδί έχει el ΚΑΙ en, μη κενά", () => {
+  const keys = Object.keys(INVOICE_LABELS);
+  assert.ok(keys.length >= 40);
+  for (const k of keys) {
+    const l = INVOICE_LABELS[k];
+    assert.deepEqual(Object.keys(l).sort(), ["el", "en"], k);
+    assert.equal(typeof l.el, "string", k);
+    assert.equal(typeof l.en, "string", k);
+    assert.ok(l.el.trim().length > 0, `${k}.el κενό`);
+    assert.ok(l.en.trim().length > 0, `${k}.en κενό`);
   }
+  for (const st of ["PAID", "UNPAID", "OVERDUE", "CANCELLED"]) {
+    assert.ok(INVOICE_LABELS[`status_${st}`], st);
+  }
+  assert.deepEqual(statusLabel("OVERDUE"), { el: "Ληξιπρόθεσμο", en: "Overdue" });
+  assert.deepEqual(vatLabel(24), { el: "ΦΠΑ 24%", en: "VAT 24%" });
+  // Κάθε γραμμή του πίνακα έχει και τις δύο γλώσσες.
+  for (const kind of ["rental", "extra", "extras", "insurance", "discount", "services"]) {
+    const l = lineLabel({ kind, amount: 1, days: 2 });
+    assert.ok(l.el && l.en, kind);
+  }
+});
+
+test("PDF: ΠΑΝΤΑ δίγλωσσο, έγκυρο αρχείο μίας σελίδας με τίτλο τον κωδικό", async () => {
+  const bytes = await buildInvoicePdf({ doc: makeDoc(), now: new Date("2026-10-11T10:00:00Z") });
+  assert.equal(Buffer.from(bytes.slice(0, 5)).toString(), "%PDF-");
+  const pdf = await PDFDocument.load(bytes);
+  assert.equal(pdf.getPageCount(), 1);
+  assert.equal(pdf.getTitle(), "Τιμολόγιο / Invoice K7M2-X9PQ");
+  // Ίδια είσοδος → ίδιο αρχείο: η γλώσσα δεν επηρεάζει πια το PDF.
+  const again = await buildInvoicePdf({ doc: makeDoc(), lang: "en", now: new Date("2026-10-11T10:00:00Z") });
+  assert.equal(Buffer.compare(Buffer.from(bytes), Buffer.from(again)), 0);
 });
 
 test("PDF: πολλές γραμμές → δεύτερη σελίδα", async () => {
   const many = Array.from({ length: 60 }, (_, i) => ({ kind: "extra", name: `Πρόσθετο ${i + 1}`, amount: 1 }));
-  const pdf = await PDFDocument.load(await buildInvoicePdf({ doc: makeDoc({ lines: many }), lang: "el" }));
+  const pdf = await PDFDocument.load(await buildInvoicePdf({ doc: makeDoc({ lines: many }) }));
   assert.ok(pdf.getPageCount() >= 2);
 });
 
 test("PDF: λογότυπο PNG μπαίνει· άκυρα bytes/WebP → χωρίς λογότυπο, χωρίς σφάλμα", async () => {
-  const plain = await buildInvoicePdf({ doc: makeDoc(), lang: "el" });
-  const withLogo = await buildInvoicePdf({ doc: makeDoc(), lang: "el", logo: PNG_1x1 });
+  const plain = await buildInvoicePdf({ doc: makeDoc() });
+  const withLogo = await buildInvoicePdf({ doc: makeDoc(), logo: PNG_1x1 });
   const broken = await buildInvoicePdf({
     doc: makeDoc(),
-    lang: "el",
     logo: Uint8Array.from(Buffer.from("RIFF0000WEBPVP8 junk")),
   });
   const badPng = await buildInvoicePdf({
     doc: makeDoc(),
-    lang: "el",
     logo: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5, 6]),
   });
   assert.ok(withLogo.length > plain.length);
@@ -312,7 +338,7 @@ function makeDeps(over = {}) {
     finishAttempt: async (id, o) => {
       state.finished.push({ id, ...o });
     },
-    buildPdf: async (doc, lang) => buildInvoicePdf({ doc, lang }),
+    buildPdf: async (doc) => buildInvoicePdf({ doc }),
     send: async (_key, email) => {
       state.sent.push(email);
       return { error: null };

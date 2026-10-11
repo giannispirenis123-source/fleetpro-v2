@@ -8,17 +8,22 @@
 //  2. Αρίθμηση χωρίς κενά και χωρίς διπλά. Το εγγυάται το
 //     @@unique([tenantId, invoiceNumber]): αν δύο εκδόσεις πέσουν μαζί, η
 //     μία σκάει και ξαναδοκιμάζει με τον επόμενο αριθμό.
+//
+// Ο κωδικός που βλέπει ο πελάτης (invoiceCode, π.χ. K7M2-X9PQ) βγαίνει ΜΟΝΟ
+// από το src/lib/invoiceCode.ts (withInvoiceCode: νέος κωδικός σε σύγκρουση).
 
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
-import { DUE_DAYS, splitVatInclusive } from "./invoices";
+import { DUE_DAYS, displayInvoiceCode, splitVatInclusive } from "./invoices";
+import { withInvoiceCode } from "./invoiceCode";
 
 /** Πόσες φορές ξαναδοκιμάζουμε αν «κλαπεί» ο αριθμός από ταυτόχρονη έκδοση. */
 const MAX_ATTEMPTS = 5;
 
 export type IssueOutcome =
-  | { ok: true; invoiceId: string; invoiceNumber: string; created: true }
-  | { ok: true; invoiceId: string; invoiceNumber: string; created: false }
+  // invoiceCode = ό,τι εμφανίζεται (ο κωδικός, ή ο παλιός αριθμός αν λείπει).
+  | { ok: true; invoiceId: string; invoiceNumber: string; invoiceCode: string; created: true }
+  | { ok: true; invoiceId: string; invoiceNumber: string; invoiceCode: string; created: false }
   | { ok: false; message: string };
 
 /** INV-001, INV-002… ανά εταιρία. */
@@ -87,13 +92,14 @@ export async function issueInvoiceForBooking(opts: {
   // Φύλακας: μία κράτηση, ένα τιμολόγιο.
   const existing = await db.invoice.findUnique({
     where: { bookingId: booking.id },
-    select: { id: true, invoiceNumber: true },
+    select: { id: true, invoiceNumber: true, invoiceCode: true },
   });
   if (existing) {
     return {
       ok: true,
       invoiceId: existing.id,
       invoiceNumber: existing.invoiceNumber,
+      invoiceCode: displayInvoiceCode(existing),
       created: false,
     };
   }
@@ -116,27 +122,31 @@ export async function issueInvoiceForBooking(opts: {
     const invoiceNumber = formatNumber(await nextSequence(opts.tenantId));
 
     try {
-      const invoice = await db.invoice.create({
-        data: {
-          tenantId: opts.tenantId,
-          bookingId: booking.id,
-          customerId: booking.customerId,
-          invoiceNumber,
-          issueDate,
-          dueDate,
-          subtotal: split.net,
-          taxRate: split.vatRate,
-          taxAmount: split.vatAmount,
-          total: split.total,
-          status: "UNPAID",
-        },
-        select: { id: true, invoiceNumber: true },
-      });
+      const invoice = await withInvoiceCode((invoiceCode) =>
+        db.invoice.create({
+          data: {
+            tenantId: opts.tenantId,
+            bookingId: booking.id,
+            customerId: booking.customerId,
+            invoiceNumber,
+            invoiceCode,
+            issueDate,
+            dueDate,
+            subtotal: split.net,
+            taxRate: split.vatRate,
+            taxAmount: split.vatAmount,
+            total: split.total,
+            status: "UNPAID",
+          },
+          select: { id: true, invoiceNumber: true, invoiceCode: true },
+        })
+      );
 
       return {
         ok: true,
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoiceNumber,
+        invoiceCode: displayInvoiceCode(invoice),
         created: true,
       };
     } catch (error) {
@@ -154,13 +164,14 @@ export async function issueInvoiceForBooking(opts: {
         if (target.includes("bookingId")) {
           const other = await db.invoice.findUnique({
             where: { bookingId: booking.id },
-            select: { id: true, invoiceNumber: true },
+            select: { id: true, invoiceNumber: true, invoiceCode: true },
           });
           if (other) {
             return {
               ok: true,
               invoiceId: other.id,
               invoiceNumber: other.invoiceNumber,
+              invoiceCode: displayInvoiceCode(other),
               created: false,
             };
           }

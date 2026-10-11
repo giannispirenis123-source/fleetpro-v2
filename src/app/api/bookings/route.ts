@@ -35,7 +35,7 @@ export const GET = withPermission(
         include: {
           vehicle: { select: { brand: true, model: true, plate: true } },
           customer: { select: { firstName: true, lastName: true } },
-          invoice: { select: { invoiceNumber: true } },
+          invoice: { select: { invoiceNumber: true, invoiceCode: true } },
           partner: {
             select: {
               id: true,

@@ -281,7 +281,7 @@ export default function BookingsClient({
 
       // Είτε μόλις εκδόθηκε είτε υπήρχε ήδη, η κάρτα δείχνει από εδώ και
       // πέρα τον αριθμό — άρα το κουμπί δεν ξαναεμφανίζεται.
-      const invoiceNumber: string = data.data.invoice.invoiceNumber;
+      const invoiceNumber: string = data.data.invoice.invoiceCode;
       setBookings((prev) =>
         prev.map((x) => (x.id === b.id ? { ...x, invoiceNumber } : x))
       );

@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 08/10/2026 · **main:** `1124541` (merge του PR #18 — κάμερα σε iPhone). Σειρά: `d30c20d` (#11) → `27ede67` (#12) → `9276dd3` (#13) → `3e611ea` (#14) → `f9b78b6` (#15) → `6b054e6` (#16) → `14ab7da` (#17) → `1124541` (#18). **SQL `15`, `16`, `17` έχουν τρέξει.** **Ανοιχτό:** branch `claude/vehicle-photos` — φωτογραφίες οχήματος με Cloudinary (§5), **θέλει SQL `18`** και τα 3 env `CLOUDINARY_*` (§3) **πριν το merge** (επόμενος ελεύθερος `19`).
+**Ημερομηνία:** 11/10/2026 · **main:** `321aab1` (merge του PR #19 — φωτογραφίες οχήματος με Cloudinary· το SQL `18` και τα `CLOUDINARY_*` ήταν προϋπόθεση του merge). **SQL `15`, `16`, `17` έχουν τρέξει.** **Ανοιχτό:** branch `claude/invoice-pdf-export-wu0cnc` — PDF τιμολογίου (λήψη + αποστολή με email), **θέλει SQL `19` ΠΡΙΝ δοκιμαστεί το preview** (§5.1, §6). Επόμενος ελεύθερος αριθμός SQL: `20`.
 
 > **Επόμενο βήμα:** Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
@@ -98,6 +98,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Κρατήσεις: υπολογισμός τιμής, στρογγυλοποίηση ανά εταιρία | ✅ |
 | Εκπτώσεις εταιρίας (`/dashboard/discounts` + `/api/discounts/validate`) | ✅ |
 | Τιμολόγια: έκδοση, ΦΠΑ inclusive, εκτύπωση | ✅ |
+| Τιμολόγια: τυχαίος κωδικός (π.χ. `K7M2-X9PQ`), PDF (λήψη) ΕΛ/EN, αποστολή στον πελάτη με email (§5.1) | ⏳ branch `claude/invoice-pdf-export-wu0cnc`, θέλει SQL `19` |
 | Ημερολόγιο: μηνιαίο + timeline ανά όχημα | ✅ |
 | Δικαιώματα ανά χρήστη + σελίδα Χρήστες | ✅ |
 | Πολλοί Διαχειριστές εταιρίας (δημιουργία, προαγωγή Προσωπικού, υποβιβασμός) | ✅ live (`27ede67`, PR #12) |
@@ -130,7 +131,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 **Σημειώσεις λογικής:**
 - ΦΠΑ **inclusive**: το `Booking.total` περιέχει ΦΠΑ. `net = total / (1 + ΦΠΑ/100)`. Το ποσοστό γίνεται snapshot στο τιμολόγιο.
-- Αρίθμηση τιμολογίων `INV-001…` ανά tenant, ασφαλής σε ταυτόχρονη έκδοση.
+- Αρίθμηση τιμολογίων `INV-001…` ανά tenant, ασφαλής σε ταυτόχρονη έκδοση — **μένει στη βάση αλλά δεν εμφανίζεται πια**: παντού (οθόνες, PDF, email, Κρατήσεις/Ημερολόγιο) φαίνεται ο τυχαίος `invoiceCode` (§5.1).
 - Προμήθεια: **δυναμική** (δεν παγώνει), πάνω σε ενοίκιο/πρόσθετα/ασφάλεια κατ' επιλογή, **πριν** την έκπτωση. Οι ακυρωμένες δεν μετράνε.
 - `partnerId` = ποιος **έφερε** την κράτηση · `createdById` = ποιος την **κατέγραψε**.
 - Εκπτώσεις συνδρομών (Super Admin): ποσοστό ή σταθερό €/μήνα σε **μία** εταιρία, `validFrom` → `validUntil` (κενό = μέχρι διακοπής) + `active`. **Μία ενεργή ανά εταιρία** σε επικαλυπτόμενο διάστημα (409). Οι τιμές πλάνων (`PLAN_PRICES`) ζουν πλέον στο `src/lib/platformDiscounts.ts` — το Tenant αποθηκεύει μόνο το πλάνο. **Μόνο αποθήκευση/εμφάνιση**, καμία χρέωση· το Stripe θα τις διαβάσει αργότερα. Το παλιό `PlatformCoupon` (κουπόνια με κωδικό) μένει αχρησιμοποίητο.
@@ -291,10 +292,24 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - Logs: μόνο ονόματα μεταβλητών που λείπουν και σύντομοι κωδικοί — ποτέ κλειδιά/υπογραφές.
   - **Δημόσιο site κρατήσεων δεν υπάρχει ακόμη** (§8.8): όταν φτιαχτεί, η κάρτα οχήματος παίρνει την κύρια με `mainPhotoUrl(vehicle.photos)` + `cloudinaryThumb(url, πλάτος)` (το DTO δίνει ήδη `photos` χωρίς `publicId`).
 
+### 5.1 Τιμολόγια: κωδικός, PDF και αποστολή στον πελάτη (branch `claude/invoice-pdf-export-wu0cnc`)
+
+- **Κωδικός τιμολογίου** `invoices."invoiceCode"` (UNIQUE σε **όλη** τη βάση, nullable μόνο για τη μετάβαση): 8 τυχαίοι χαρακτήρες `XXXX-XXXX` από το αλφάβητο `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (χωρίς O/0/I/1), με `crypto.randomInt`. **Ένα σημείο:** `src/lib/invoiceCode.ts` (`generateInvoiceCode`, `withInvoiceCode` = νέος κωδικός σε P2002 στο `invoiceCode`, έως 5 φορές). Το καλεί το `issueInvoiceForBooking` (χειροκίνητη **και** αυτόματη έκδοση από κράτηση) και το `ensureInvoiceCode` (τιμολόγια χωρίς κωδικό παίρνουν με την πρώτη λήψη PDF/αποστολή). Ο παλιός `invoiceNumber` (`INV-001`) **δεν σβήνεται** — μένει για αναζήτηση. Εμφάνιση: `displayInvoiceCode` (`invoices.ts`) = κωδικός, ή ο παλιός αριθμός όσο λείπει κωδικός.
+- **PDF** (`src/lib/invoicePdf.ts`, pdf-lib + DejaVu Sans όπως το συμβόλαιο, χωρίς Chromium): τίτλος ΤΙΜΟΛΟΓΙΟ/INVOICE, κωδικός, ημερομηνία έκδοσης/λήξης, κατάσταση (Πληρωμένο/Απλήρωτο/Ληξιπρόθεσμο/Ακυρωμένο — `effectiveStatus`), εκδότης (επωνυμία, διεύθυνση, ΑΦΜ, ΔΟΥ, τηλ., email, IBAN), πελάτης, κράτηση (αριθμός, όχημα, πινακίδα, παραλαβή/επιστροφή), πίνακας γραμμών με ΦΠΑ (ενοίκιο, πρόσθετα, ασφάλεια, έκπτωση· χειροκίνητο ενοίκιο συμβολαίου όπως στο Α4), καθαρό/ΦΠΑ/σύνολο από τα **αποθηκευμένα** `subtotal`/`taxAmount`/`total`. Αν οι γραμμές της κράτησης **δεν** αθροίζουν ακριβώς στο αποθηκευμένο σύνολο (π.χ. άλλαξε η κράτηση μετά την έκδοση), μπαίνει μία γραμμή «Υπηρεσίες ενοικίασης» με το σύνολο. Ποσά πάντα `1.234,56 €`. Δεύτερη σελίδα με επανάληψη της κεφαλίδας του πίνακα. Brand color για τίτλους/γραμμές (πολύ ανοιχτό χρώμα → σκούρο κείμενο). Λογότυπο: το **υπάρχον** `tenants.logoPath` (Ρυθμίσεις → λογότυπο, ιδιωτικό Supabase Storage) κατεβαίνει server-side με signed URL (8″ timeout, ≤ 5 MB) και μπαίνει επάνω αριστερά· PNG/JPEG μόνο — WebP ή οποιαδήποτε αποτυχία → μόνο η επωνυμία. Αρχείο `Invoice-<κωδικός>.pdf`.
+- **Γλώσσα** ΕΛ/EN ανά λήψη/αποστολή: dropdown δίπλα στα κουμπιά (προεπιλογή Ελληνικά), για PDF και email.
+- **Λήψη:** `GET /api/invoices/[id]/pdf?lang=el|en` → `application/pdf`, `Content-Disposition: attachment`. **Μόνο COMPANY_ADMIN και STAFF** (`invoices.view` **και** ρόλος — ο PARTNER παίρνει 403 ακόμη κι αν έχει `invoices.view`). Εταιρία μόνο από τη συνεδρία· τιμολόγιο άλλης εταιρίας → 404.
+- **Αποστολή:** `POST /api/invoices/[id]/email { lang }` — ίδια ροή με το συμβόλαιο (Resend, `EMAIL_FROM`, PDF συνημμένο), θέμα «Τιμολόγιο <κωδικός> — <επωνυμία>» / «Invoice <code> — <company>», σύντομο κείμενο **χωρίς link και χωρίς στοιχεία κάρτας**, reply-to = email εταιρίας αν υπάρχει. Έλεγχοι: ρόλος (403) → τιμολόγιο εταιρίας (404) → ακυρωμένο (409) → email πελάτη (400) → `RESEND_API_KEY` (500, δεν μετρά) → όριο **5/ώρα ανά τιμολόγιο** (429, ατομικό `UPDATE` στο `emailSendLog`) → PDF → Resend. Διακριτά μηνύματα για τα σφάλματα του Resend (`classifyProviderError`): μόνο-στο-email-του-λογαριασμού (testing), μη επαληθευμένο domain, άκυρο κλειδί, όριο Resend, απόρριψη παραλήπτη/συνημμένου. Αποθηκεύονται `emailSentAt`, `emailSentTo` (και `sentAt`), ιστορικό `emailSendLog` με **μασκαρισμένο** email· η σελίδα δείχνει «Στάλθηκε στο … στις …». Logs: μόνο κωδικοί (`[FleetPro] email τιμολογίου: …`) — ποτέ παραλήπτης, κλειδιά, μήνυμα του Resend.
+- **UI:** σελίδα Τιμολόγια — σε κάθε γραμμή και στις «Λεπτομέρειες»: «Λήψη PDF», «Αποστολή στον πελάτη» (ανενεργό χωρίς email πελάτη ή σε ακυρωμένο), γλώσσα. Τα κουμπιά φαίνονται μόνο σε Διαχειριστή/Προσωπικό.
+- Το δικαίωμα `invoices.send` του πίνακα δικαιωμάτων μένει «σύντομα» (`future`)· η αποστολή φυλάσσεται με `invoices.view` + ρόλο, ώστε το Προσωπικό να τη έχει χωρίς backfill. Το `invoiceSendMode = AUTO` (αυτόματη αποστολή) **δεν** υλοποιήθηκε.
+- **Δεν αγγίχτηκαν:** ροή συμβολαίων (μόνο εισάγονται βοηθητικά του `contractEmail.ts`), Cloudinary, env, υπολογισμός ΦΠΑ.
+- Αρχεία: `src/lib/invoiceCode.ts`, `invoiceDocument.ts` (καθαρή λογική/ετικέτες), `invoicePdf.ts`, `invoiceEmail.ts`, `invoiceEmailSend.ts` (ροή με εγχυόμενες εξαρτήσεις), `invoiceServer.ts` (βάση/λογότυπο), `src/app/api/invoices/[id]/pdf`, `…/email`, `tests/invoice-pdf.test.mjs`.
+- **Πώς δοκιμάζεται (μετά το SQL 19):** στο preview, ως Διαχειριστής ή Προσωπικό → Τιμολόγια → «Λήψη PDF» (Ελληνικά και English) → ανοίξτε το PDF: ελληνικά σωστά, κωδικός `XXXX-XXXX`, ποσά/ΦΠΑ ίδια με την οθόνη, λογότυπο αν υπάρχει. «Αποστολή στον πελάτη» σε τιμολόγιο πελάτη με email **ίδιο με το email του λογαριασμού Resend** (μέχρι να επαληθευτεί domain) → έρχεται email με PDF, και η γραμμή δείχνει «Στάλθηκε στο … στις …». Με άλλο email πελάτη αναμένεται το σαφές μήνυμα του περιορισμού του Resend. Ως Συνεργάτης: δεν φαίνονται κουμπιά και το URL του PDF απαντά 403.
+
 ## 6. Migrations
 
-Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
+- **19-invoice-pdf: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/invoice-pdf-export-wu0cnc`). **Σειρά:** (1) τρέξτε το `19` στο Supabase SQL Editor **πριν** ανοίξετε/δοκιμάσετε το preview — το preview γράφει στην **ίδια** βάση με την παραγωγή, και ο νέος κώδικας ζητά τις νέες στήλες· (2) δοκιμή στο preview· (3) merge· (4) **ξανατρέξτε** το `19` μία φορά μετά το merge (idempotent), ώστε να πάρουν κωδικό και όσα τιμολόγια έβγαλε στο μεταξύ η παλιά έκδοση (ο κώδικας τούς δίνει και μόνος του με την πρώτη λήψη/αποστολή). Η παλιά έκδοση (παραγωγή) δουλεύει κανονικά με το `19` (μόνο προσθήκες, όλες nullable ή με default). Περιέχει: `invoices."invoiceCode" TEXT` + UNIQUE index `invoices_invoiceCode_key`, backfill **μόνο** όπου `IS NULL` (ίδιο αλφάβητο, τυχαιότητα από `gen_random_uuid()`, επανάληψη σε σύγκρουση), `"emailSentAt" TIMESTAMP(3)`, `"emailSentTo" TEXT`, `"emailSendLog" JSONB NOT NULL DEFAULT '[]'`. Αναμενόμενο verification `0 | 0 | 0 | 4 | 1` (χωρίς κωδικό | διπλότυπα | λάθος μορφή | νέες στήλες | unique index). Τοπικά (PostgreSQL 16): 5.000 τιμολόγια, δύο εκτελέσεις → `0 | 0 | 0 | 4 | 1`· `prisma migrate diff` από το `schema.prisma` βγάζει ίδιες στήλες/index.
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
 - **09-platform-discounts:** το commit έγινε merge στο `main` (`90d2d70`) κατόπιν ρητού αιτήματος· **αξίζει επιβεβαίωση** ότι έτρεξε (αναμενόμενο verification `1 | 1 | 9 | 1 | 3`). Αν δεν έχει τρέξει, σκάει μόνο το tab «Εκπτώσεις» του `/super-admin`.
@@ -328,6 +343,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | 🟠 Αδοκίμαστα στην παραγωγή | Μετονομασία tenant (§5), δεύτερος Διαχειριστής, link πελάτη `/c/[token]` + QR (πλέον από το domain της εφαρμογής, χωρίς env), κάμερα σε iPhone (φωτογραφίες ζημιών/διπλώματος — διόρθωση στο branch `claude/ios-camera-fix`, δοκιμή μόνο σε Chromium με εξομοίωση iPhone, **όχι σε πραγματικό iPhone**). |
 | 🟠 Αδοκίμαστα στην παραγωγή | **Αποστολή στον πελάτη:** πραγματική παράδοση μέσω Resend δεν δοκιμάστηκε (τα tests χρησιμοποιούν mock). Με `EMAIL_FROM=onboarding@resend.dev` το Resend δέχεται **μόνο** τον email του λογαριασμού Resend ως παραλήπτη — για πελάτες χρειάζεται επαληθευμένο domain. |
 | 🟠 Αδοκίμαστα στην παραγωγή | **Φωτογραφίες οχήματος:** πραγματικό ανέβασμα/διαγραφή στο Cloudinary δεν δοκιμάστηκε (τοπικά με mock του Cloudinary· όλα τα υπόλοιπα — ρόλοι, εταιρία, όριο, σειρά, lightbox — δοκιμασμένα σε Chromium με εξομοίωση iPhone). |
+| 🟠 Αδοκίμαστα στην παραγωγή | **PDF/αποστολή τιμολογίου (§5.1):** πραγματική παράδοση μέσω Resend δεν δοκιμάστηκε (tests με mock· τοπικά το δίκτυο προς Resend ήταν κλειστό). Ίδιος περιορισμός με το συμβόλαιο: με `onboarding@resend.dev` στέλνει **μόνο** στο email του λογαριασμού Resend μέχρι να επαληθευτεί domain. Το λογότυπο στο PDF δοκιμάστηκε με τοπικό PNG — όχι από το πραγματικό Storage. |
+| 🟡 Χαμηλή | **Λογότυπο WebP** (επιτρέπεται στο ανέβασμα των Ρυθμίσεων) **δεν** μπαίνει στο PDF τιμολογίου — το pdf-lib δέχεται μόνο PNG/JPEG· το PDF βγαίνει με την επωνυμία. Πιθανή επόμενη δουλειά: μετατροπή σε PNG κατά το ανέβασμα. |
 | 🟡 Χαμηλή | Παλιό branch `claude/graphify-setup-install-hwt5im` στο GitHub — να σβηστεί. |
 | 🟠 PCI DSS | Με αποθήκευση πλήρους αριθμού κάρτας η εταιρία μπαίνει σε πλήρες πεδίο PCI DSS (κρυπτογράφηση ✅, ρόλος ✅· απομένουν: διαχείριση/εναλλαγή κλειδιού, καταγραφή κάθε «Εμφάνισης» σε audit log, πολιτική διαγραφής μετά το τέλος της ενοικίασης). |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
@@ -342,8 +359,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 1. **Συμβόλαια** — ✅ Φάση Α (§5). **Φάση Β:** ✅ ιδιωτικό bucket + φωτογραφίες ζημιών παραλαβής/παράδοσης (§5). ✅ λογότυπο, διπλώματα, link πελάτη + QR (§5, θέλει SQL `14`). Απομένει: μεταφορά υπογραφών σε Storage. **Φάση Γ:** «Συμπλήρωση από φωτογραφία» διπλώματος μέσω Anthropic API (μόνο πρόταση, ποτέ αυτόματη αποθήκευση). Επίσης εκκρεμεί το `invoiceIssueTrigger = ON_CONTRACT`.
 2. ~~**Οικονομικά**~~ — ✅ ολοκληρώθηκε (§5).
 3. ~~**Αναφορές**~~ — ✅ ολοκληρώθηκε (§5).
-4. **Τιμολόγια: email** — το `invoiceSendMode = AUTO` και το πεδίο `Invoice.sentAt` υπάρχουν, η αποστολή όχι.
-5. **Τιμολόγια: PDF** — σήμερα μόνο εκτύπωση από browser.
+4. **Τιμολόγια: email** — ✅ χειροκίνητη αποστολή με PDF (§5.1). Απομένει η **αυτόματη** αποστολή (`invoiceSendMode = AUTO`) και η ενεργοποίηση του δικαιώματος `invoices.send`.
+5. **Τιμολόγια: PDF** — ✅ (§5.1). Απομένει μετατροπή λογοτύπων WebP σε PNG για το PDF.
 6. ~~**Φωτογραφίες ζημιών**~~ — ✅ με Supabase Storage (§5). ~~**Φωτογραφίες οχημάτων**~~ — ✅ με Cloudinary (§5, branch `claude/vehicle-photos`). Το `documents[]` μένει αχρησιμοποίητο.
 7. **Billing / Stripe** — συνδρομές εταιριών. Οι εκπτώσεις συνδρομών (`PlatformDiscount`) υπάρχουν ήδη· το billing θα εφαρμόζει την ενεργή με `platformDiscountStatus` + `discountedPrice`.
 8. **Δημόσιο site κρατήσεων** — το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
@@ -352,6 +369,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 
 | Commit | Τι |
 |---|---|
+| _(branch `claude/invoice-pdf-export-wu0cnc`)_ | Τιμολόγια: τυχαίος κωδικός `XXXX-XXXX` (`invoiceCode.ts`, μοναδικός σε όλη τη βάση, παντού αντί για `INV-001`), PDF με pdf-lib + DejaVu (ΕΛ/EN, λογότυπο, brand color, 2η σελίδα), λήψη `GET /api/invoices/[id]/pdf` και αποστολή με email (Resend, όριο 5/ώρα, reply-to εταιρίας) μόνο για Διαχειριστή/Προσωπικό. Migration `19` + `tests/invoice-pdf.test.mjs` |
+| `321aab1` | Merge του PR #19 (φωτογραφίες οχήματος με Cloudinary). Migration `18` |
 | _(branch `claude/vehicle-photos`)_ | Φωτογραφίες οχήματος με Cloudinary: signed upload, έως 10, κύρια = πρώτη, «Πάνω/Κάτω», gallery + lightbox, μόνο Admin αλλάζει, διαγραφή και από Cloudinary (και με τη διαγραφή οχήματος). Migration `18` + env `CLOUDINARY_*` + `tests/vehicle-photos.test.mjs` |
 | `1124541` | Merge του PR #18 (κάμερα σε iPhone) |
 | _(PR #18, `claude/ios-camera-fix`)_ | «Κάμερα»/«Συλλογή» σε iPhone: `<label>` + οπτικά κρυμμένο input αντί για `hidden` + `click()`, δεκτά αρχεία χωρίς τύπο με κατάληξη εικόνας (`isImageFile` + tests), JPEG 0,85. Χωρίς SQL |

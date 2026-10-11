@@ -584,11 +584,15 @@ model Contract {
 // ─────────────────────────────────────────
 
 model Invoice {
-  id            String @id @default(cuid())
+  id            String  @id @default(cuid())
   tenantId      String
-  bookingId     String @unique
+  bookingId     String  @unique
   customerId    String
-  invoiceNumber String // INV-2025-001
+  invoiceNumber String // INV-001 — παλιός αύξων αριθμός, ΔΕΝ εμφανίζεται πια
+  // Ο κωδικός που βλέπουν πελάτης και χρήστες (π.χ. K7M2-X9PQ), τυχαίος,
+  // μοναδικός σε ΟΛΗ τη βάση. Παράγεται ΜΟΝΟ από src/lib/invoiceCode.ts.
+  // Nullable μόνο για τη μετάβαση (backfill στο prisma/sql/19-invoice-pdf.sql).
+  invoiceCode   String? @unique
 
   issueDate DateTime  @default(now())
   dueDate   DateTime
@@ -604,8 +608,16 @@ model Invoice {
   notes         String?
   pdfUrl        String?
 
-  // Πότε στάλθηκε στον πελάτη. Η αποστολή email έρχεται σε επόμενο βήμα.
+  // Πότε στάλθηκε στον πελάτη (τελευταία επιτυχής αποστολή email).
   sentAt DateTime?
+
+  // Αποστολή με email (Resend + PDF), όπως στα συμβόλαια (SQL 19):
+  // τελευταία επιτυχία, σε ποιο email, και ιστορικό ΟΛΩΝ των προσπαθειών
+  // [{ id, at, ok, lang, to (μασκαρισμένο), by, error? }] — από εδώ μετρά
+  // το όριο 5 αποστολές/ώρα ανά τιμολόγιο.
+  emailSentAt  DateTime?
+  emailSentTo  String?
+  emailSendLog Json      @default("[]")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -4,6 +4,7 @@
 import type { Booking, Customer, Vehicle } from "@prisma/client";
 import { readExtrasSnapshot, type PricedExtraLine } from "./pricing";
 import { commissionFor } from "./commission";
+import { displayInvoiceCode } from "./invoices";
 
 export const BOOKING_STATUSES = [
   "PENDING",
@@ -85,7 +86,8 @@ export interface BookingDTO {
   source: string;
 
   /**
-   * Ο αριθμός του τιμολογίου της κράτησης, αν έχει εκδοθεί — αλλιώς null.
+   * Ο κωδικός του τιμολογίου της κράτησης (invoiceCode, π.χ. K7M2-X9PQ· ο
+   * παλιός αριθμός INV-… μόνο όσο λείπει κωδικός), αν έχει εκδοθεί — αλλιώς null.
    * Με αυτό ξέρει η λίστα αν πρέπει να δείξει το κουμπί έκδοσης ή τον
    * αριθμό του ήδη εκδομένου τιμολογίου.
    */
@@ -112,7 +114,7 @@ type BookingWithRelations = Booking & {
   vehicle: Pick<Vehicle, "brand" | "model" | "plate">;
   customer: Pick<Customer, "firstName" | "lastName">;
   /** Προαιρετικό: μόνο τα ερωτήματα που το χρειάζονται το φέρνουν. */
-  invoice?: { invoiceNumber: string } | null;
+  invoice?: { invoiceNumber: string; invoiceCode: string | null } | null;
   /** Προαιρετικό, όπως και το invoice. */
   partner?: {
     id: string;
@@ -173,7 +175,7 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
     notes: b.notes,
     createdAt: b.createdAt.toISOString(),
     source: b.source,
-    invoiceNumber: b.invoice?.invoiceNumber ?? null,
+    invoiceNumber: b.invoice ? displayInvoiceCode(b.invoice) : null,
 
     partnerId: b.partnerId,
     partnerName: b.partner?.name ?? null,

@@ -29,6 +29,7 @@ import { manualRentalOfBooking, pricePartsOf } from "@/lib/contractForm";
 import { totalWithRental } from "@/lib/priceOverride";
 import { applyDiscountUsage } from "@/lib/discounts";
 import { issueInvoiceOnCompletion, syncVehicleStatus } from "@/lib/bookingLifecycle";
+import { displayInvoiceCode } from "@/lib/invoices";
 import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
 
 const isoDate = z
@@ -64,7 +65,7 @@ const toDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const withRelations = {
   vehicle: { select: { brand: true, model: true, plate: true } },
   customer: { select: { firstName: true, lastName: true } },
-  invoice: { select: { invoiceNumber: true } },
+  invoice: { select: { invoiceNumber: true, invoiceCode: true } },
   partner: {
             select: {
               id: true,
@@ -263,7 +264,7 @@ export const PATCH = withPermission(
       // Δεν κοιτάμε αν ΜΟΛΙΣ πέρασε σε COMPLETED: η έκδοση είναι από μόνη
       // της ιδεμποτική (μία κράτηση → ένα τιμολόγιο), οπότε ένα δεύτερο
       // PATCH σε ήδη ολοκληρωμένη κράτηση δεν φτιάχνει δεύτερο τιμολόγιο.
-      let invoiceNumber = booking.invoice?.invoiceNumber ?? null;
+      let invoiceNumber = booking.invoice ? displayInvoiceCode(booking.invoice) : null;
 
       if (booking.status === "COMPLETED") {
         invoiceNumber =

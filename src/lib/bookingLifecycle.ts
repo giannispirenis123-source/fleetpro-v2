@@ -60,7 +60,7 @@ export async function issueInvoiceOnCompletion(
   if (tenant?.invoiceIssueTrigger !== "ON_COMPLETION") return null;
 
   const outcome = await issueInvoiceForBooking({ tenantId, bookingId });
-  if (outcome.ok) return outcome.invoiceNumber;
+  if (outcome.ok) return outcome.invoiceCode;
 
   console.error("Αυτόματη έκδοση τιμολογίου:", outcome.message);
   return null;

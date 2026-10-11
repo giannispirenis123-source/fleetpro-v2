@@ -305,7 +305,9 @@ model Vehicle {
   nextServiceDate DateTime?
   insuranceExpiry DateTime?
   kteoExpiry      DateTime?
-  images          String[] // Cloudinary URLs
+  images          String[] // ΠΑΛΙΟ, αχρησιμοποίητο — μεταφέρθηκε στο photos (SQL 18)
+  /// Φωτογραφίες (Cloudinary): [{ id, url, publicId, order }] — έως 10, η πρώτη είναι η κύρια.
+  photos          Json            @default("[]")
   notes           String?
   isActive        Boolean         @default(true)
   createdAt       DateTime        @default(now())

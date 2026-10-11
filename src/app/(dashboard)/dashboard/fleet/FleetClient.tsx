@@ -14,7 +14,10 @@ import {
   Wrench,
   ShieldAlert,
   CircleAlert,
+  Images,
 } from "lucide-react";
+import VehiclePhotos from "@/components/photos/VehiclePhotos";
+import { cloudinaryThumb, mainPhotoUrl, type VehiclePhotoView } from "@/lib/vehiclePhotos";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
   FUEL_TYPES,
@@ -131,6 +134,13 @@ export default function FleetClient({
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<VehicleDTO | null>(null);
   const [deleting, setDeleting] = useState<VehicleDTO | null>(null);
+  const [gallery, setGallery] = useState<string | null>(null);
+
+  /** Οι φωτογραφίες αλλάζουν πάντα πάνω στην ΤΡΕΧΟΥΣΑ λίστα (διαδοχικά ανεβάσματα). */
+  const photosUpdater =
+    (id: string) => (fn: (prev: VehiclePhotoView[]) => VehiclePhotoView[]) =>
+      setVehicles((prev) => prev.map((v) => (v.id === id ? { ...v, photos: fn(v.photos) } : v)));
+  const galleryVehicle = gallery ? vehicles.find((v) => v.id === gallery) : undefined;
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -206,6 +216,7 @@ export default function FleetClient({
               locale={locale}
               tr={tr}
               canManage={canManage}
+              onPhotos={() => setGallery(v.id)}
               onEdit={() => setEditing(v)}
               onDelete={() => setDeleting(v)}
             />
@@ -235,6 +246,8 @@ export default function FleetClient({
         <VehicleModal
           mode="edit"
           vehicle={editing}
+          photos={vehicles.find((v) => v.id === editing.id)?.photos ?? editing.photos}
+          onPhotos={photosUpdater(editing.id)}
           tr={tr}
           onClose={() => setEditing(null)}
           onSaved={(vehicle) => {
@@ -244,6 +257,35 @@ export default function FleetClient({
             setEditing(null);
           }}
         />
+      )}
+
+      {galleryVehicle && (
+        <div className="dash-modal-overlay" onClick={() => setGallery(null)}>
+          <div className="dash-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="dash-modal-header">
+              <h2>
+                {tr("vehiclePhotos.title")} · {galleryVehicle.brand} {galleryVehicle.model}{" "}
+                <small className="dash-vehicle-plate">{galleryVehicle.plate}</small>
+              </h2>
+              <button
+                className="dash-modal-close"
+                onClick={() => setGallery(null)}
+                aria-label={tr("common.close")}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="dash-modal-body">
+              <VehiclePhotos
+                vehicleId={galleryVehicle.id}
+                photos={galleryVehicle.photos}
+                canManage={canManage}
+                onChange={photosUpdater(galleryVehicle.id)}
+                alt={`${galleryVehicle.brand} ${galleryVehicle.model}`}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {deleting && (
@@ -270,6 +312,7 @@ function VehicleCard({
   locale,
   tr,
   canManage,
+  onPhotos,
   onEdit,
   onDelete,
 }: {
@@ -277,6 +320,7 @@ function VehicleCard({
   locale: string;
   tr: (key: string) => string;
   canManage: boolean;
+  onPhotos: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -304,8 +348,38 @@ function VehicleCard({
     },
   ].filter((b) => b.days !== null && b.days <= b.limit);
 
+  const main = mainPhotoUrl(v.photos);
+
   return (
     <div className="dash-vehicle">
+      {/* Κύρια φωτογραφία (ή placeholder) — πάτημα = gallery για όλους. */}
+      <button
+        type="button"
+        className={`dash-vehicle-photo ${main ? "" : "is-empty"}`}
+        onClick={onPhotos}
+        aria-label={`${tr("vehiclePhotos.title")}: ${v.brand} ${v.model}`}
+      >
+        {main ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={cloudinaryThumb(main, 640)}
+            srcSet={`${cloudinaryThumb(main, 400)} 400w, ${cloudinaryThumb(main, 640)} 640w, ${cloudinaryThumb(main, 960)} 960w`}
+            sizes="(max-width: 600px) 100vw, 360px"
+            alt={`${v.brand} ${v.model}`}
+            loading="lazy"
+          />
+        ) : (
+          <span className="dash-vehicle-photo-empty">
+            <Car size={30} />
+            {tr("vehiclePhotos.none")}
+          </span>
+        )}
+        {v.photos.length > 0 && (
+          <span className="dash-vehicle-photo-count">
+            <Images size={12} /> {v.photos.length}
+          </span>
+        )}
+      </button>
       <div className="dash-vehicle-top">
         <div className="dash-vehicle-icon">
           <Car size={20} />
@@ -394,12 +468,17 @@ function VehicleCard({
 function VehicleModal({
   mode,
   vehicle,
+  photos,
+  onPhotos,
   tr,
   onClose,
   onSaved,
 }: {
   mode: "create" | "edit";
   vehicle?: VehicleDTO;
+  /** Οι τρέχουσες φωτογραφίες (από τη λίστα, όχι από το στιγμιότυπο). */
+  photos?: VehiclePhotoView[];
+  onPhotos?: (fn: (prev: VehiclePhotoView[]) => VehiclePhotoView[]) => void;
   tr: (key: string) => string;
   onClose: () => void;
   onSaved: (vehicle: VehicleDTO) => void;
@@ -626,6 +705,21 @@ function VehicleModal({
                 onChange={(e) => set("notes", e.target.value)}
               />
             </label>
+          </div>
+
+          <div className="dash-vehicle-photos-section">
+            <h3 className="dash-section-title">{tr("vehiclePhotos.title")}</h3>
+            {mode === "edit" && vehicle && onPhotos ? (
+              <VehiclePhotos
+                vehicleId={vehicle.id}
+                photos={photos ?? vehicle.photos}
+                canManage
+                onChange={onPhotos}
+                alt={`${vehicle.brand} ${vehicle.model}`}
+              />
+            ) : (
+              <p className="dash-form-note">{tr("vehiclePhotos.saveFirst")}</p>
+            )}
           </div>
 
           {error && <div className="dash-form-error">{error}</div>}

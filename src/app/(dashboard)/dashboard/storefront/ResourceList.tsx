@@ -1,0 +1,205 @@
+"use client";
+
+// Λίστα + φόρμα για τις «λίστες» του site (ομάδες, τοποθεσίες, σεζόν, ηλικίες):
+// /api/public-site/{resource}. Η φόρμα στέλνει ΟΛΗ την εγγραφή· ο server
+// (zod) κρατά μόνο τα γνωστά πεδία. Διαγραφή με επιβεβαίωση· αν η εγγραφή
+// χρησιμοποιείται, ο server την κάνει «Ανενεργή».
+
+import { useCallback, useEffect, useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useT } from "@/lib/i18n/I18nProvider";
+import { ConfirmModal, Status, api } from "./ui";
+
+export interface FormApi<T> {
+  value: T;
+  set: <K extends keyof T>(key: K, v: T[K]) => void;
+  /** Πεδίο με άκυρη τιμή (π.χ. ποσό): κλειδώνει την αποθήκευση. */
+  markInvalid: (key: string, bad: boolean) => void;
+  /** null σε νέα εγγραφή (π.χ. φωτογραφίες μόνο μετά την αποθήκευση). */
+  saved: (T & { id: string }) | null;
+}
+
+export default function ResourceList<T extends object>({
+  resource,
+  intro,
+  empty,
+  title,
+  summary,
+  renderForm,
+  onItems,
+}: {
+  resource: string;
+  intro: string;
+  empty: () => T;
+  title: (item: T & { id: string }) => string;
+  summary: (item: T & { id: string }) => React.ReactNode;
+  renderForm: (form: FormApi<T>) => React.ReactNode;
+  onItems?: (items: (T & { id: string })[]) => void;
+}) {
+  const tr = useT();
+  const url = `/api/public-site/${resource}`;
+  const [items, setItems] = useState<(T & { id: string })[] | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [draft, setDraft] = useState<{ value: T; id: string | null } | null>(null);
+  const [invalid, setInvalid] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [deleting, setDeleting] = useState<(T & { id: string }) | null>(null);
+
+  const update = useCallback(
+    (next: (T & { id: string })[]) => {
+      setItems(next);
+      onItems?.(next);
+    },
+    [onItems]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ items: (T & { id: string })[] }>(url).then((r) => {
+      if (cancelled) return;
+      if (r.ok && r.data) update(r.data.items);
+      else setLoadError(r.message || tr("publicSite.errorLoad"));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url, tr, update]);
+
+  const open = (item: (T & { id: string }) | null) => {
+    setError("");
+    setNotice("");
+    setInvalid(new Set());
+    setDraft(item ? { value: item, id: item.id } : { value: empty(), id: null });
+  };
+
+  const save = async () => {
+    if (!draft) return;
+    setBusy(true);
+    setError("");
+    const r = await api<{ item: T & { id: string } }>(draft.id ? `${url}/${draft.id}` : url, draft.id ? "PATCH" : "POST", draft.value);
+    setBusy(false);
+    if (!r.ok || !r.data) {
+      setError(r.message || (r.status ? tr("publicSite.errorSave") : tr("publicSite.errorConnection")));
+      return;
+    }
+    const saved = r.data.item;
+    const list = items ?? [];
+    update(list.some((i) => i.id === saved.id) ? list.map((i) => (i.id === saved.id ? saved : i)) : [...list, saved]);
+    // Νέα εγγραφή: μένει ανοιχτή (π.χ. για φωτογραφίες ομάδας).
+    if (draft.id) setDraft(null);
+    else setDraft({ value: saved, id: saved.id });
+    setNotice(tr("publicSite.saved"));
+  };
+
+  const remove = async () => {
+    if (!deleting) return;
+    setBusy(true);
+    const r = await api<{ deleted?: boolean; deactivated?: boolean; item?: T & { id: string } }>(`${url}/${deleting.id}`, "DELETE");
+    setBusy(false);
+    if (!r.ok || !r.data) {
+      setError(r.message || tr("publicSite.errorSave"));
+      setDeleting(null);
+      return;
+    }
+    const list = items ?? [];
+    if (r.data.deactivated && r.data.item) {
+      const it = r.data.item;
+      update(list.map((i) => (i.id === it.id ? it : i)));
+      setNotice(tr("publicSite.deactivated"));
+    } else {
+      update(list.filter((i) => i.id !== deleting.id));
+      setNotice("");
+    }
+    setDeleting(null);
+  };
+
+  const form: FormApi<T> | null = draft
+    ? {
+        value: draft.value,
+        set: (key, v) => setDraft((d) => (d ? { ...d, value: { ...d.value, [key]: v } } : d)),
+        markInvalid: (key, bad) =>
+          setInvalid((prev) => {
+            if (prev.has(key) === bad) return prev;
+            const next = new Set(prev);
+            if (bad) next.add(key);
+            else next.delete(key);
+            return next;
+          }),
+        saved: draft.id ? ({ ...draft.value, id: draft.id } as T & { id: string }) : null,
+      }
+    : null;
+
+  return (
+    <div className="dash-panel dash-settings-panel">
+      <div className="dash-ps-head">
+        <p className="dash-form-note dash-settings-lead">{intro}</p>
+        {!draft && (
+          <button className="dash-btn dash-btn--primary" onClick={() => open(null)}>
+            <Plus size={16} /> {tr("publicSite.add")}
+          </button>
+        )}
+      </div>
+
+      {loadError && <div className="dash-form-error">{loadError}</div>}
+      {!items && !loadError && <p className="dash-form-note">{tr("publicSite.loading")}</p>}
+      {!draft && notice && <div className="dash-alert-ok dash-settings-saved">{notice}</div>}
+      {!draft && error && <div className="dash-form-error">{error}</div>}
+
+      {draft && form ? (
+        <div className="dash-ps-form">
+          <div className="dash-form-grid">{renderForm(form)}</div>
+          <Status error={error} saved={!!notice && !error} />
+          <div className="dash-ps-actions">
+            <button className="dash-btn" onClick={() => setDraft(null)} disabled={busy}>
+              {tr("publicSite.cancel")}
+            </button>
+            <button className="dash-btn dash-btn--primary" onClick={save} disabled={busy || invalid.size > 0}>
+              {busy ? tr("publicSite.saving") : tr("publicSite.save")}
+            </button>
+          </div>
+        </div>
+      ) : (
+        items && (
+          <ul className="dash-ps-list">
+            {items.length === 0 && <li className="dash-form-note">{tr("publicSite.empty")}</li>}
+            {items.map((item) => (
+              <li key={item.id} className="dash-ps-item">
+                <div className="dash-ps-item-main">
+                  <strong>{title(item)}</strong>
+                  <div className="dash-ps-item-sub">{summary(item)}</div>
+                </div>
+                <div className="dash-ps-item-actions">
+                  <button className="dash-btn dash-btn--sm" onClick={() => open(item)} aria-label={tr("publicSite.edit")}>
+                    <Pencil size={14} /> <span className="dash-ps-hide-xs">{tr("publicSite.edit")}</span>
+                  </button>
+                  <button
+                    className="dash-btn dash-btn--sm"
+                    onClick={() => {
+                      setError("");
+                      setDeleting(item);
+                    }}
+                    aria-label={tr("publicSite.delete")}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title={`${tr("publicSite.confirmDelete")} ${title(deleting)}`}
+          text={tr("publicSite.confirmDeleteText")}
+          busy={busy}
+          onConfirm={remove}
+          onClose={() => setDeleting(null)}
+        />
+      )}
+    </div>
+  );
+}

@@ -4,7 +4,9 @@ import { getSession } from "@/lib/auth";
 import { t } from "@/lib/i18n";
 import { loadStorefrontAdmin, storefrontAccess } from "@/lib/storefront/admin";
 import { STOREFRONT_LANGUAGES, storefrontDictionary } from "@/lib/storefront/i18n";
+import { Suspense } from "react";
 import StorefrontClient from "./StorefrontClient";
+import StorefrontTabs from "./StorefrontTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -34,12 +36,24 @@ export default async function StorefrontAdminPage() {
   if (!initial) redirect("/dashboard");
 
   return (
-    <StorefrontClient
-      initial={initial}
-      languages={STOREFRONT_LANGUAGES.map((code) => ({
-        code,
-        name: storefrontDictionary(code).langName,
-      }))}
-    />
+    <>
+      <div className="dash-page-head">
+        <h1 className="dash-page-title">{t("storefront.title", locale)}</h1>
+        <p className="dash-page-sub">{t("storefront.subtitle", locale)}</p>
+      </div>
+      <Suspense>
+        <StorefrontTabs
+          page={
+            <StorefrontClient
+              initial={initial}
+              languages={STOREFRONT_LANGUAGES.map((code) => ({
+                code,
+                name: storefrontDictionary(code).langName,
+              }))}
+            />
+          }
+        />
+      </Suspense>
+    </>
   );
 }

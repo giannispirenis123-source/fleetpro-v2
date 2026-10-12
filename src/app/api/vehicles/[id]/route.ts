@@ -22,6 +22,7 @@ import {
   VEHICLE_STATUSES,
   toVehicleDTO,
 } from "@/lib/vehicles";
+import { VEHICLE_TYPES } from "@/lib/public/pricing";
 import { readVehiclePhotos } from "@/lib/vehiclePhotos";
 import { destroyAllPhotos } from "@/lib/vehiclePhotoServer";
 
@@ -54,6 +55,8 @@ const updateVehicleSchema = z.object({
   transmission: z.string().min(1).optional(),
   ac: z.boolean().optional(),
   publicVisible: z.boolean().optional(),
+  rentalGroupId: z.string().max(64).nullable().optional(),
+  vehicleType: z.enum(VEHICLE_TYPES).optional(),
   nextServiceKm: z.union([z.number().int().min(0), z.null()]).optional(),
   nextServiceDate: dateField,
   insuranceExpiry: dateField,
@@ -85,6 +88,15 @@ export const PATCH = withPermission(
         if (!(await sessionCan(session, "fleet.status"))) {
           return forbidden("Δεν έχετε δικαίωμα αλλαγής κατάστασης οχήματος");
         }
+      }
+
+      // Η ομάδα (αν δόθηκε) πρέπει να είναι της ΙΔΙΑΣ εταιρίας.
+      if (data.rentalGroupId) {
+        const group = await db.rentalGroup.findFirst({
+          where: { id: data.rentalGroupId, tenantId: session.tenantId! },
+          select: { id: true },
+        });
+        if (!group) return badRequest("Η ομάδα δεν βρέθηκε");
       }
 
       const plate = data.plate ? data.plate.trim().toUpperCase() : undefined;
@@ -122,6 +134,8 @@ export const PATCH = withPermission(
           }),
           ...(data.ac !== undefined && { ac: data.ac }),
           ...(data.publicVisible !== undefined && { publicVisible: data.publicVisible }),
+          ...(data.rentalGroupId !== undefined && { rentalGroupId: data.rentalGroupId }),
+          ...(data.vehicleType !== undefined && { vehicleType: data.vehicleType }),
           ...(data.nextServiceKm !== undefined && {
             nextServiceKm: data.nextServiceKm,
           }),

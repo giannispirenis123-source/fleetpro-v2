@@ -64,6 +64,8 @@ export const POST = withPermission(
         data: {
           tenantId: session.tenantId!,
           name: data.name.trim(),
+          // Το ελληνικό όνομα του site = το κύριο όνομα (SQL 21).
+          nameI18n: { el: data.name.trim() },
           price: data.price,
           chargeType: data.chargeType,
           type: data.type,

@@ -45,6 +45,14 @@ const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 export const safeBrandColor = (c: unknown): string =>
   typeof c === "string" && HEX_RE.test(c) ? c : DEFAULT_BRAND;
 
+/** Ό,τι εσωτερικό υπάρχει στις ρυθμίσεις (publicId του Cloudinary) φεύγει. */
+function publicSettings(s: StorefrontSettings): StorefrontSettings {
+  return {
+    ...s,
+    theme: { ...s.theme, heroImage: s.theme.heroImage ? { url: s.theme.heroImage.url } : null },
+  };
+}
+
 export interface CompanySource {
   storefrontSlug: string | null;
   name: string;
@@ -66,7 +74,7 @@ export function toPublicCompany(t: CompanySource, logoUrl: string | null): Publi
     email: t.email || null,
     address: t.address || null,
     region: t.region || null,
-    settings: normalizeStorefrontSettings(t.storefrontSettings),
+    settings: publicSettings(normalizeStorefrontSettings(t.storefrontSettings)),
   };
 }
 

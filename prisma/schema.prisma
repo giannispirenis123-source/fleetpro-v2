@@ -241,6 +241,11 @@ model Tenant {
   contractTemplates ContractTemplate[]
   extras            Extra[]
   platformDiscounts PlatformDiscount[]
+  rentalGroups      RentalGroup[]
+  pickupLocations   PickupLocation[]
+  seasons           Season[]
+  rates             Rate[]
+  driverAgeBands    DriverAgeBand[]
   entitlementPlan   Plan?              @relation(fields: [planKey], references: [key], onDelete: SetNull)
 
   @@index([planKey])
@@ -329,16 +334,23 @@ model Vehicle {
   isActive        Boolean         @default(true)
   // Εμφανίζεται στη δημόσια σελίδα της εταιρίας (SQL 20).
   publicVisible   Boolean         @default(true)
+  // Ομάδα ενοικίασης του site (SQL 21) — null = εμφανίζεται μεμονωμένα.
+  rentalGroupId   String?
+  // 'car' | 'moto' | 'atv' (SQL 21, CHECK στη βάση).
+  vehicleType     String          @default("car")
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rentalGroup    RentalGroup?    @relation(fields: [rentalGroupId], references: [id], onDelete: SetNull)
   bookings       Booking[]
   serviceRecords ServiceRecord[]
   damages        Damage[]
   expenses       Expense[]
+  rates          Rate[]
 
   @@unique([tenantId, plate])
+  @@index([rentalGroupId])
   @@map("vehicles")
 }
 
@@ -757,6 +769,16 @@ model Extra {
   // Απαλλαγή (excess) σε € — μόνο για ασφάλειες. Snapshot στο συμβόλαιο.
   excess     Decimal?   @db.Decimal(10, 2)
   isActive   Boolean    @default(true)
+  // Δημόσιο site (SQL 21). Τα ποσά μένουν σε € (Decimal)· cents μόνο στον
+  // κώδικα (src/lib/public/money.ts). "name" μένει το κύριο (ελληνικό) όνομα.
+  nameI18n        Json     @default("{}")
+  descriptionI18n Json     @default("{}")
+  /// Ταβάνι συνολικής χρέωσης σε € (null = χωρίς ταβάνι).
+  maxTotal        Decimal? @db.Decimal(10, 2)
+  maxQuantity     Int      @default(1)
+  /// 'car' | 'moto' | 'atv' — κενό = για όλα.
+  vehicleTypes    String[] @default([])
+  sortOrder       Int      @default(0)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
@@ -869,6 +891,150 @@ model PlatformCoupon {
   updatedAt DateTime @updatedAt
 
   @@map("platform_coupons")
+}
+
+// ─────────────────────────────────────────
+// ΔΗΜΟΣΙΟ SITE — ρυθμίσεις κρατήσεων και τιμές (SQL 21)
+// ─────────────────────────────────────────
+// Όλα τα ποσά σε CENTS (ακέραια λεπτά, με ΦΠΑ). Κείμενα JSONB ανά γλώσσα.
+// Μηχανή τιμής: src/lib/public/pricing.ts.
+
+model RentalGroup {
+  id              String   @id @default(cuid())
+  tenantId        String
+  code            String
+  vehicleType     String   @default("car")
+  name            Json     @default("{}")
+  description     Json     @default("{}")
+  similarModels   Json     @default("{}")
+  seats           Int      @default(5)
+  doors           Int?
+  transmission    String   @default("manual")
+  fuel            FuelType @default(PETROL)
+  bagsLarge       Int      @default(0)
+  bagsSmall       Int      @default(0)
+  airCondition    Boolean  @default(true)
+  engineCc        Int?
+  minDriverAge    Int?
+  licenceCategory String?
+  /// Ίδια μορφή με vehicles.photos — έως 10.
+  photos          Json     @default("[]")
+  basePriceCents  Int      @default(0)
+  depositCents    Int?
+  excessCents     Int?
+  sortOrder       Int      @default(0)
+  isPublic        Boolean  @default(true)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicles Vehicle[]
+  rates    Rate[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("rental_groups")
+}
+
+model PickupLocation {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  slug               String
+  name               Json     @default("{}")
+  type               String   @default("other")
+  address            String?
+  lat                Float?
+  lng                Float?
+  askFlightNumber    Boolean  @default(false)
+  askFerryName       Boolean  @default(false)
+  askAddress         Boolean  @default(false)
+  /// 'none' | 'percent' | 'fixed'· αρνητικό value = έκπτωση (percent: %, fixed: cents).
+  adjustmentType     String   @default("none")
+  adjustmentValue    Int      @default(0)
+  adjustmentLabel    Json     @default("{}")
+  /// null = προεπιλογή εταιρίας, 0 = δωρεάν.
+  afterHoursFeeCents Int?
+  allowPickup        Boolean  @default(true)
+  allowDropoff       Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("pickup_locations")
+}
+
+model Season {
+  id            String   @id @default(cuid())
+  tenantId      String
+  name          Json     @default("{}")
+  /// 'MM-DD'· το end μπορεί να είναι πριν το start (π.χ. 12-15 → 01-10).
+  startMonthDay String
+  endMonthDay   String
+  minDays       Int?
+  /// Σε επικάλυψη κερδίζει η μεγαλύτερη.
+  priority      Int      @default(0)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rates  Rate[]
+
+  @@index([tenantId])
+  @@map("seasons")
+}
+
+model Rate {
+  id            String   @id @default(cuid())
+  tenantId      String
+  /// null = όλο τον χρόνο.
+  seasonId      String?
+  /// ΑΚΡΙΒΩΣ ένα από rentalGroupId / vehicleId (CHECK στη βάση).
+  rentalGroupId String?
+  vehicleId     String?
+  /// [{ minDays, maxDays (null = ∞), dailyPriceCents }]
+  tiers         Json     @default("[]")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  season      Season?      @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  rentalGroup RentalGroup? @relation(fields: [rentalGroupId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  // Στη βάση: NULLS NOT DISTINCT (SQL 21).
+  @@unique([tenantId, seasonId, rentalGroupId, vehicleId])
+  @@index([tenantId])
+  @@map("rates")
+}
+
+model DriverAgeBand {
+  id                String   @id @default(cuid())
+  tenantId          String
+  minAge            Int
+  maxAge            Int
+  label             Json     @default("{}")
+  explanation       Json     @default("{}")
+  allowed           Boolean  @default(true)
+  isDefault         Boolean  @default(false)
+  /// 'none' | 'per_day' | 'per_rental'
+  surchargeType     String   @default("none")
+  surchargeCents    Int      @default(0)
+  surchargeMaxCents Int?
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("driver_age_bands")
 }
 
 // ─────────────────────────────────────────

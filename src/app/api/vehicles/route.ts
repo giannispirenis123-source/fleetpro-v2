@@ -19,6 +19,7 @@ import {
   VEHICLE_STATUSES,
   toVehicleDTO,
 } from "@/lib/vehicles";
+import { VEHICLE_TYPES } from "@/lib/public/pricing";
 
 // "YYYY-MM-DD", κενό ή null — το UI στέλνει κενό όταν δεν έχει συμπληρωθεί.
 const dateField = z
@@ -53,6 +54,8 @@ const createVehicleSchema = z.object({
   transmission: z.string().min(1).default("Manual"),
   ac: z.boolean().default(true),
   publicVisible: z.boolean().default(true),
+  rentalGroupId: z.string().max(64).nullable().default(null),
+  vehicleType: z.enum(VEHICLE_TYPES).default("car"),
   nextServiceKm: z.union([z.number().int().min(0), z.null()]).optional(),
   nextServiceDate: dateField,
   insuranceExpiry: dateField,
@@ -99,6 +102,15 @@ export const POST = withPermission(
       const data = parsed.data;
       const plate = data.plate.trim().toUpperCase();
 
+      // Η ομάδα (αν δόθηκε) πρέπει να είναι της ΙΔΙΑΣ εταιρίας.
+      if (data.rentalGroupId) {
+        const group = await db.rentalGroup.findFirst({
+          where: { id: data.rentalGroupId, tenantId: session.tenantId! },
+          select: { id: true },
+        });
+        if (!group) return badRequest("Η ομάδα δεν βρέθηκε");
+      }
+
       // Όριο οχημάτων του πακέτου (null = απεριόριστο) — πάντα εδώ, στον server.
       const limit = await checkWithinLimit(session.tenantId!, "vehicles");
       if (!limit.ok) return forbidden(limit.message);
@@ -129,6 +141,8 @@ export const POST = withPermission(
           transmission: data.transmission,
           ac: data.ac,
           publicVisible: data.publicVisible,
+          rentalGroupId: data.rentalGroupId,
+          vehicleType: data.vehicleType,
           nextServiceKm: data.nextServiceKm ?? null,
           nextServiceDate: toDate(data.nextServiceDate),
           insuranceExpiry: toDate(data.insuranceExpiry),

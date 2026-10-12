@@ -8,6 +8,9 @@
 //  3. ανέβασμα ΑΠΕΥΘΕΙΑΣ στο Cloudinary με πρόοδο (sendPhoto)
 //  4. POST /api/vehicles/{id}/photos { publicId, version, format } → ο server ξαναελέγχει όριο και φάκελο
 // Σειρά: «Πάνω/Κάτω» → PATCH { order }. Η πρώτη είναι η κύρια.
+//
+// Το ΙΔΙΟ component εξυπηρετεί και το δημόσιο site (SQL 21): ομάδες
+// (apiBase=/api/public-site/group-photos/{id}) και hero (max=1, validate).
 
 import { useState } from "react";
 import { useT } from "@/lib/i18n/I18nProvider";
@@ -42,6 +45,8 @@ interface CloudinaryResponse {
   public_id?: string;
   version?: number;
   format?: string;
+  width?: number;
+  height?: number;
   error?: { message?: string };
 }
 
@@ -51,20 +56,32 @@ export default function VehiclePhotos({
   canManage,
   onChange,
   alt,
+  apiBase,
+  max = MAX_VEHICLE_PHOTOS,
+  validate,
 }: {
   vehicleId: string;
   photos: VehiclePhotoView[];
   canManage: boolean;
   onChange: Updater;
   alt: string;
+  /** Άλλο API με την ίδια μορφή (sign / POST / PATCH / DELETE {id}). */
+  apiBase?: string;
+  max?: number;
+  /** Έλεγχος της (συμπιεσμένης) εικόνας πριν το ανέβασμα· μήνυμα = άρνηση. */
+  validate?: (blob: Blob) => Promise<string | null>;
 }) {
   const tr = useT();
   const [open, setOpen] = useState<number | null>(null);
   const [moving, setMoving] = useState(false);
   const [error, setError] = useState("");
-  const base = `/api/vehicles/${vehicleId}/photos`;
+  const base = apiBase ?? `/api/vehicles/${vehicleId}/photos`;
 
   const upload = async (blob: Blob, onProgress: (p: number) => void): Promise<PhotoItem> => {
+    if (validate) {
+      const problem = await validate(blob);
+      if (problem) throw new Error(problem);
+    }
     // 1. Υπογραφή
     let signRes: Response;
     try {
@@ -101,7 +118,13 @@ export default function VehiclePhotos({
       saveRes = await fetch(base, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicId: up.body.public_id, version: up.body.version, format: up.body.format }),
+        body: JSON.stringify({
+          publicId: up.body.public_id,
+          version: up.body.version,
+          format: up.body.format,
+          width: up.body.width,
+          height: up.body.height,
+        }),
       });
     } catch {
       throw new Error(tr("photos.errorConnection"));
@@ -146,7 +169,7 @@ export default function VehiclePhotos({
         itemUrl={(id) => `${base}/${id}`}
         editable={canManage}
         withNotes={false}
-        max={MAX_VEHICLE_PHOTOS}
+        max={max}
         lockedText={canManage ? undefined : tr("vehiclePhotos.viewOnly")}
         onAdded={(photo) =>
           onChange((prev) =>

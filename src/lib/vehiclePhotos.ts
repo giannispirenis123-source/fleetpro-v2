@@ -39,6 +39,18 @@ export function vehiclePhotoFolder(companyId: string, vehicleId: string): string
   return `fleetpro/${companyId}/vehicles/${vehicleId}`;
 }
 
+/** fleetpro/{companyId}/groups/{groupId} — φωτογραφίες ομάδας του site (SQL 21). */
+export function groupPhotoFolder(companyId: string, groupId: string): string | null {
+  if (!SAFE_SEGMENT_RE.test(companyId) || !SAFE_SEGMENT_RE.test(groupId)) return null;
+  return `fleetpro/${companyId}/groups/${groupId}`;
+}
+
+/** fleetpro/{companyId}/site — εικόνες του δημόσιου site (hero). */
+export function sitePhotoFolder(companyId: string): string | null {
+  if (!SAFE_SEGMENT_RE.test(companyId)) return null;
+  return `fleetpro/${companyId}/site`;
+}
+
 /** Το publicId ανήκει ΑΚΡΙΒΩΣ σε αυτόν τον φάκελο (χωρίς υποφακέλους, χωρίς «..»). */
 export function isPublicIdInFolder(publicId: unknown, folder: string): publicId is string {
   if (typeof publicId !== "string" || !PUBLIC_ID_RE.test(publicId)) return false;

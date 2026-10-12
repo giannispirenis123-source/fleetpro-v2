@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 12/10/2026 · **main:** `0057af6` (merge του PR #20 — τιμολόγια PDF). **Ανοιχτό:** branch `ccr-0edadca8-vvohvc` — **πακέτα (entitlements) + δημόσια σελίδα ανά εταιρία `/s/<slug>`**, **θέλει SQL `20` ΠΡΙΝ το merge** (§5.2, §6). Επόμενος ελεύθερος αριθμός SQL: `21`.
+**Ημερομηνία:** 12/10/2026 · **main:** `edb8ad4` (merge του PR #21 — πακέτα + `/s/<slug>`· το SQL `20` έχει τρέξει). **Ανοιχτό:** branch `claude/public-site-settings` — **Δημόσιο site 1/4: ρυθμίσεις κρατήσεων και μηχανή τιμής**, **θέλει SQL `21` ΠΡΙΝ το merge** (`21b` προαιρετικό, μόνο demo) (§5.3, §6). Επόμενος ελεύθερος αριθμός SQL: `22`.
 
 > **Επόμενο βήμα:** Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
@@ -120,7 +120,8 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Τοποθεσίες παραλαβής/επιστροφής (combobox) στην κορυφή «Όχημα & ημερομηνίες» + τύπος καυσίμου στο «Τύπος & καύσιμα» | ✅ live (PR #16, `6b054e6`), SQL `15` |
 | Χειροκίνητο ενοίκιο, πλήρης αριθμός κάρτας κρυπτογραφημένος, υποχρεωτικά σε κόκκινο, link πελάτη από το domain | ✅ live (PR #16, `6b054e6`), SQL `16` + env `CARD_ENCRYPTION_KEY` |
 | Αποστολή συμβολαίου στον πελάτη (email + PDF μέσω Resend) | ⏳ PR #17, έτοιμο για merge· SQL `17` έχει τρέξει· θέλει `RESEND_API_KEY` + `EMAIL_FROM` |
-| Πακέτα (entitlements) + δημόσια σελίδα `/s/<slug>` + «Η σελίδα μου» (§5.2) | ⏳ branch `ccr-0edadca8-vvohvc`, θέλει SQL `20` |
+| Πακέτα (entitlements) + δημόσια σελίδα `/s/<slug>` + «Η σελίδα μου» (§5.2) | ✅ live (PR #21, `edb8ad4`), SQL `20` έτρεξε |
+| Δημόσιο site 1/4: ρυθμίσεις κρατήσεων, ομάδες, τοποθεσίες, σεζόν & τιμές, ηλικίες, extras, εμφάνιση, εμπιστοσύνη + μηχανή τιμής `quote()` (§5.3) | ⏳ branch `claude/public-site-settings`, θέλει SQL `21` |
 
 **Γνωστές συμπεριφορές (σκόπιμες):**
 - Η προμήθεια συνεργάτη μένει πάνω στις γραμμές της κράτησης, **όχι** στη χειροκίνητη τιμή.
@@ -340,7 +341,7 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 - **Slug:** νέα στήλη `tenants."storefrontSlug"` (UNIQUE, null μέχρι να οριστεί) — **ξεχωριστή** από το `tenants.slug` (δεμένο με JWT/seed/Super Admin). Κανόνες στο `src/lib/storefront/slug.ts`: a-z, 0-9, παύλα, 3–40, όχι παύλα στα άκρα/διπλή, λίστα δεσμευμένων (`login`, `dashboard`, `api`, `c`, `s`, `admin`, `super-admin`, `print`, `www`, κωδικοί γλωσσών κλπ.).
 - **Ασφάλεια:** η εταιρία βρίσκεται **μόνο** στο `resolveStorefrontCompany` (`src/lib/storefront/resolve.ts`) — εκεί θα μπει αργότερα και η εύρεση από custom domain. Ό,τι βγαίνει περνά από whitelist (`src/lib/storefront/publicData.ts`): εταιρία = επωνυμία, λογότυπο (signed URL), brand color (μόνο `#RRGGBB`), τηλέφωνο, email, διεύθυνση/περιοχή, κείμενα· όχημα = μάρκα, μοντέλο, έτος, κατηγορία, καύσιμο, θέσεις, πόρτες, κιβώτιο, A/C, τιμή/ημέρα (με ΦΠΑ), URLs φωτογραφιών. **Ποτέ** πινακίδα, χλμ, σημειώσεις, ids εταιρίας, πελάτες, κρατήσεις, συμβόλαια, τιμολόγια, IBAN/ΑΦΜ, κάρτες. Οι σελίδες είναι server components χωρίς JS στον browser.
 - **Οχήματα στο site:** ενεργά, όχι «Ανενεργό», με `vehicles."publicVisible" = true` (νέα στήλη, προεπιλογή true· διακόπτης «Εμφάνιση στη δημόσια σελίδα» στη φόρμα του Στόλου, μόνο όταν το πακέτο έχει publicSite). Ταξινόμηση από τη φθηνότερη τιμή.
-- **Ρυθμίσεις** στο `tenants."storefrontSettings"` JSONB: `title`/`tagline`/`about` **ανά κωδικό γλώσσας** (`{"el":"…","en":"…"}`), `supportedLanguages` (προεπιλογή `["el","en"]`), `defaultLanguage` (`el`), `paymentOptions` (`onPickup` true, `online` **πάντα false** μέχρι τις πληρωμές), `bookingMode` `request`. Χαλασμένο JSON → προεπιλογές (`normalizeStorefrontSettings`).
+- **Ρυθμίσεις** στο `tenants."storefrontSettings"` JSONB: `title`/`tagline`/`about` **ανά κωδικό γλώσσας** (`{"el":"…","en":"…"}`), `supportedLanguages` (προεπιλογή `["el","en"]`), `defaultLanguage` (`el`), `paymentOptions` (`onPickup` true, `online` **πάντα false** μέχρι τις πληρωμές), ~~`bookingMode` `request`~~ (**deprecated** — καταργήθηκε στο SQL 21, ο τρόπος κράτησης ζει στο `rentalMode`, §5.3). Χαλασμένο JSON → προεπιλογές (`normalizeStorefrontSettings`).
 - **«Η σελίδα μου»** (`/dashboard/storefront`, sidebar): **μόνο Διαχειριστής** και μόνο αν το πακέτο έχει publicSite (αλλιώς κλειδωμένη οθόνη + 403 στο API). Ενεργοποίηση, slug με έλεγχο διαθεσιμότητας (`GET /api/storefront/slug`), γλώσσες + προεπιλογή, κείμενα ανά γλώσσα, πληρωμή κατά την παραλαβή, online «σύντομα» (ανενεργό), link προεπισκόπησης. Αποθήκευση `PATCH /api/storefront` (ενεργοποίηση χωρίς slug → 400· slug άλλης εταιρίας → 400, και το UNIQUE index πιάνει τις ταυτόχρονες). Τα πεδία κειμένων αντικαθίστανται ολόκληρα ανά πεδίο (η οθόνη στέλνει πάντα όλες τις γλώσσες).
 - **Brand:** λογότυπο από τις Ρυθμίσεις, χρώμα από τον Super Admin («Χρώμα Brand»), επικοινωνία από τις Ρυθμίσεις. Χωρίς λογότυπο φαίνεται το αρχικό γράμμα στο χρώμα της εταιρίας.
 - **Γλώσσες του site (i18n):** μία δομή στο `src/lib/storefront/i18n.ts` (ξεχωριστή από τα λεξικά του dashboard), fallback ανά κλειδί στα αγγλικά. **Νέα γλώσσα** (π.χ. γαλλικά) = νέο λεξικό `fr` εκεί + `"fr"` στο `supportedLanguages` της εταιρίας (εμφανίζεται αυτόματα και στην «Η σελίδα μου»). Καμία αλλαγή στη βάση.
@@ -348,11 +349,71 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 - **Πώς δοκιμάζεται (μετά το SQL 20):** ως Διαχειριστής της demo → «Η σελίδα μου» → slug (π.χ. `fleet-pro-chania`), κείμενα, «Η σελίδα είναι ενεργή» → Αποθήκευση → «Προεπισκόπηση». Για 404: απενεργοποίηση, ή `UPDATE "tenants" SET "planKey"='dashboard' …` και ξανά φόρτωση. Για όριο: `planKey='dashboard'` → «Νέος χρήστης» απενεργοποιημένο αν υπάρχει ήδη 1 ενεργός.
 - **Δοκιμές:** `tests/entitlements.test.mjs` (όρια, null = ∞, overrides, χωρίς πακέτο), `tests/storefront-slug.test.mjs` (μορφή, δεσμευμένα, μοναδικότητα, διευθύνσεις), `tests/storefront-public.test.mjs` (καμία διαρροή ιδιωτικών πεδίων, ρυθμίσεις, i18n). Τοπικά (PostgreSQL 16, `01 → 20`): verification όπως στο αρχείο, ξανατρέξιμο χωρίς αλλαγές, `prisma migrate diff` → «No difference detected».
 
+### 5.3 Δημόσιο site 1/4 — ρυθμίσεις κρατήσεων και μηχανή τιμής (branch `claude/public-site-settings`, SQL `21`)
+
+Πρώτο από 4 PR για πλήρες site κρατήσεων στο `/s/<slug>`: (1) ρυθμίσεις + μηχανή τιμής **[αυτό]**, (2) αρχική/αναζήτηση/κάρτες/διαθεσιμότητα, (3) ροή κράτησης + επιβεβαίωση, (4) SEO/νομικά/FAQ/κριτικές/landing pages. **Η δημόσια εμφάνιση ΔΕΝ αλλάζει σε αυτό το PR.**
+
+**Τι βρέθηκε στο βήμα 0 (και άλλαξε το σχέδιο):**
+- **Τρόπος κράτησης:** υπήρχε ήδη `tenants."rentalMode"` (BOOKING/REQUEST), που ρυθμίζεται από τις Ρυθμίσεις. Το `storefrontSettings.bookingMode` του PR #21 **καταργήθηκε** (το SQL 21 το σβήνει, ο κώδικας το αγνοεί). **Μία πηγή αλήθειας: `rentalMode`** (BOOKING = απευθείας, REQUEST = με αίτημα). Η καρτέλα «Κρατήσεις & Επικοινωνία» γράφει το ίδιο πεδίο.
+- **Ρυθμίσεις site:** επέκταση του υπάρχοντος `tenants."storefrontSettings"` (κλειδιά `booking`, `contact`, `theme`, `trustBlocks`)· καμία νέα στήλη. Η πληρωμή μένει στο υπάρχον `paymentOptions` (`online` κλειδωμένο σε false).
+- **ΦΠΑ:** το υπάρχον `tenants."vatRate"` (όχι νέο `vatPercent`)· στην καρτέλα φαίνεται μόνο για ανάγνωση με link στις Ρυθμίσεις.
+- **Extras/ασφάλειες:** ο υπάρχων πίνακας `extras` (EXTRA/INSURANCE, `chargeType` PER_DAY/ONE_OFF = per_day/per_rental, `excess`, `isActive`). Προστέθηκαν μόνο `nameI18n`, `descriptionI18n`, `maxTotal`, `maxQuantity`, `vehicleTypes`, `sortOrder`. **Δεν** προστέθηκαν `isDefault`/`deposit` ασφάλειας (η εγγύηση έρχεται από την ομάδα). Το `name` μένει το κύριο ελληνικό όνομα (συμβόλαια, κρατήσεις) και **συγχρονίζεται** με το `nameI18n.el` και από τις δύο οθόνες.
+- **Ονοματολογία:** οι νέοι πίνακες έχουν `"tenantId"` (όπως όλα τα 01–20), όχι `companyId`. Ids `TEXT` (cuid από Prisma).
+- **Λογότυπο / κύριο χρώμα:** `tenants.logoPath` (Ρυθμίσεις) / `tenants.brandColor` (Super Admin)· η «Εμφάνιση» τα δείχνει μόνο, με link.
+- **Φωτογραφίες:** ξαναχρησιμοποιούνται `VehiclePhotos` + `PhotoManager` + `vehiclePhotoServer` (πήραν παράμετρο πίνακα `"vehicles" | "rental_groups"` και `apiBase`/`max`/`validate`). Δεν υπάρχει δεύτερο αντίγραφο.
+- **Εργαλεία:** tests με `node --test` (όχι vitest)· UI σε καθαρό CSS `dash-*` (όχι shadcn/react-hook-form). **Το `npm run lint` δεν ήταν ρυθμισμένο** (ζητούσε διαδραστική ρύθμιση): προστέθηκε `.eslintrc.json` (`next/core-web-vitals`) + devDependencies `eslint@8.57.0`, `eslint-config-next@14.1.3`. Όλο το repo περνά χωρίς προειδοποιήσεις. Το `next build` τρέχει πλέον και lint.
+
+**Πού είναι τι:**
+- **Μηχανή τιμής:** `src/lib/public/pricing.ts` — καθαρές συναρτήσεις `quote(input)` και `fromPrice(target, rates, seasons, today)` (+ `seasonFor`, `pickTier`, `rentalDays`, `inWindow`). Ημέρες = `ceil((επιστροφή − παραλαβή − graceMinutes) / 24ω)`, ελάχιστο 1, ως «ώρα τοίχου» στη ζώνη της εταιρίας (σωστό και σε αλλαγή ώρας). Κλίμακα από τις **συνολικές** ημέρες, κάθε ημέρα με **τη σεζόν της**. Χωρίς rate: `basePriceCents` ομάδας / `dailyRate` οχήματος. Τοποθεσία percent μόνο στο ενοίκιο, fixed ανά ενοικίαση· άλλο σημείο επιστροφής = και η σταθερή χρέωση του σημείου επιστροφής + `oneWayFeeCents`. Έκπτωση τοποθεσίας = ξεχωριστή αρνητική γραμμή (`location_discount`) → `listTotalCents`/`discountBadge`. Εκτός ωραρίου ανά παραλαβή/επιστροφή, με override ανά σημείο (0 = δωρεάν). Ηλικία: band με `allowed=false` ή εκτός bands → σφάλμα, χωρίς ηλικία → το `isDefault`· επιβάρυνση per_day/per_rental με ταβάνι. Extras/ασφάλεια ανά ημέρα ή ενοικίαση, ταβάνι **ανά τεμάχιο**, μόνο για τα `vehicleTypes` τους. `vatCents = total − total/(1+vat%)` μόνο για εμφάνιση. Σφάλματα `{code, message{el,en}}`: INVALID_DATES, LEAD_TIME, TOO_FAR, MIN_DAYS, LOCATION_NO_PICKUP/DROPOFF, AGE_OUT_OF_RANGE, AGE_NOT_ALLOWED, AGE_UNDER_GROUP_MIN, EXTRA_NOT_FOR_VEHICLE, EXTRA_QUANTITY, NO_PRICE.
+- **Φόρτωση δεδομένων για τη quote():** `src/lib/public/server.ts` → `loadQuoteContext(companyId)`.
+- **Χρήματα:** `src/lib/public/money.ts` (`toCents`, `fromCents`, `parseEuroInput`, `centsToInput`, `formatCents`) — **το ΜΟΝΟ σημείο μετατροπής € ↔ cents.**
+- **Κείμενα ανά γλώσσα:** `src/lib/public/text.ts` (`textFor`: ζητούμενη → en → el → πρώτη).
+- **Ρυθμίσεις site:** `src/lib/public/siteSettings.ts` (τύποι, προεπιλογές, ανάγνωση, zod)· `normalizeStorefrontSettings`/`mergeSiteSettings` στο `src/lib/storefront/settings.ts`.
+- **Κλίμακες:** `src/lib/public/rates.ts` (`tiersProblem`).
+- **CRUD λιστών:** `src/lib/public/resources.ts` (ένας καταχωρητής: groups, locations, seasons, age-bands) + `src/app/api/public-site/[resource]/…`.
+- **Φύλακας:** `src/lib/public/guard.ts` (`withPublicSite`) = Διαχειριστής (ρόλος από τη βάση) **και** πακέτο με `publicSite` (ίδιο `storefrontAccess` με το «Η σελίδα μου»). Το `companyId` πάντα από τη συνεδρία· κάθε query με `tenantId`· εγγραφή άλλης εταιρίας = 404.
+
+**API (όλα `force-dynamic`, zod, ελληνικά μηνύματα):** `GET/POST /api/public-site/{groups|locations|seasons|age-bands}`, `PATCH/DELETE …/[id]` (σε χρήση → «Ανενεργή»: ομάδα με οχήματα), `GET /api/public-site/extras`, `PATCH /api/public-site/extras/[id]` (μόνο δημόσια πεδία· τιμή/χρέωση στη σελίδα «Πρόσθετα»), `GET/PUT /api/public-site/rates`, `POST /api/public-site/quote` (ο browser στέλνει μόνο ids), `GET/PATCH /api/public-site/settings` (και `rentalMode`), φωτογραφίες ομάδας `…/group-photos/[id]` (+ `/sign`, `/[photoId]`, φάκελος `fleetpro/{companyId}/groups/{groupId}`), hero `…/hero` (+ `/sign`, `/hero` DELETE, φάκελος `fleetpro/{companyId}/site`, οριζόντια ≥ 1600px).
+
+**Οθόνες (dashboard → «Η σελίδα μου», καρτέλες `?tab=`):** Σελίδα (η παλιά οθόνη) · Εμφάνιση · Ομάδες · Τοποθεσίες · Σεζόν & Τιμές (σεζόν + κλίμακες ανά ομάδα/όχημα χωρίς ομάδα × σεζόν, € με κόμμα → cents, + «Δοκιμαστικός υπολογισμός» με διαγραμμένη αρχική τιμή και σήμα έκπτωσης) · Ηλικίες οδηγού · Extras & Ασφάλειες · Κρατήσεις & Επικοινωνία (τρόπος κράτησης = `rentalMode`· το `holdHours` μόνο στο «Με αίτημα»· online πληρωμή κλειδωμένη «Σύντομα») · Ενότητες εμπιστοσύνης (έως 6, εικονίδια lucide από λίστα, Πάνω/Κάτω). Πεδία ΕΛ/EN δίπλα-δίπλα, EN προαιρετικό. Διαγραφή με επιβεβαίωση. **Στόλος:** νέα πεδία «Τύπος» (Αυτοκίνητο/Μηχανή/ATV, πάντα) και «Ομάδα (site)» (μόνο με publicSite), με έλεγχο στον server ότι η ομάδα είναι της ίδιας εταιρίας.
+
+**Ποσά — τι είναι σε € και τι σε cents:**
+
+| Πού | Μονάδα |
+|---|---|
+| `vehicles.dailyRate`, `extras.price`, `extras.excess`, `extras.maxTotal`, όλα τα παλιά (κρατήσεις, τιμολόγια, συμβόλαια) | **€ (Decimal)** |
+| `rental_groups.basePriceCents/depositCents/excessCents`, `pickup_locations.afterHoursFeeCents`, `pickup_locations.adjustmentValue` (όταν `fixed`· όταν `percent` = %), `rates.tiers[].dailyPriceCents`, `driver_age_bands.surchargeCents/surchargeMaxCents`, `storefrontSettings.booking.afterHours.feeCents`, `storefrontSettings.booking.oneWayFeeCents` | **cents (ακέραια λεπτά)** |
+| quote() και όλα τα `/api/public-site/*` | **cents** (μετατροπή μόνο στο `money.ts`) |
+
+**Δοκιμές:** `tests/public-pricing.test.mjs` (22: 3 ημέρες χαμηλή, 7 ημέρες σε υψηλή, Δεκ–Ιαν, grace 59΄ ±, αλλαγή ώρας, γραφείο −10% με listTotal/badge, άλλο σημείο επιστροφής, εκτός ωραρίου με δωρεάν σημείο, νέος οδηγός με ταβάνι, μη επιτρεπτή ηλικία, extra με ταβάνι, minDays, fromPrice, money), `tests/public-site-settings.test.mjs` (ρυθμίσεις, κατάργηση bookingMode, κλίμακες, fallback κειμένων). Τοπικά (PostgreSQL 16, `01 → 21b`): verification όπως στα αρχεία, ξανατρέξιμο χωρίς αλλαγές, `prisma migrate diff` → «empty migration».
+
+**Μένει για τα PR 2–4:** (2) αρχική με hero/αναζήτηση/κάρτες ομάδων με `fromPrice()` και διαθεσιμότητα ανά ομάδα (οχήματα της ομάδας χωρίς σύγκρουση + `prepTimeMinutes`), σελίδα ομάδας με `quote()`· (3) φόρμα κράτησης, `bookingMode` από `rentalMode` (REQUEST → PENDING με `holdHours`, BOOKING → CONFIRMED), στοιχεία πτήσης/πλοίου/διεύθυνσης ανά σημείο, email επιβεβαίωσης, έλεγχος «σε χρήση» για τοποθεσίες· (4) SEO (landing pages ανά `pickup_locations.slug`), νομικά, FAQ, κριτικές. Το site πρέπει να χρησιμοποιεί τα extras με `isActive` και τα σημεία με `isActive`.
+
+### Δημόσιο site — design (PR 2)
+
+Αναφορά: **prentals.gr**. Να κρατήσουμε:
+- Hero με μεγάλη φωτογραφία (`theme.heroImage`) και **γυάλινο (blur) πάνελ αναζήτησης** από πάνω.
+- Καρτέλες **Cars / Bikes / ATV** ως κουμπιά-χάπια με εικονίδιο (`vehicleType`).
+- Λευκό μενού-χάπι με κουμπί τηλεφώνου και «Κράτηση» στο κύριο χρώμα (`brandColor`, δεύτερο χρώμα `theme.accentColor`, γωνίες `theme.cornerStyle`).
+- Κάρτες ομάδων με μεγάλες στρογγυλεμένες γωνίες, carousel φωτογραφιών με βέλη, σειρά εικονιδίων χαρακτηριστικών, διαγραμμένη αρχική τιμή (`listTotalCents`), σήμα «-10%» (`discountBadge`), σύνολο και κουμπί «Κράτηση».
+
+Τι κάνουμε καλύτερα:
+- Ετικέτες **με λέξεις** («4 θέσεις», «Χειροκίνητο», «Βενζίνη», «2 βαλίτσες», «A/C»), όχι «x4 / x195L / Yes».
+- Δίπλα στο σύνολο και η **τιμή ανά ημέρα** (`avgDailyCents`).
+- Οι ώρες **ποτέ κενές** (`booking.defaultPickupTime` / `defaultDropoffTime`, `defaultRentalDays`).
+- Η ηλικία προεπιλεγμένη στο band με `isDefault`, με την εξήγησή του (`explanation`).
+- Η σελίδα ομάδας κρατά τα στοιχεία αναζήτησης **από το URL** και δείχνει σύνοψη με «Αλλαγή», όχι ξανά όλη τη φόρμα.
+- Το σταθερό μενού δεν καλύπτει περιεχόμενο (`scroll-margin`) και μικραίνει στο σκρολάρισμα.
+- Στο κινητό το πάνελ αναζήτησης γίνεται κάθετο, με σταθερό κάτω κουμπί «Κράτηση / Κλήση».
+- **Ένα H1 ανά σελίδα**· κανένα διπλότυπο τμήμα στόλου.
+
 ## 6. Migrations
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
-- **20-plans-storefront: ΔΕΝ έχει τρέξει ακόμη** (branch `ccr-0edadca8-vvohvc`). Πίνακας `plans` + 3 πακέτα (`ON CONFLICT DO NOTHING`: δεν πατά αλλαγμένες τιμές), στο `tenants`: `planKey` (FK, index), `entitlementOverrides`, `storefrontSlug` (UNIQUE `tenants_storefrontSlug_key`), `storefrontEnabled`, `storefrontSettings`· backfill όλων των εταιριών σε `full`· `vehicles."publicVisible"`. Idempotent. Αναμενόμενο verification `3 | 0 | 0 | 5 | 1 | 1 | 1 | 0`. **Τρέχει πριν το merge** — αλλιώς σκάει το dashboard (ο κώδικας ζητά `plans`/`planKey`).
+- **21-public-site-settings: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/public-site-settings`). Σε transaction. Νέοι πίνακες `rental_groups`, `pickup_locations`, `seasons`, `rates` (UNIQUE `(tenantId, seasonId, rentalGroupId, vehicleId) NULLS NOT DISTINCT` — θέλει PostgreSQL ≥ 15, το Supabase είναι), `driver_age_bands`· `vehicles."rentalGroupId"` (FK SET NULL) + `"vehicleType"` (MOTORCYCLE → 'moto')· `extras` + 6 στήλες (backfill `nameI18n = {"el": name}`)· σβήνει το `storefrontSettings.bookingMode`. 18 constraints (FK + CHECK) σε `DO $$`. Αναμενόμενο verification `5 | 2 | 6 | 18 | 3 | 0 | 0`. **Τρέχει πριν το merge.**
+- **21b-demo-public-settings (προαιρετικό, μετά το 21):** μόνο για τη demo (βρίσκεται από `v_slug := 'p-rentals'`): 9 τοποθεσίες, 3 ηλικίες, 9 ομάδες (A–E Manual, B–D Automatic, A Cabrio), 3 σεζόν, 27 rates, 3 extras (GPS, πρόσθετος οδηγός, παιδικό κάθισμα — μόνο αν δεν υπάρχουν με ίδιο όνομα), 4 ενότητες εμπιστοσύνης, εμφάνιση `#4B3A8E`/pill. Idempotent. Αναμενόμενο την 1η φορά `9 | 3 | 9 | 3 | 27 | 3 | 4`.
+- **20-plans-storefront: έχει τρέξει** (επιβεβαίωση Giannis, 12/10/2026· PR #21 merged). Πίνακας `plans` + 3 πακέτα (`ON CONFLICT DO NOTHING`: δεν πατά αλλαγμένες τιμές), στο `tenants`: `planKey` (FK, index), `entitlementOverrides`, `storefrontSlug` (UNIQUE `tenants_storefrontSlug_key`), `storefrontEnabled`, `storefrontSettings`· backfill όλων των εταιριών σε `full`· `vehicles."publicVisible"`. Idempotent. Αναμενόμενο verification `3 | 0 | 0 | 5 | 1 | 1 | 1 | 0`. **Τρέχει πριν το merge** — αλλιώς σκάει το dashboard (ο κώδικας ζητά `plans`/`planKey`).
 - **19-invoice-pdf: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/invoice-pdf-export-wu0cnc`). **Σειρά:** (1) τρέξτε το `19` στο Supabase SQL Editor **πριν** ανοίξετε/δοκιμάσετε το preview — το preview γράφει στην **ίδια** βάση με την παραγωγή, και ο νέος κώδικας ζητά τις νέες στήλες· (2) δοκιμή στο preview· (3) merge· (4) **ξανατρέξτε** το `19` μία φορά μετά το merge (idempotent), ώστε να πάρουν κωδικό και όσα τιμολόγια έβγαλε στο μεταξύ η παλιά έκδοση (ο κώδικας τούς δίνει και μόνος του με την πρώτη λήψη/αποστολή). Η παλιά έκδοση (παραγωγή) δουλεύει κανονικά με το `19` (μόνο προσθήκες, όλες nullable ή με default). Περιέχει: `invoices."invoiceCode" TEXT` + UNIQUE index `invoices_invoiceCode_key`, backfill **μόνο** όπου `IS NULL` (ίδιο αλφάβητο, τυχαιότητα από `gen_random_uuid()`, επανάληψη σε σύγκρουση), `"emailSentAt" TIMESTAMP(3)`, `"emailSentTo" TEXT`, `"emailSendLog" JSONB NOT NULL DEFAULT '[]'`. Αναμενόμενο verification `0 | 0 | 0 | 4 | 1` (χωρίς κωδικό | διπλότυπα | λάθος μορφή | νέες στήλες | unique index). Τοπικά (PostgreSQL 16): 5.000 τιμολόγια, δύο εκτελέσεις → `0 | 0 | 0 | 4 | 1`· `prisma migrate diff` από το `schema.prisma` βγάζει ίδιες στήλες/index.
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
@@ -407,12 +468,14 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 5. **Τιμολόγια: PDF** — ✅ (§5.1). Απομένει μετατροπή λογοτύπων WebP σε PNG για το PDF.
 6. ~~**Φωτογραφίες ζημιών**~~ — ✅ με Supabase Storage (§5). ~~**Φωτογραφίες οχημάτων**~~ — ✅ με Cloudinary (§5, branch `claude/vehicle-photos`). Το `documents[]` μένει αχρησιμοποίητο.
 7. **Billing / Stripe** — συνδρομές εταιριών. Οι εκπτώσεις συνδρομών (`PlatformDiscount`) υπάρχουν ήδη· το billing θα εφαρμόζει την ενεργή με `platformDiscountStatus` + `discountedPrice`.
-8. **Δημόσιο site κρατήσεων** — τα θεμέλια (πακέτα + `/s/<slug>`) υπάρχουν (§5.2). Επόμενα: φόρμα αιτήματος κράτησης (`bookingMode = request`), αναζήτηση ημερομηνιών, online πληρωμή, custom domain (στο `resolveStorefrontCompany`). Το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
+8. **Δημόσιο site κρατήσεων** — τα θεμέλια (πακέτα + `/s/<slug>`) υπάρχουν (§5.2). PR 1/4 (ρυθμίσεις + μηχανή τιμής, §5.3) στο branch `claude/public-site-settings`. Επόμενα: PR 2 αρχική/αναζήτηση/κάρτες/διαθεσιμότητα (βλ. «Δημόσιο site — design (PR 2)»), PR 3 ροή κράτησης (τρόπος από `rentalMode`), PR 4 SEO/νομικά/FAQ/κριτικές· μετά online πληρωμή (Stripe) και custom domain (στο `resolveStorefrontCompany`). Το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
 
 ## 9. Changelog
 
 | Commit | Τι |
 |---|---|
+| _(branch `claude/public-site-settings`)_ | Δημόσιο site 1/4: μηχανή τιμής `quote()`/`fromPrice()` (`src/lib/public/pricing.ts`, cents), ομάδες/τοποθεσίες/σεζόν/τιμές/ηλικίες (νέοι πίνακες), extras με πεδία site, ρυθμίσεις κρατήσεων/επικοινωνίας/εμφάνισης/εμπιστοσύνης στο `storefrontSettings`, τρόπος κράτησης μόνο στο `rentalMode`, καρτέλες στο «Η σελίδα μου», «Τύπος»/«Ομάδα» στον Στόλο, ESLint. Migration `21` (+ `21b` demo) |
+| `edb8ad4` | Merge του PR #21 (πακέτα + `/s/<slug>`). Migration `20` |
 | _(branch `ccr-0edadca8-vvohvc`)_ | Πακέτα (entitlements: `plans`, `planKey`, overrides, όρια χρηστών/οχημάτων στον server, επιλογή πακέτου στον Super Admin) + δημόσια σελίδα `/s/<slug>[/en]` ανά εταιρία (brand, στόλος, σελίδα οχήματος, επικοινωνία, i18n με fallback), «Η σελίδα μου», `publicVisible` στα οχήματα. Migration `20` |
 | _(branch `claude/invoice-pdf-export-wu0cnc`)_ | Τιμολόγια: τυχαίος κωδικός `XXXX-XXXX` (`invoiceCode.ts`, μοναδικός σε όλη τη βάση, παντού αντί για `INV-001`), PDF με pdf-lib + DejaVu (ΕΛ/EN, λογότυπο, brand color, 2η σελίδα), λήψη `GET /api/invoices/[id]/pdf` και αποστολή με email (Resend, όριο 5/ώρα, reply-to εταιρίας) μόνο για Διαχειριστή/Προσωπικό. Migration `19` + `tests/invoice-pdf.test.mjs`. 2ο commit: το PDF γίνεται **πάντα δίγλωσσο** (λεξικό `INVOICE_LABELS` `{el, en}`), το dropdown αφορά μόνο το email, χωρίς αλλαγή στη βάση |
 | `321aab1` | Merge του PR #19 (φωτογραφίες οχήματος με Cloudinary). Migration `18` |

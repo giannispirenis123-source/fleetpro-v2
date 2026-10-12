@@ -1,0 +1,136 @@
+// src/lib/storefront/settings.ts
+// Ρυθμίσεις της δημόσιας σελίδας (tenants."storefrontSettings", JSONB) —
+// καθαρή λογική + zod (χωρίς db), για server, client και tests.
+//
+// Σχήμα στη βάση:
+// {
+//   "title":   {"el":"…","en":"…"},   ← κείμενα ανά ΚΩΔΙΚΟ γλώσσας,
+//   "tagline": {"el":"…","en":"…"},     όχι στήλες ανά γλώσσα
+//   "about":   {"el":"…","en":"…"},
+//   "supportedLanguages": ["el","en"],
+//   "defaultLanguage": "el",
+//   "paymentOptions": {"onPickup":true,"online":false},
+//   "bookingMode": "request"
+// }
+// Ό,τι λείπει ή είναι άκυρο παίρνει την προεπιλογή — το site δεν σκάει ποτέ
+// από χαλασμένο JSON.
+
+import { z } from "zod";
+import { STOREFRONT_LANGUAGES, isStorefrontLanguage } from "./i18n";
+
+export const TEXT_FIELDS = ["title", "tagline", "about"] as const;
+export type TextField = (typeof TEXT_FIELDS)[number];
+export type LocalizedText = Record<string, string>;
+
+export const TEXT_MAX: Record<TextField, number> = { title: 80, tagline: 160, about: 2000 };
+
+export const DEFAULT_LANGUAGES = ["el", "en"];
+export const DEFAULT_LANGUAGE = "el";
+
+export interface StorefrontSettings {
+  title: LocalizedText;
+  tagline: LocalizedText;
+  about: LocalizedText;
+  supportedLanguages: string[];
+  defaultLanguage: string;
+  /** online: ΠΑΝΤΑ false μέχρι να υπάρξουν πληρωμές («σύντομα»). */
+  paymentOptions: { onPickup: boolean; online: boolean };
+  /** Μόνο "request" (η εταιρία επιβεβαιώνει) σε αυτή τη φάση. */
+  bookingMode: "request";
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+function readText(value: unknown, field: TextField): LocalizedText {
+  if (!isObject(value)) return {};
+  const out: LocalizedText = {};
+  for (const [lang, text] of Object.entries(value)) {
+    if (!isStorefrontLanguage(lang) || typeof text !== "string") continue;
+    const trimmed = text.trim().slice(0, TEXT_MAX[field]);
+    if (trimmed) out[lang] = trimmed;
+  }
+  return out;
+}
+
+export function normalizeStorefrontSettings(raw: unknown): StorefrontSettings {
+  const o = isObject(raw) ? raw : {};
+
+  let languages = Array.isArray(o.supportedLanguages)
+    ? Array.from(new Set(o.supportedLanguages.filter(isStorefrontLanguage)))
+    : [];
+  if (languages.length === 0) languages = DEFAULT_LANGUAGES.filter(isStorefrontLanguage);
+
+  const defaultLanguage =
+    isStorefrontLanguage(o.defaultLanguage) && languages.includes(o.defaultLanguage)
+      ? o.defaultLanguage
+      : languages.includes(DEFAULT_LANGUAGE)
+        ? DEFAULT_LANGUAGE
+        : languages[0];
+
+  const pay = isObject(o.paymentOptions) ? o.paymentOptions : {};
+
+  return {
+    title: readText(o.title, "title"),
+    tagline: readText(o.tagline, "tagline"),
+    about: readText(o.about, "about"),
+    supportedLanguages: languages,
+    defaultLanguage,
+    paymentOptions: { onPickup: pay.onPickup !== false, online: false },
+    bookingMode: "request",
+  };
+}
+
+/** Κείμενο στη ζητούμενη γλώσσα → στην προεπιλεγμένη → κενό. */
+export function pickText(text: LocalizedText, lang: string, fallbackLang: string): string {
+  return text[lang] || text[fallbackLang] || "";
+}
+
+/* ─────────────────────────────────────────────
+   «Η σελίδα μου» — σώμα του PATCH /api/storefront
+   ───────────────────────────────────────────── */
+
+const textMap = (field: TextField) =>
+  z.record(z.string(), z.string().max(TEXT_MAX[field], "Πολύ μεγάλο κείμενο")).optional();
+
+export const storefrontUpdateSchema = z.object({
+  enabled: z.boolean().optional(),
+  /** "" = αφαίρεση slug (και τότε η σελίδα δεν μπορεί να είναι ενεργή). */
+  slug: z.string().max(80).optional(),
+  title: textMap("title"),
+  tagline: textMap("tagline"),
+  about: textMap("about"),
+  supportedLanguages: z
+    .array(z.string())
+    .min(1, "Διαλέξτε τουλάχιστον μία γλώσσα")
+    .refine((l) => l.every(isStorefrontLanguage), "Μη υποστηριζόμενη γλώσσα")
+    .optional(),
+  defaultLanguage: z
+    .string()
+    .refine(isStorefrontLanguage, "Μη υποστηριζόμενη γλώσσα")
+    .optional(),
+  payOnPickup: z.boolean().optional(),
+});
+
+export type StorefrontUpdate = z.infer<typeof storefrontUpdateSchema>;
+
+/** Νέες ρυθμίσεις = τρέχουσες + ό,τι ήρθε (ξανα-κανονικοποιημένες). */
+export function mergeStorefrontSettings(
+  current: StorefrontSettings,
+  update: StorefrontUpdate
+): StorefrontSettings {
+  return normalizeStorefrontSettings({
+    ...current,
+    ...(update.title && { title: update.title }),
+    ...(update.tagline && { tagline: update.tagline }),
+    ...(update.about && { about: update.about }),
+    ...(update.supportedLanguages && { supportedLanguages: update.supportedLanguages }),
+    ...(update.defaultLanguage && { defaultLanguage: update.defaultLanguage }),
+    paymentOptions: {
+      onPickup: update.payOnPickup ?? current.paymentOptions.onPickup,
+      online: false,
+    },
+  });
+}
+
+export { STOREFRONT_LANGUAGES };

@@ -194,6 +194,21 @@ model Tenant {
   // πλησιέστερο ακέραιο ευρώ. Οι επιμέρους γραμμές μένουν ακριβείς.
   roundUpTotal    Boolean          @default(false)
 
+  // Πακέτο (entitlements): ποιες ενότητες και ποια όρια έχει η εταιρία.
+  // ΞΕΧΩΡΙΣΤΟ από το "plan" πιο πάνω, που αφορά μόνο την τιμή συνδρομής.
+  // null = χωρίς πακέτο (καμία ενότητα, κανένας νέος χρήστης/όχημα).
+  planKey              String?
+  // Εξαιρέσεις μίας εταιρίας: {"modules":{…},"limits":{…}} — ανά κλειδί
+  // υπερισχύουν του πακέτου (και limit null = απεριόριστο). SQL 20.
+  entitlementOverrides Json    @default("{}")
+
+  // Δημόσια σελίδα /s/<storefrontSlug>. ΞΕΧΩΡΙΣΤΟ slug από το "slug" πιο
+  // πάνω (δεμένο με login/JWT). Ρυθμίσεις στο storefrontSettings (κείμενα
+  // ανά γλώσσα, γλώσσες, πληρωμή) — βλ. src/lib/storefront/settings.ts.
+  storefrontSlug       String? @unique
+  storefrontEnabled    Boolean @default(false)
+  storefrontSettings   Json    @default("{}")
+
   // Τιμολόγηση. Οι τιμές των κρατήσεων ΠΕΡΙΕΧΟΥΝ ΦΠΑ· το τιμολόγιο τις
   // σπάει ανάποδα σε καθαρή αξία και ΦΠΑ με αυτό το ποσοστό.
   vatRate             Decimal             @default(24) @db.Decimal(5, 2)
@@ -226,7 +241,9 @@ model Tenant {
   contractTemplates ContractTemplate[]
   extras            Extra[]
   platformDiscounts PlatformDiscount[]
+  entitlementPlan   Plan?              @relation(fields: [planKey], references: [key], onDelete: SetNull)
 
+  @@index([planKey])
   @@map("tenants")
 }
 
@@ -310,6 +327,8 @@ model Vehicle {
   photos          Json            @default("[]")
   notes           String?
   isActive        Boolean         @default(true)
+  // Εμφανίζεται στη δημόσια σελίδα της εταιρίας (SQL 20).
+  publicVisible   Boolean         @default(true)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
@@ -850,6 +869,27 @@ model PlatformCoupon {
   updatedAt DateTime @updatedAt
 
   @@map("platform_coupons")
+}
+
+// ─────────────────────────────────────────
+// ΠΑΚΕΤΑ (entitlements) — SQL 20
+// ─────────────────────────────────────────
+// Οι τιμές αλλάζουν ΜΟΝΟ στη βάση, χωρίς deploy. Λογική: src/lib/entitlements.ts.
+// modules: {"dashboard":true,"publicSite":false} — ό,τι λείπει = false.
+// limits:  {"maxUsers":1,"maxVehicles":null}     — null/απόν = απεριόριστο.
+
+model Plan {
+  key       String   @id
+  name      String
+  modules   Json     @default("{}")
+  limits    Json     @default("{}")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  tenants Tenant[]
+
+  @@map("plans")
 }
 
 // ─────────────────────────────────────────

@@ -11,6 +11,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { ok, created, badRequest, forbidden, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
+import { checkWithinLimit } from "@/lib/entitlements";
 import { USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
 import { ASSIGNABLE_ROLES, canCreateWithRole } from "@/lib/adminRole";
 import { defaultsForRole, permissionsFromKeys } from "@/lib/permissions";
@@ -71,6 +72,10 @@ export const POST = withPermission(
         return allowed.status === 403 ? forbidden(allowed.message) : badRequest(allowed.message);
       }
       const email = data.email.trim().toLowerCase();
+
+      // Όριο χρηστών του πακέτου (μετρούν οι ενεργοί· null = απεριόριστο).
+      const limit = await checkWithinLimit(viewer.tenantId, "users");
+      if (!limit.ok) return forbidden(limit.message);
 
       const existing = await db.user.findUnique({
         where: { email },

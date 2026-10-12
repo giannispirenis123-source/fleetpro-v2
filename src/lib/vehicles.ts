@@ -64,6 +64,8 @@ export interface VehicleDTO {
   doors: number;
   transmission: string;
   ac: boolean;
+  /** Φαίνεται στη δημόσια σελίδα της εταιρίας. */
+  publicVisible: boolean;
   nextServiceKm: number | null;
   nextServiceDate: string | null;
   insuranceExpiry: string | null;
@@ -93,6 +95,7 @@ export function toVehicleDTO(v: Vehicle): VehicleDTO {
     doors: v.doors,
     transmission: v.transmission,
     ac: v.ac,
+    publicVisible: v.publicVisible,
     nextServiceKm: v.nextServiceKm,
     nextServiceDate: toDateInput(v.nextServiceDate),
     insuranceExpiry: toDateInput(v.insuranceExpiry),

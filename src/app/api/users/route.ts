@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { checkWithinLimit } from "@/lib/entitlements";
 import {
   withAuth,
   ok,
@@ -140,6 +141,12 @@ export const POST = withAuth(
 
       if (existing) {
         return badRequest("Το email χρησιμοποιείται ήδη");
+      }
+
+      // Όριο χρηστών του πακέτου — ίδιος έλεγχος με το /api/company-users.
+      if (session.tenantId) {
+        const limit = await checkWithinLimit(session.tenantId, "users");
+        if (!limit.ok) return forbidden(limit.message);
       }
 
       const passwordHash = await bcrypt.hash(password, 12);

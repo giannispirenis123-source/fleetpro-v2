@@ -24,6 +24,7 @@ import {
   serverError,
 } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
+import { checkWithinLimit } from "@/lib/entitlements";
 import { Prisma } from "@prisma/client";
 import { USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
 import { defaultsForRole, permissionsFromKeys } from "@/lib/permissions";
@@ -140,6 +141,12 @@ export const PATCH = withPermission(
       const change = { role: data.role, isActive: data.isActive };
       const first = canChangeRole(actor, target, change, Number.MAX_SAFE_INTEGER);
       if (!first.ok) return respond(first);
+
+      // Επανενεργοποίηση = ακόμα ένας ενεργός χρήστης: ισχύει το όριο του πακέτου.
+      if (data.isActive === true && !target.isActive) {
+        const limit = await checkWithinLimit(viewer.tenantId, "users");
+        if (!limit.ok) return forbidden(limit.message);
+      }
 
       const passwordHash =
         data.password !== undefined ? await bcrypt.hash(data.password, BCRYPT_ROUNDS) : undefined;

@@ -35,6 +35,13 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
+  // Δημόσια σελίδα εταιρίας /s/<slug>/...: χωρίς login. Ποια εταιρία και
+  // αν επιτρέπεται (ενεργή σελίδα + πακέτο με publicSite) το κρίνει ΜΟΝΟ το
+  // resolveStorefrontCompany (src/lib/storefront/resolve.ts) — αλλιώς 404.
+  if (pathname.startsWith("/s/")) {
+    return NextResponse.next();
+  }
+
   // Επιτρέπουμε public routes
   if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
     return NextResponse.next();

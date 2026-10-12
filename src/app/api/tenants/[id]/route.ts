@@ -26,6 +26,8 @@ const updateTenantSchema = z.object({
   website: z.string().optional(),
   status: z.enum(["ACTIVE", "SUSPENDED", "TRIAL", "CANCELLED"]).optional(),
   plan: z.enum(["STARTER", "PRO", "ENTERPRISE"]).optional(),
+  // Πακέτο (entitlements) — κλειδί του πίνακα plans· null = χωρίς πακέτο.
+  planKey: z.string().min(1).nullable().optional(),
 });
 
 // GET /api/tenants/[id]
@@ -75,6 +77,14 @@ export const PATCH = withAuth(
 
       if (!parsed.success) {
         return badRequest("Μη έγκυρα δεδομένα", parsed.error.errors);
+      }
+
+      if (parsed.data.planKey) {
+        const plan = await db.plan.findUnique({
+          where: { key: parsed.data.planKey },
+          select: { key: true },
+        });
+        if (!plan) return badRequest("Άγνωστο πακέτο");
       }
 
       const tenant = await db.tenant.update({

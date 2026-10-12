@@ -1,0 +1,122 @@
+/* src/components/storefront/storefront.css
+ * Δημόσια σελίδα εταιρίας (/s/<slug>) — πρόθεμα sf-*.
+ * Το χρώμα της εταιρίας έρχεται ως --sf-brand (μόνο έγκυρο #RRGGBB).
+ * Mobile-first· 16px περιθώριο στο κινητό, χωρίς οριζόντιο scroll.
+ */
+
+.sf {
+  --sf-brand: #2563eb;
+  --sf-text: #0f172a;
+  --sf-text-2: #475569;
+  --sf-border: #e2e8f0;
+  --sf-bg-2: #f8fafc;
+  min-height: 100vh;
+  background: #fff;
+  color: var(--sf-text);
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+.sf main { flex: 1; }
+.sf a { color: inherit; }
+.sf-wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+.sf-muted { color: var(--sf-text-2); }
+
+/* ── Κεφαλίδα ── */
+.sf-header { border-bottom: 1px solid var(--sf-border); background: #fff; position: sticky; top: 0; z-index: 10; }
+.sf-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; }
+.sf-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; min-width: 0; }
+.sf-logo { max-height: 40px; max-width: 120px; object-fit: contain; }
+.sf-logo-mark {
+  width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+  display: grid; place-items: center; font-weight: 700; color: #fff; background: var(--sf-brand);
+}
+.sf-brand-name { font-weight: 700; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sf-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.sf-langs { display: flex; border: 1px solid var(--sf-border); border-radius: 8px; overflow: hidden; }
+.sf-lang { padding: 6px 9px; font-size: 13px; font-weight: 600; text-decoration: none; color: var(--sf-text-2); }
+.sf-lang.is-active { background: var(--sf-brand); color: #fff; }
+
+/* ── Κουμπιά ── */
+.sf-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px;
+  text-decoration: none; border: 1px solid transparent; cursor: pointer; line-height: 1.2;
+  overflow-wrap: anywhere; text-align: center;
+}
+.sf .sf-btn--primary { background: var(--sf-brand); color: #fff; }
+.sf .sf-btn--ghost { background: #fff; color: var(--sf-text); border-color: var(--sf-border); }
+.sf .sf-btn--light { background: #fff; color: var(--sf-brand); }
+.sf-btn--sm { padding: 7px 12px; font-size: 14px; }
+.sf-btn--block { width: 100%; margin-top: 16px; }
+.sf-btn:hover { filter: brightness(0.95); }
+
+/* ── Hero ── */
+.sf-hero {
+  background: linear-gradient(135deg, var(--sf-brand), color-mix(in srgb, var(--sf-brand) 65%, #000));
+  color: #fff; padding: 48px 0 44px;
+}
+.sf-h1 { font-size: clamp(28px, 6vw, 44px); line-height: 1.15; margin: 0 0 10px; font-weight: 800; overflow-wrap: anywhere; }
+.sf-h1--dark { color: var(--sf-text); font-size: clamp(24px, 5vw, 34px); }
+.sf-tagline { font-size: clamp(16px, 3.5vw, 20px); opacity: 0.92; margin: 0 0 22px; max-width: 680px; }
+.sf-h2 { font-size: 24px; margin: 0 0 8px; font-weight: 750; }
+
+.sf-about { padding-top: 28px; color: var(--sf-text-2); font-size: 16px; line-height: 1.6; }
+.sf-about p { margin: 0 0 12px; white-space: pre-line; max-width: 800px; }
+
+/* ── Λίστα οχημάτων ── */
+.sf-fleet { padding-top: 32px; padding-bottom: 40px; }
+.sf-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 16px; }
+@media (min-width: 640px) { .sf-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 960px) { .sf-grid { grid-template-columns: repeat(3, 1fr); } }
+.sf-card {
+  display: flex; flex-direction: column; border: 1px solid var(--sf-border); border-radius: 14px;
+  overflow: hidden; text-decoration: none; background: #fff; transition: box-shadow .15s, transform .15s;
+}
+.sf-card:hover { box-shadow: 0 8px 24px rgba(15, 23, 42, .08); transform: translateY(-2px); }
+.sf-card-img { aspect-ratio: 16 / 10; background: var(--sf-bg-2); display: grid; place-items: center; }
+.sf-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sf-noimg { color: #94a3b8; font-size: 14px; }
+.sf-card-body { padding: 14px 16px 16px; }
+.sf-card-title { font-size: 18px; margin: 0 0 8px; font-weight: 700; }
+.sf-specs { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.sf-specs li { font-size: 13px; padding: 3px 8px; border-radius: 999px; background: var(--sf-bg-2); border: 1px solid var(--sf-border); color: var(--sf-text-2); }
+.sf-price { margin: 0; font-weight: 700; font-size: 17px; color: var(--sf-brand); }
+.sf-price .sf-muted { font-weight: 500; font-size: 13px; }
+
+/* ── Σελίδα οχήματος ── */
+.sf-vehicle { padding-top: 20px; padding-bottom: 40px; }
+.sf-back { display: inline-block; margin-bottom: 16px; text-decoration: none; color: var(--sf-text-2); font-weight: 600; }
+.sf-vehicle-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+@media (min-width: 900px) { .sf-vehicle-grid { grid-template-columns: 3fr 2fr; align-items: start; } }
+.sf-gallery {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; border-radius: 14px;
+  background: var(--sf-bg-2); scrollbar-width: thin;
+}
+.sf-gallery img {
+  flex: 0 0 100%; width: 100%; aspect-ratio: 16 / 10; object-fit: cover;
+  scroll-snap-align: start; display: block; scroll-margin-top: 80px;
+}
+.sf-gallery-main { aspect-ratio: 16 / 10; border-radius: 14px; background: var(--sf-bg-2); display: grid; place-items: center; }
+.sf-thumbs { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; }
+.sf-thumbs a { flex: 0 0 72px; border-radius: 8px; overflow: hidden; border: 1px solid var(--sf-border); }
+.sf-thumbs img { width: 72px; height: 48px; object-fit: cover; display: block; }
+.sf-vehicle-info { border: 1px solid var(--sf-border); border-radius: 14px; padding: 20px; }
+.sf-dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 16px 0 0; }
+.sf-dl dt { color: var(--sf-text-2); }
+.sf-dl dd { margin: 0; font-weight: 600; text-align: right; }
+
+/* ── Επικοινωνία / footer ── */
+.sf-contact { background: var(--sf-bg-2); border-top: 1px solid var(--sf-border); padding: 36px 0; scroll-margin-top: 64px; }
+.sf-contact-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.sf-contact-actions .sf-btn { max-width: 100%; }
+.sf-place { margin-top: 14px; }
+.sf-note { margin-top: 14px; font-size: 13px; color: var(--sf-text-2); }
+.sf-footer { border-top: 1px solid var(--sf-border); padding: 18px 0; font-size: 13px; }
+.sf-footer-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+@media (max-width: 480px) {
+  .sf-brand-name { font-size: 15px; }
+  .sf-header-actions .sf-btn--sm { display: none; }
+  .sf-contact-actions .sf-btn { width: 100%; }
+}

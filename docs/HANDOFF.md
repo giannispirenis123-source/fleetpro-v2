@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 11/10/2026 · **main:** `321aab1` (merge του PR #19 — φωτογραφίες οχήματος με Cloudinary· το SQL `18` και τα `CLOUDINARY_*` ήταν προϋπόθεση του merge). **SQL `15`, `16`, `17` έχουν τρέξει.** **Ανοιχτό:** branch `claude/invoice-pdf-export-wu0cnc` — **δίγλωσσο** PDF τιμολογίου (λήψη + αποστολή με email), **θέλει SQL `19` ΠΡΙΝ δοκιμαστεί το preview** (§5.1, §6). Επόμενος ελεύθερος αριθμός SQL: `20`.
+**Ημερομηνία:** 12/10/2026 · **main:** `0057af6` (merge του PR #20 — τιμολόγια PDF). **Ανοιχτό:** branch `ccr-0edadca8-vvohvc` — **πακέτα (entitlements) + δημόσια σελίδα ανά εταιρία `/s/<slug>`**, **θέλει SQL `20` ΠΡΙΝ το merge** (§5.2, §6). Επόμενος ελεύθερος αριθμός SQL: `21`.
 
 > **Επόμενο βήμα:** Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
@@ -120,6 +120,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 | Τοποθεσίες παραλαβής/επιστροφής (combobox) στην κορυφή «Όχημα & ημερομηνίες» + τύπος καυσίμου στο «Τύπος & καύσιμα» | ✅ live (PR #16, `6b054e6`), SQL `15` |
 | Χειροκίνητο ενοίκιο, πλήρης αριθμός κάρτας κρυπτογραφημένος, υποχρεωτικά σε κόκκινο, link πελάτη από το domain | ✅ live (PR #16, `6b054e6`), SQL `16` + env `CARD_ENCRYPTION_KEY` |
 | Αποστολή συμβολαίου στον πελάτη (email + PDF μέσω Resend) | ⏳ PR #17, έτοιμο για merge· SQL `17` έχει τρέξει· θέλει `RESEND_API_KEY` + `EMAIL_FROM` |
+| Πακέτα (entitlements) + δημόσια σελίδα `/s/<slug>` + «Η σελίδα μου» (§5.2) | ⏳ branch `ccr-0edadca8-vvohvc`, θέλει SQL `20` |
 
 **Γνωστές συμπεριφορές (σκόπιμες):**
 - Η προμήθεια συνεργάτη μένει πάνω στις γραμμές της κράτησης, **όχι** στη χειροκίνητη τιμή.
@@ -255,7 +256,7 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
   - Κανόνες (καθαρή λογική με tests: `src/lib/adminRole.ts`), εφαρμόζονται στον server (`/api/company-users[/id]`), με τον ρόλο **από τη βάση** (όχι το JWT): ρόλο Διαχειριστή δίνει/αφαιρεί **μόνο ενεργός COMPANY_ADMIN της ίδιας εταιρίας** (ποτέ SUPER_ADMIN, ποτέ STAFF/PARTNER ακόμη κι αν έχουν `users.*`)· λογαριασμό διαχειριστή (στοιχεία, κωδικό, απενεργοποίηση) αλλάζει μόνο διαχειριστής· ξένη εταιρία → 404· κανείς δεν αλλάζει τον δικό του ρόλο/δικαιώματα ούτε σβήνει τον εαυτό του· ο **τελευταίος** ενεργός Διαχειριστής δεν υποβιβάζεται/απενεργοποιείται (έλεγχος μέσα σε transaction με `FOR UPDATE` στους διαχειριστές).
   - Διαχειριστής = `permissions: {}` (τα έχει όλα). Υποβιβασμός → οι **προεπιλογές** του νέου ρόλου (πριν: κενά δικαιώματα).
   - Το παλιό `/api/users` (GET/POST) ελέγχει πλέον και τη βάση για COMPANY_ADMIN, ώστε υποβιβασμένος διαχειριστής να μην κρατά πρόσβαση με το παλιό JWT (ισχύει 7 ημέρες).
-  - Δεν υπάρχει όριο χρηστών ανά πλάνο (κανένας έλεγχος στον κώδικα) — δεν προστέθηκε. Middleware: τα `/dashboard/users` και `/dashboard/settings` κόβουν μόνο τον PARTNER· κάθε COMPANY_ADMIN περνά και ο έλεγχος γίνεται με `pageGuard` (δικαιώματα από τη βάση).
+  - Όριο χρηστών: πλέον από το πακέτο (`maxUsers`, §5.2)· όλες οι υπάρχουσες εταιρίες έχουν `full` (χωρίς όριο). Middleware: τα `/dashboard/users` και `/dashboard/settings` κόβουν μόνο τον PARTNER· κάθε COMPANY_ADMIN περνά και ο έλεγχος γίνεται με `pageGuard` (δικαιώματα από τη βάση).
 - **Λογότυπο εταιρίας (Φάση Β, συνέχεια):**
   - **Ρυθμίσεις → «Στοιχεία εταιρίας»:** ανέβασμα (JPEG/PNG/WebP — όχι SVG· ο server ελέγχει τα πρώτα bytes), προεπισκόπηση, «Αλλαγή», «Αφαίρεση». Σμίκρυνση στον browser (`compressLogo` στο `src/lib/imageCompress.ts`): μέγιστη πλευρά 600px, ο τύπος μένει ίδιος (PNG/WebP κρατούν διαφάνεια, JPEG μένει JPEG).
   - `POST/DELETE /api/settings/logo` με `settings.edit` (ίδιο κλειδί με το PATCH των Ρυθμίσεων). Στήλη `tenants."logoPath"`· η αλλαγή γίνεται με `FOR UPDATE` και **σβήνει το παλιό αρχείο** μετά την εγγραφή. Το παλιό `logoUrl` μένει αχρησιμοποίητο.
@@ -308,10 +309,50 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 - Αρχεία: `src/lib/invoiceCode.ts`, `invoiceDocument.ts` (καθαρή λογική/ετικέτες), `invoicePdf.ts`, `invoiceEmail.ts`, `invoiceEmailSend.ts` (ροή με εγχυόμενες εξαρτήσεις), `invoiceServer.ts` (βάση/λογότυπο), `src/app/api/invoices/[id]/pdf`, `…/email`, `tests/invoice-pdf.test.mjs`.
 - **Πώς δοκιμάζεται (μετά το SQL 19):** στο preview, ως Διαχειριστής ή Προσωπικό → Τιμολόγια → «Λήψη PDF» → ανοίξτε το PDF: κάθε ετικέτα ελληνικά και από κάτω αγγλικά, ελληνικά σωστά, κωδικός `XXXX-XXXX`, ποσά/ΦΠΑ ίδια με την οθόνη, λογότυπο αν υπάρχει. «Αποστολή στον πελάτη» σε τιμολόγιο πελάτη με email **ίδιο με το email του λογαριασμού Resend** (μέχρι να επαληθευτεί domain) → έρχεται email με PDF, και η γραμμή δείχνει «Στάλθηκε στο … στις …». Με άλλο email πελάτη αναμένεται το σαφές μήνυμα του περιορισμού του Resend. Ως Συνεργάτης: δεν φαίνονται κουμπιά και το URL του PDF απαντά 403.
 
+### 5.2 Πακέτα (entitlements) και δημόσια σελίδα (branch `ccr-0edadca8-vvohvc`, SQL `20`)
+
+Το FleetPro νοικιάζεται: κάθε εταιρία παίρνει μόνο ό,τι περιλαμβάνει το πακέτο της. **Δεν** περιλαμβάνει φόρμα κράτησης, πληρωμές ή email.
+
+- **Πίνακας `plans`** (`key` PK, `name`, `modules` JSONB, `limits` JSONB, `active`). `modules`: μόνο το `true` ανοίγει ενότητα (`dashboard`, `publicSite`). `limits`: `maxUsers`, `maxVehicles` — αριθμός = όριο, **`null` ή απόν = απεριόριστο**. Οι τιμές **ζουν μόνο στη βάση**· αλλάζουν με UPDATE, χωρίς deploy, και ισχύουν στο επόμενο αίτημα.
+- **Αρχικά πακέτα (ΠΡΟΣΩΡΙΝΕΣ τιμές):** `dashboard` (μόνο dashboard, 1 χρήστης, οχήματα ∞) · `dashboard_site` (dashboard + δημόσια σελίδα, ∞) · `full` (όλα, ∞). **Όλες οι υπάρχουσες εταιρίες (και η demo) πήραν `full`** — τίποτα δεν άλλαξε στη λειτουργία τους.
+- **Στην εταιρία:** `tenants."planKey"` (FK → `plans.key`, ON DELETE SET NULL) και `tenants."entitlementOverrides"` JSONB `{"modules":{…},"limits":{…}}` — υπερισχύει του πακέτου **ανά κλειδί** (και `"maxUsers": null` = απεριόριστο μόνο για αυτήν). Το παλιό `tenants.plan` (STARTER/PRO/ENTERPRISE) **μένει** και αφορά μόνο την τιμή συνδρομής.
+- **Εταιρία χωρίς πακέτο** (`planKey` null): καμία ενότητα, όριο 0 σε χρήστες/οχήματα (μήνυμα «η εταιρία δεν έχει ενεργό πακέτο»). Νέες εταιρίες από τον Super Admin παίρνουν `full` αν δεν επιλεγεί άλλο.
+- **`active = false`** σε πακέτο: δεν προσφέρεται πλέον στα selects· όσες εταιρίες το έχουν το κρατούν κανονικά.
+- **Κώδικας:** κανόνες στο `src/lib/entitlementsCore.ts` (καθαρή λογική, tests)· ανάγνωση από τη βάση **μόνο** στο `src/lib/entitlements.ts`: `getEntitlements(companyId)`, `hasModule(companyId, 'publicSite')`, `checkWithinLimit` / `assertWithinLimit(companyId, 'users' | 'vehicles')`. Μετρούν μόνο τα **ενεργά** (`isActive`).
+- **Έλεγχοι στον server (403 με ελληνικό μήνυμα, όχι 500):** `POST /api/vehicles`, `POST /api/company-users`, `PATCH /api/company-users/[id]` (επανενεργοποίηση χρήστη), `POST /api/users` (παλιό), `/api/storefront*`, δημόσιες σελίδες. Το UI απλώς απενεργοποιεί «Νέο όχημα» / «Νέος χρήστης» με το ίδιο μήνυμα και δείχνει «Η σελίδα μου» κλειδωμένη («εκτός πακέτου»). Γνωστό όριο: σε δύο **ταυτόχρονες** δημιουργίες στο τελευταίο ελεύθερο slot μπορεί να περάσουν και οι δύο (χωρίς κλείδωμα)· αμελητέο για τώρα.
+- **Αλλαγή πακέτου:** `/super-admin` → Εταιρίες → ⋮ → «Επεξεργασία» → **«Πακέτο (λειτουργίες)»** (`PATCH /api/tenants/[id]` με `planKey`, έλεγχος ότι υπάρχει). Υπάρχει και στη «Νέα εταιρία». Λίστα: `GET /api/plans` (μόνο Super Admin). Εναλλακτικά με SQL:
+
+```sql
+-- Πακέτο μιας εταιρίας (dashboard | dashboard_site | full)
+UPDATE "tenants" SET "planKey" = 'dashboard_site' WHERE "id" = '<tenantId>';
+-- Αλλαγή ορίων/ενοτήτων ενός πακέτου (ισχύει αμέσως για όλες τις εταιρίες του)
+UPDATE "plans" SET "limits" = '{"maxUsers":3,"maxVehicles":20}', "updatedAt" = now() WHERE "key" = 'dashboard';
+UPDATE "plans" SET "modules" = '{"dashboard":true,"publicSite":true}', "updatedAt" = now() WHERE "key" = 'dashboard';
+-- Εξαίρεση για μία εταιρία (π.χ. +2 χρήστες, ή δημόσια σελίδα δώρο)
+UPDATE "tenants" SET "entitlementOverrides" = '{"limits":{"maxUsers":3},"modules":{"publicSite":true}}' WHERE "id" = '<tenantId>';
+-- Νέο πακέτο
+INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + Site','{"dashboard":true,"publicSite":true}','{"maxUsers":5,"maxVehicles":50}');
+```
+
+**Δημόσια σελίδα (storefront):**
+- **Διευθύνσεις:** `/s/<slug>` (προεπιλεγμένη γλώσσα, συνήθως ΕΛ), `/s/<slug>/en`, και σελίδα οχήματος `/s/<slug>[/en]/v/<vehicleId>`. Το `/s/<slug>/el` (όταν το el είναι η προεπιλογή) κάνει redirect χωρίς πρόθεμα. Γλώσσα που δεν υποστηρίζει η εταιρία → 404. Το middleware αφήνει ελεύθερα τα `/s/*`.
+- **404 χωρίς να φανερώνεται η εταιρία** όταν: άγνωστο slug, `storefrontEnabled = false`, πακέτο χωρίς `publicSite`, εταιρία `SUSPENDED`/`CANCELLED`, όχημα άλλης εταιρίας/κρυφό/ανενεργό.
+- **Slug:** νέα στήλη `tenants."storefrontSlug"` (UNIQUE, null μέχρι να οριστεί) — **ξεχωριστή** από το `tenants.slug` (δεμένο με JWT/seed/Super Admin). Κανόνες στο `src/lib/storefront/slug.ts`: a-z, 0-9, παύλα, 3–40, όχι παύλα στα άκρα/διπλή, λίστα δεσμευμένων (`login`, `dashboard`, `api`, `c`, `s`, `admin`, `super-admin`, `print`, `www`, κωδικοί γλωσσών κλπ.).
+- **Ασφάλεια:** η εταιρία βρίσκεται **μόνο** στο `resolveStorefrontCompany` (`src/lib/storefront/resolve.ts`) — εκεί θα μπει αργότερα και η εύρεση από custom domain. Ό,τι βγαίνει περνά από whitelist (`src/lib/storefront/publicData.ts`): εταιρία = επωνυμία, λογότυπο (signed URL), brand color (μόνο `#RRGGBB`), τηλέφωνο, email, διεύθυνση/περιοχή, κείμενα· όχημα = μάρκα, μοντέλο, έτος, κατηγορία, καύσιμο, θέσεις, πόρτες, κιβώτιο, A/C, τιμή/ημέρα (με ΦΠΑ), URLs φωτογραφιών. **Ποτέ** πινακίδα, χλμ, σημειώσεις, ids εταιρίας, πελάτες, κρατήσεις, συμβόλαια, τιμολόγια, IBAN/ΑΦΜ, κάρτες. Οι σελίδες είναι server components χωρίς JS στον browser.
+- **Οχήματα στο site:** ενεργά, όχι «Ανενεργό», με `vehicles."publicVisible" = true` (νέα στήλη, προεπιλογή true· διακόπτης «Εμφάνιση στη δημόσια σελίδα» στη φόρμα του Στόλου, μόνο όταν το πακέτο έχει publicSite). Ταξινόμηση από τη φθηνότερη τιμή.
+- **Ρυθμίσεις** στο `tenants."storefrontSettings"` JSONB: `title`/`tagline`/`about` **ανά κωδικό γλώσσας** (`{"el":"…","en":"…"}`), `supportedLanguages` (προεπιλογή `["el","en"]`), `defaultLanguage` (`el`), `paymentOptions` (`onPickup` true, `online` **πάντα false** μέχρι τις πληρωμές), `bookingMode` `request`. Χαλασμένο JSON → προεπιλογές (`normalizeStorefrontSettings`).
+- **«Η σελίδα μου»** (`/dashboard/storefront`, sidebar): **μόνο Διαχειριστής** και μόνο αν το πακέτο έχει publicSite (αλλιώς κλειδωμένη οθόνη + 403 στο API). Ενεργοποίηση, slug με έλεγχο διαθεσιμότητας (`GET /api/storefront/slug`), γλώσσες + προεπιλογή, κείμενα ανά γλώσσα, πληρωμή κατά την παραλαβή, online «σύντομα» (ανενεργό), link προεπισκόπησης. Αποθήκευση `PATCH /api/storefront` (ενεργοποίηση χωρίς slug → 400· slug άλλης εταιρίας → 400, και το UNIQUE index πιάνει τις ταυτόχρονες). Τα πεδία κειμένων αντικαθίστανται ολόκληρα ανά πεδίο (η οθόνη στέλνει πάντα όλες τις γλώσσες).
+- **Brand:** λογότυπο από τις Ρυθμίσεις, χρώμα από τον Super Admin («Χρώμα Brand»), επικοινωνία από τις Ρυθμίσεις. Χωρίς λογότυπο φαίνεται το αρχικό γράμμα στο χρώμα της εταιρίας.
+- **Γλώσσες του site (i18n):** μία δομή στο `src/lib/storefront/i18n.ts` (ξεχωριστή από τα λεξικά του dashboard), fallback ανά κλειδί στα αγγλικά. **Νέα γλώσσα** (π.χ. γαλλικά) = νέο λεξικό `fr` εκεί + `"fr"` στο `supportedLanguages` της εταιρίας (εμφανίζεται αυτόματα και στην «Η σελίδα μου»). Καμία αλλαγή στη βάση.
+- **Δεν υπάρχει ακόμα:** φόρμα κράτησης, αναζήτηση ημερομηνιών, πληρωμές, email, custom domain. Το κουμπί «Επικοινωνία» οδηγεί σε τηλέφωνο/email της εταιρίας.
+- **Πώς δοκιμάζεται (μετά το SQL 20):** ως Διαχειριστής της demo → «Η σελίδα μου» → slug (π.χ. `fleet-pro-chania`), κείμενα, «Η σελίδα είναι ενεργή» → Αποθήκευση → «Προεπισκόπηση». Για 404: απενεργοποίηση, ή `UPDATE "tenants" SET "planKey"='dashboard' …` και ξανά φόρτωση. Για όριο: `planKey='dashboard'` → «Νέος χρήστης» απενεργοποιημένο αν υπάρχει ήδη 1 ενεργός.
+- **Δοκιμές:** `tests/entitlements.test.mjs` (όρια, null = ∞, overrides, χωρίς πακέτο), `tests/storefront-slug.test.mjs` (μορφή, δεσμευμένα, μοναδικότητα, διευθύνσεις), `tests/storefront-public.test.mjs` (καμία διαρροή ιδιωτικών πεδίων, ρυθμίσεις, i18n). Τοπικά (PostgreSQL 16, `01 → 20`): verification όπως στο αρχείο, ξανατρέξιμο χωρίς αλλαγές, `prisma migrate diff` → «No difference detected».
+
 ## 6. Migrations
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
+- **20-plans-storefront: ΔΕΝ έχει τρέξει ακόμη** (branch `ccr-0edadca8-vvohvc`). Πίνακας `plans` + 3 πακέτα (`ON CONFLICT DO NOTHING`: δεν πατά αλλαγμένες τιμές), στο `tenants`: `planKey` (FK, index), `entitlementOverrides`, `storefrontSlug` (UNIQUE `tenants_storefrontSlug_key`), `storefrontEnabled`, `storefrontSettings`· backfill όλων των εταιριών σε `full`· `vehicles."publicVisible"`. Idempotent. Αναμενόμενο verification `3 | 0 | 0 | 5 | 1 | 1 | 1 | 0`. **Τρέχει πριν το merge** — αλλιώς σκάει το dashboard (ο κώδικας ζητά `plans`/`planKey`).
 - **19-invoice-pdf: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/invoice-pdf-export-wu0cnc`). **Σειρά:** (1) τρέξτε το `19` στο Supabase SQL Editor **πριν** ανοίξετε/δοκιμάσετε το preview — το preview γράφει στην **ίδια** βάση με την παραγωγή, και ο νέος κώδικας ζητά τις νέες στήλες· (2) δοκιμή στο preview· (3) merge· (4) **ξανατρέξτε** το `19` μία φορά μετά το merge (idempotent), ώστε να πάρουν κωδικό και όσα τιμολόγια έβγαλε στο μεταξύ η παλιά έκδοση (ο κώδικας τούς δίνει και μόνος του με την πρώτη λήψη/αποστολή). Η παλιά έκδοση (παραγωγή) δουλεύει κανονικά με το `19` (μόνο προσθήκες, όλες nullable ή με default). Περιέχει: `invoices."invoiceCode" TEXT` + UNIQUE index `invoices_invoiceCode_key`, backfill **μόνο** όπου `IS NULL` (ίδιο αλφάβητο, τυχαιότητα από `gen_random_uuid()`, επανάληψη σε σύγκρουση), `"emailSentAt" TIMESTAMP(3)`, `"emailSentTo" TEXT`, `"emailSendLog" JSONB NOT NULL DEFAULT '[]'`. Αναμενόμενο verification `0 | 0 | 0 | 4 | 1` (χωρίς κωδικό | διπλότυπα | λάθος μορφή | νέες στήλες | unique index). Τοπικά (PostgreSQL 16): 5.000 τιμολόγια, δύο εκτελέσεις → `0 | 0 | 0 | 4 | 1`· `prisma migrate diff` από το `schema.prisma` βγάζει ίδιες στήλες/index.
 - **01 → 07: έχουν τρέξει** (κάθε ένα προηγήθηκε του αντίστοιχου push).
 - **08-service-damages:** το push του `46fda54` έγινε μετά από ρητό «push», άρα κατά πάσα πιθανότητα έτρεξε. **Αξίζει επιβεβαίωση** με το verification SELECT του αρχείου (αναμενόμενο `1 | 4 | 1 | 1 | 2 | 0`). Αν δεν έχει τρέξει, η σελίδα Service & Ζημιές και ο Πίνακας σκάνε.
@@ -366,12 +407,13 @@ prisma/schema.prisma  →  prisma/sql/NN-*.sql  →  src/lib/<feature>.ts (DTO)
 5. **Τιμολόγια: PDF** — ✅ (§5.1). Απομένει μετατροπή λογοτύπων WebP σε PNG για το PDF.
 6. ~~**Φωτογραφίες ζημιών**~~ — ✅ με Supabase Storage (§5). ~~**Φωτογραφίες οχημάτων**~~ — ✅ με Cloudinary (§5, branch `claude/vehicle-photos`). Το `documents[]` μένει αχρησιμοποίητο.
 7. **Billing / Stripe** — συνδρομές εταιριών. Οι εκπτώσεις συνδρομών (`PlatformDiscount`) υπάρχουν ήδη· το billing θα εφαρμόζει την ενεργή με `platformDiscountStatus` + `discountedPrice`.
-8. **Δημόσιο site κρατήσεων** — το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
+8. **Δημόσιο site κρατήσεων** — τα θεμέλια (πακέτα + `/s/<slug>`) υπάρχουν (§5.2). Επόμενα: φόρμα αιτήματος κράτησης (`bookingMode = request`), αναζήτηση ημερομηνιών, online πληρωμή, custom domain (στο `resolveStorefrontCompany`). Το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
 
 ## 9. Changelog
 
 | Commit | Τι |
 |---|---|
+| _(branch `ccr-0edadca8-vvohvc`)_ | Πακέτα (entitlements: `plans`, `planKey`, overrides, όρια χρηστών/οχημάτων στον server, επιλογή πακέτου στον Super Admin) + δημόσια σελίδα `/s/<slug>[/en]` ανά εταιρία (brand, στόλος, σελίδα οχήματος, επικοινωνία, i18n με fallback), «Η σελίδα μου», `publicVisible` στα οχήματα. Migration `20` |
 | _(branch `claude/invoice-pdf-export-wu0cnc`)_ | Τιμολόγια: τυχαίος κωδικός `XXXX-XXXX` (`invoiceCode.ts`, μοναδικός σε όλη τη βάση, παντού αντί για `INV-001`), PDF με pdf-lib + DejaVu (ΕΛ/EN, λογότυπο, brand color, 2η σελίδα), λήψη `GET /api/invoices/[id]/pdf` και αποστολή με email (Resend, όριο 5/ώρα, reply-to εταιρίας) μόνο για Διαχειριστή/Προσωπικό. Migration `19` + `tests/invoice-pdf.test.mjs`. 2ο commit: το PDF γίνεται **πάντα δίγλωσσο** (λεξικό `INVOICE_LABELS` `{el, en}`), το dropdown αφορά μόνο το email, χωρίς αλλαγή στη βάση |
 | `321aab1` | Merge του PR #19 (φωτογραφίες οχήματος με Cloudinary). Migration `18` |
 | _(branch `claude/vehicle-photos`)_ | Φωτογραφίες οχήματος με Cloudinary: signed upload, έως 10, κύρια = πρώτη, «Πάνω/Κάτω», gallery + lightbox, μόνο Admin αλλάζει, διαγραφή και από Cloudinary (και με τη διαγραφή οχήματος). Migration `18` + env `CLOUDINARY_*` + `tests/vehicle-photos.test.mjs` |

@@ -4,6 +4,7 @@ import { loadViewer } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { I18nProvider } from "@/lib/i18n/I18nProvider";
 import { t } from "@/lib/i18n";
+import { getEntitlements } from "@/lib/entitlements";
 import DashboardSidebar from "./DashboardSidebar";
 import "./dashboard.css";
 
@@ -28,10 +29,13 @@ export default async function DashboardLayout({
   if (!viewer) redirect("/login");
 
   // Όνομα εταιρίας για το sidebar
-  const tenant = await db.tenant.findUnique({
-    where: { id: session.tenantId },
-    select: { name: true },
-  });
+  const [tenant, entitlements] = await Promise.all([
+    db.tenant.findUnique({
+      where: { id: session.tenantId },
+      select: { name: true },
+    }),
+    getEntitlements(session.tenantId),
+  ]);
 
   const locale = session.locale;
 
@@ -43,6 +47,7 @@ export default async function DashboardLayout({
           role={session.role}
           permissions={viewer.permissions}
           companyName={tenant?.name ?? t("common.myCompany", locale)}
+          modules={entitlements.modules}
         />
         <main className="dash-main">{children}</main>
       </div>

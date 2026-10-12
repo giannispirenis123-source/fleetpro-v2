@@ -53,6 +53,7 @@ const updateVehicleSchema = z.object({
   doors: z.number().int().min(1).max(10).optional(),
   transmission: z.string().min(1).optional(),
   ac: z.boolean().optional(),
+  publicVisible: z.boolean().optional(),
   nextServiceKm: z.union([z.number().int().min(0), z.null()]).optional(),
   nextServiceDate: dateField,
   insuranceExpiry: dateField,
@@ -120,6 +121,7 @@ export const PATCH = withPermission(
             transmission: data.transmission,
           }),
           ...(data.ac !== undefined && { ac: data.ac }),
+          ...(data.publicVisible !== undefined && { publicVisible: data.publicVisible }),
           ...(data.nextServiceKm !== undefined && {
             nextServiceKm: data.nextServiceKm,
           }),

@@ -18,6 +18,9 @@ const createTenantSchema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   plan: z.enum(["STARTER", "PRO", "ENTERPRISE"]).default("STARTER"),
+  // Πακέτο (entitlements). Χωρίς επιλογή → «full», όπως όλες οι μέχρι
+  // τώρα εταιρίες (SQL 20), ώστε τίποτα να μην κλειδώσει απροειδοποίητα.
+  planKey: z.string().min(1).default("full"),
   // Admin user
   adminName: z.string().min(2, "Απαιτείται όνομα διαχειριστή"),
   adminEmail: z.string().email("Μη έγκυρο email διαχειριστή"),
@@ -83,10 +86,14 @@ export const POST = withAuth(async (req) => {
       phone,
       address,
       plan,
+      planKey,
       adminName,
       adminEmail,
       adminPassword,
     } = parsed.data;
+
+    const planRow = await db.plan.findUnique({ where: { key: planKey }, select: { key: true } });
+    if (!planRow) return badRequest("Άγνωστο πακέτο");
 
     // Έλεγχος αν υπάρχει ήδη
     const existing = await db.tenant.findFirst({
@@ -122,6 +129,7 @@ export const POST = withAuth(async (req) => {
           phone,
           address,
           plan,
+          planKey,
           status: "TRIAL",
           trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
         },

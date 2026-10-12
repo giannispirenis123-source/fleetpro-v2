@@ -57,6 +57,8 @@ interface Tenant {
   phone?: string;
   status: TenantStatus;
   plan: SubscriptionPlan;
+  /** Πακέτο (entitlements) — κλειδί του πίνακα plans· null = χωρίς πακέτο. */
+  planKey: string | null;
   brandColor: string;
   logoUrl?: string;
   trialEndsAt?: string;
@@ -1395,6 +1397,7 @@ function CreateTenantModal({
     email: "",
     phone: "",
     plan: "STARTER" as SubscriptionPlan,
+    planKey: "full" as string | null,
     adminName: "",
     adminEmail: "",
     adminPassword: "",
@@ -1508,6 +1511,13 @@ function CreateTenantModal({
                 <option value="ENTERPRISE">Enterprise — 299€/μήνα</option>
               </select>
             </label>
+            <label>
+              Πακέτο (λειτουργίες)
+              <PlanKeySelect
+                value={form.planKey}
+                onChange={(planKey) => setForm((f) => ({ ...f, planKey: planKey ?? "full" }))}
+              />
+            </label>
           </div>
 
           <div className="sa-section-title" style={{ marginTop: 20 }}>
@@ -1576,6 +1586,58 @@ function CreateTenantModal({
   );
 }
 
+// ─── Πακέτα (entitlements) ────────────────
+// Οι τιμές (ενότητες/όρια) αλλάζουν στη βάση (πίνακας plans)· εδώ μόνο η
+// ανάθεση πακέτου σε εταιρία.
+
+interface PlanOption {
+  key: string;
+  name: string;
+  active: boolean;
+}
+
+function usePlans(): PlanOption[] {
+  const [plans, setPlans] = useState<PlanOption[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/plans")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.data?.plans) setPlans(d.data.plans);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return plans;
+}
+
+function PlanKeySelect({
+  value,
+  onChange,
+  allowNone,
+}: {
+  value: string | null;
+  onChange: (key: string | null) => void;
+  allowNone?: boolean;
+}) {
+  const plans = usePlans();
+  // Ανενεργό πακέτο δεν προσφέρεται — εκτός αν το έχει ήδη η εταιρία.
+  const options = plans.filter((p) => p.active || p.key === value);
+  return (
+    <select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
+      {allowNone && <option value="">— Χωρίς πακέτο —</option>}
+      {value && !options.some((p) => p.key === value) && <option value={value}>{value}</option>}
+      {options.map((p) => (
+        <option key={p.key} value={p.key}>
+          {p.name} ({p.key})
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // ─── Edit Tenant Modal ────────────────────
 
 function EditTenantModal({
@@ -1592,6 +1654,7 @@ function EditTenantModal({
     email: tenant.email,
     phone: tenant.phone || "",
     plan: tenant.plan,
+    planKey: tenant.planKey,
     status: tenant.status,
     brandColor: tenant.brandColor,
     website: "",
@@ -1642,6 +1705,9 @@ function EditTenantModal({
                 <option value="PRO">Pro</option>
                 <option value="ENTERPRISE">Enterprise</option>
               </select>
+            </label>
+            <label>Πακέτο (λειτουργίες)
+              <PlanKeySelect value={form.planKey} onChange={(planKey) => setForm(f => ({...f, planKey}))} allowNone />
             </label>
             <label>Κατάσταση
               <select value={form.status} onChange={e => setForm(f => ({...f, status: e.target.value as TenantStatus}))}>

@@ -24,7 +24,9 @@ import {
   Menu,
   X,
   Zap,
+  Globe,
 } from "lucide-react";
+import type { ModuleKey } from "@/lib/entitlementsCore";
 
 type Role = "COMPANY_ADMIN" | "STAFF" | "PARTNER" | string;
 
@@ -38,6 +40,10 @@ interface NavItem {
   disabled?: boolean;
   /** Κρυφό για συνεργάτη ανεξαρτήτως δικαιώματος (σύνολα εταιρίας). */
   hideForPartner?: boolean;
+  /** Μόνο για Διαχειριστή εταιρίας. */
+  adminOnly?: boolean;
+  /** Ενότητα πακέτου: χωρίς αυτήν φαίνεται κλειδωμένο («Δεν περιλαμβάνεται»). */
+  module?: ModuleKey;
 }
 
 // Η ορατότητα ΔΕΝ κρίνεται πια από τον ρόλο αλλά από το δικαίωμα προβολής.
@@ -60,6 +66,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/finance", labelKey: "finance", icon: Wallet, permission: "finance.view" },
   { href: "/dashboard/users", labelKey: "users", icon: UserCog, permission: "users.view" },
   { href: "/dashboard/settings", labelKey: "settings", icon: Settings, permission: "settings.view" },
+  { href: "/dashboard/storefront", labelKey: "storefront", icon: Globe, permission: "settings.edit", adminOnly: true, module: "publicSite" },
 ];
 
 const ROLE_LABEL_KEY: Record<string, string> = {
@@ -75,11 +82,14 @@ export default function DashboardSidebar({
   role,
   permissions,
   companyName,
+  modules,
 }: {
   name: string;
   role: Role;
   permissions: PermissionMap;
   companyName: string;
+  /** Οι ενότητες του πακέτου της εταιρίας (από τον server). */
+  modules: Record<ModuleKey, boolean>;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -115,7 +125,8 @@ export default function DashboardSidebar({
     (it) =>
       it.disabled ||
       (can(role, permissions, it.permission) &&
-        !(it.hideForPartner && role === "PARTNER"))
+        !(it.hideForPartner && role === "PARTNER") &&
+        !(it.adminOnly && role !== "COMPANY_ADMIN"))
   );
 
   const handleLogout = async () => {
@@ -175,6 +186,19 @@ export default function DashboardSidebar({
                 ? pathname === it.href
                 : pathname === it.href ||
                   pathname.startsWith(`${it.href}/`);
+            if (it.module && !modules[it.module]) {
+              return (
+                <div
+                  key={it.href}
+                  className="dash-nav-item disabled"
+                  title={tr("common.notInPlan")}
+                >
+                  <Icon size={18} />
+                  <span>{tr(`sidebar.${it.labelKey}`)}</span>
+                  <span className="dash-soon">{tr("common.notInPlanShort")}</span>
+                </div>
+              );
+            }
             if (it.disabled) {
               return (
                 <div key={it.href} className="dash-nav-item disabled">

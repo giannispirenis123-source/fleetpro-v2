@@ -9,8 +9,10 @@ import {
   created,
   badRequest,
   serverError,
+  forbidden,
 } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
+import { checkWithinLimit } from "@/lib/entitlements";
 import {
   FUEL_TYPES,
   VEHICLE_CATEGORIES,
@@ -50,6 +52,7 @@ const createVehicleSchema = z.object({
   doors: z.number().int().min(1).max(10).default(4),
   transmission: z.string().min(1).default("Manual"),
   ac: z.boolean().default(true),
+  publicVisible: z.boolean().default(true),
   nextServiceKm: z.union([z.number().int().min(0), z.null()]).optional(),
   nextServiceDate: dateField,
   insuranceExpiry: dateField,
@@ -96,6 +99,10 @@ export const POST = withPermission(
       const data = parsed.data;
       const plate = data.plate.trim().toUpperCase();
 
+      // Όριο οχημάτων του πακέτου (null = απεριόριστο) — πάντα εδώ, στον server.
+      const limit = await checkWithinLimit(session.tenantId!, "vehicles");
+      if (!limit.ok) return forbidden(limit.message);
+
       // Η πινακίδα είναι μοναδική ανά εταιρία (@@unique([tenantId, plate]))
       const existing = await db.vehicle.findFirst({
         where: { tenantId: session.tenantId!, plate },
@@ -121,6 +128,7 @@ export const POST = withPermission(
           doors: data.doors,
           transmission: data.transmission,
           ac: data.ac,
+          publicVisible: data.publicVisible,
           nextServiceKm: data.nextServiceKm ?? null,
           nextServiceDate: toDate(data.nextServiceDate),
           insuranceExpiry: toDate(data.insuranceExpiry),

@@ -61,6 +61,7 @@ const emptyForm = () => ({
   doors: "4",
   transmission: "Manual",
   ac: true,
+  publicVisible: true,
   km: "0",
   nextServiceKm: "",
   nextServiceDate: "",
@@ -85,6 +86,7 @@ const formFromVehicle = (v: VehicleDTO): FormState => ({
   doors: String(v.doors),
   transmission: v.transmission,
   ac: v.ac,
+  publicVisible: v.publicVisible,
   km: String(v.km),
   nextServiceKm: v.nextServiceKm === null ? "" : String(v.nextServiceKm),
   nextServiceDate: v.nextServiceDate ?? "",
@@ -108,6 +110,7 @@ const formToPayload = (f: FormState) => ({
   doors: Number(f.doors),
   transmission: f.transmission.trim() || "Manual",
   ac: f.ac,
+  publicVisible: f.publicVisible,
   km: Number(f.km || 0),
   nextServiceKm: f.nextServiceKm === "" ? null : Number(f.nextServiceKm),
   nextServiceDate: f.nextServiceDate || null,
@@ -119,9 +122,15 @@ const formToPayload = (f: FormState) => ({
 export default function FleetClient({
   initialVehicles,
   role,
+  limitMessage,
+  publicSite,
 }: {
   initialVehicles: VehicleDTO[];
   role: string;
+  /** Το πακέτο δεν επιτρέπει άλλο όχημα (μήνυμα από τον server) — αλλιώς null. */
+  limitMessage: string | null;
+  /** Το πακέτο έχει δημόσια σελίδα → φαίνεται ο διακόπτης «Εμφάνιση». */
+  publicSite: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -166,11 +175,17 @@ export default function FleetClient({
           <button
             className="dash-btn dash-btn--primary"
             onClick={() => setShowCreate(true)}
+            disabled={Boolean(limitMessage)}
+            title={limitMessage ?? undefined}
           >
             <Plus size={17} /> {tr("fleet.addVehicle")}
           </button>
         )}
       </div>
+
+      {canManage && limitMessage && (
+        <p className="dash-form-note dash-limit-note">{limitMessage}</p>
+      )}
 
       {/* Φίλτρα + αναζήτηση */}
       <div className="dash-toolbar">
@@ -227,6 +242,7 @@ export default function FleetClient({
       {showCreate && (
         <VehicleModal
           mode="create"
+          publicSite={publicSite}
           tr={tr}
           onClose={() => setShowCreate(false)}
           onSaved={(vehicle) => {
@@ -248,6 +264,7 @@ export default function FleetClient({
           vehicle={editing}
           photos={vehicles.find((v) => v.id === editing.id)?.photos ?? editing.photos}
           onPhotos={photosUpdater(editing.id)}
+          publicSite={publicSite}
           tr={tr}
           onClose={() => setEditing(null)}
           onSaved={(vehicle) => {
@@ -470,11 +487,13 @@ function VehicleModal({
   vehicle,
   photos,
   onPhotos,
+  publicSite,
   tr,
   onClose,
   onSaved,
 }: {
   mode: "create" | "edit";
+  publicSite: boolean;
   vehicle?: VehicleDTO;
   /** Οι τρέχουσες φωτογραφίες (από τη λίστα, όχι από το στιγμιότυπο). */
   photos?: VehiclePhotoView[];
@@ -671,6 +690,16 @@ function VehicleModal({
               />
               {tr("fleet.ac")}
             </label>
+            {publicSite && (
+              <label className="dash-field dash-field--check">
+                <input
+                  type="checkbox"
+                  checked={form.publicVisible}
+                  onChange={(e) => set("publicVisible", e.target.checked)}
+                />
+                {tr("fleet.publicVisible")}
+              </label>
+            )}
 
             <label className="dash-field">
               {tr("fleet.nextServiceDate")}

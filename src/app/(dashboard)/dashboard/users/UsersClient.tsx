@@ -75,10 +75,13 @@ export default function UsersClient({
   initialUsers,
   currentUserId,
   canCreate,
+  limitMessage,
 }: {
   initialUsers: UserDTO[];
   currentUserId: string;
   canCreate: boolean;
+  /** Το πακέτο δεν επιτρέπει άλλον ενεργό χρήστη (μήνυμα του server) — αλλιώς null. */
+  limitMessage: string | null;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -127,11 +130,16 @@ export default function UsersClient({
               setError("");
               setShowCreate(true);
             }}
+            disabled={Boolean(limitMessage)}
+            title={limitMessage ?? undefined}
           >
             <Plus size={17} /> {tr("users.addUser")}
           </button>
         )}
       </div>
+      {canCreate && limitMessage && (
+        <p className="dash-form-note dash-limit-note">{limitMessage}</p>
+      )}
 
       <div className="dash-toolbar">
         <div className="dash-search">

@@ -10,13 +10,27 @@
 //   "supportedLanguages": ["el","en"],
 //   "defaultLanguage": "el",
 //   "paymentOptions": {"onPickup":true,"online":false},
-//   "bookingMode": "request"
+//   "booking": {…}, "contact": {…}, "theme": {…}, "trustBlocks": [...]   ← SQL 21,
+//                                       βλ. src/lib/public/siteSettings.ts
 // }
+// Το παλιό "bookingMode" ΚΑΤΑΡΓΗΘΗΚΕ (SQL 21 το σβήνει): ο τρόπος κράτησης
+// ζει μόνο στο tenants."rentalMode".
 // Ό,τι λείπει ή είναι άκυρο παίρνει την προεπιλογή — το site δεν σκάει ποτέ
 // από χαλασμένο JSON.
 
 import { z } from "zod";
 import { STOREFRONT_LANGUAGES, isStorefrontLanguage } from "./i18n";
+import {
+  readBooking,
+  readContact,
+  readTheme,
+  readTrustBlocks,
+  type BookingSettings,
+  type ContactSettings,
+  type SiteSettingsUpdate,
+  type ThemeSettings,
+  type TrustBlock,
+} from "../public/siteSettings";
 
 export const TEXT_FIELDS = ["title", "tagline", "about"] as const;
 export type TextField = (typeof TEXT_FIELDS)[number];
@@ -35,8 +49,10 @@ export interface StorefrontSettings {
   defaultLanguage: string;
   /** online: ΠΑΝΤΑ false μέχρι να υπάρξουν πληρωμές («σύντομα»). */
   paymentOptions: { onPickup: boolean; online: boolean };
-  /** Μόνο "request" (η εταιρία επιβεβαιώνει) σε αυτή τη φάση. */
-  bookingMode: "request";
+  booking: BookingSettings;
+  contact: ContactSettings;
+  theme: ThemeSettings;
+  trustBlocks: TrustBlock[];
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -77,7 +93,10 @@ export function normalizeStorefrontSettings(raw: unknown): StorefrontSettings {
     supportedLanguages: languages,
     defaultLanguage,
     paymentOptions: { onPickup: pay.onPickup !== false, online: false },
-    bookingMode: "request",
+    booking: readBooking(o.booking),
+    contact: readContact(o.contact),
+    theme: readTheme(o.theme),
+    trustBlocks: readTrustBlocks(o.trustBlocks),
   };
 }
 
@@ -130,6 +149,28 @@ export function mergeStorefrontSettings(
       onPickup: update.payOnPickup ?? current.paymentOptions.onPickup,
       online: false,
     },
+  });
+}
+
+/**
+ * «Η σελίδα μου» → καρτέλες του δημόσιου site (PATCH /api/public-site/settings):
+ * τρέχουσες + ό,τι ήρθε, ανά ενότητα. Το heroImage δεν αλλάζει από εδώ
+ * (μόνο από το API φωτογραφίας).
+ */
+export function mergeSiteSettings(
+  current: StorefrontSettings,
+  update: SiteSettingsUpdate
+): StorefrontSettings {
+  return normalizeStorefrontSettings({
+    ...current,
+    paymentOptions: {
+      onPickup: update.payOnPickup ?? current.paymentOptions.onPickup,
+      online: false,
+    },
+    booking: { ...current.booking, ...update.booking },
+    contact: { ...current.contact, ...update.contact },
+    theme: { ...current.theme, ...update.theme, heroImage: current.theme.heroImage },
+    trustBlocks: update.trustBlocks ?? current.trustBlocks,
   });
 }
 

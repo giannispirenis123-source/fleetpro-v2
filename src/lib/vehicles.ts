@@ -66,6 +66,9 @@ export interface VehicleDTO {
   ac: boolean;
   /** Φαίνεται στη δημόσια σελίδα της εταιρίας. */
   publicVisible: boolean;
+  /** Ομάδα του site (null = μεμονωμένο) και τύπος: car | moto | atv. */
+  rentalGroupId: string | null;
+  vehicleType: string;
   nextServiceKm: number | null;
   nextServiceDate: string | null;
   insuranceExpiry: string | null;
@@ -96,6 +99,8 @@ export function toVehicleDTO(v: Vehicle): VehicleDTO {
     transmission: v.transmission,
     ac: v.ac,
     publicVisible: v.publicVisible,
+    rentalGroupId: v.rentalGroupId,
+    vehicleType: v.vehicleType,
     nextServiceKm: v.nextServiceKm,
     nextServiceDate: toDateInput(v.nextServiceDate),
     insuranceExpiry: toDateInput(v.insuranceExpiry),

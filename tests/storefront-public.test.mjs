@@ -43,7 +43,10 @@ const FULL_TENANT = {
   planKey: "full",
   entitlementOverrides: { limits: { maxUsers: 99 } },
   storefrontEnabled: true,
-  storefrontSettings: { title: { el: "Καλώς ήρθατε", en: "Welcome" } },
+  storefrontSettings: {
+    title: { el: "Καλώς ήρθατε", en: "Welcome" },
+    theme: { heroImage: { url: "https://res.cloudinary.com/demo/image/upload/v1/hero.jpg", publicId: "fleetpro/tenant_secret_id/site/hero" } },
+  },
   customers: [{ id: "c1", email: "client@example.com", phone: "6900000000" }],
   bookings: [{ id: "b1", total: 100 }],
   contracts: [{ id: "k1", cardNumberEnc: "enc", publicToken: "tok" }],
@@ -138,7 +141,11 @@ test("ρυθμίσεις: προεπιλογές από κενό/χαλασμέ�
     assert.deepEqual(s.supportedLanguages, ["el", "en"]);
     assert.equal(s.defaultLanguage, "el");
     assert.deepEqual(s.paymentOptions, { onPickup: true, online: false });
-    assert.equal(s.bookingMode, "request");
+    assert.equal("bookingMode" in s, false, "ο τρόπος κράτησης ζει μόνο στο rentalMode");
+    assert.equal(s.booking.graceMinutes, 59);
+    assert.equal(s.booking.timezone, "Europe/Athens");
+    assert.equal(s.theme.cornerStyle, "pill");
+    assert.deepEqual(s.trustBlocks, []);
   }
 });
 

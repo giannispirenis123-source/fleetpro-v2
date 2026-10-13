@@ -23,6 +23,8 @@ import {
 export interface PhotoVehicle {
   id: string;
   tenantId: string;
+  /** Ο πίνακας με τη στήλη "photos": οχήματα ή ομάδες του site (SQL 21). */
+  table?: PhotoTable;
   photos: VehiclePhoto[];
   /** Η στήλη όπως διαβάστηκε (για τον έλεγχο «άλλαξε στο μεταξύ»). */
   raw: unknown;
@@ -44,6 +46,10 @@ export async function loadPhotoVehicle(
   return { vehicle: { id: v.id, tenantId: v.tenantId, photos: readVehiclePhotos(v.photos), raw: v.photos } };
 }
 
+/** Μόνο αυτοί οι πίνακες έχουν στήλη photos με αυτή τη μορφή (whitelist). */
+export type PhotoTable = "vehicles" | "rental_groups";
+const tableSql = (v: PhotoVehicle) => Prisma.raw(v.table === "rental_groups" ? '"rental_groups"' : '"vehicles"');
+
 export const newPhotoId = () => randomBytes(12).toString("base64url");
 
 /**
@@ -55,7 +61,7 @@ export async function appendPhoto(
   photo: Omit<VehiclePhoto, "order">
 ): Promise<VehiclePhoto[] | null> {
   const rows = await db.$queryRaw<{ photos: unknown }[]>(Prisma.sql`
-    UPDATE "vehicles"
+    UPDATE ${tableSql(vehicle)}
     SET "photos" = "photos" || jsonb_build_array(jsonb_build_object(
       'id', ${photo.id}::text, 'url', ${photo.url}::text, 'publicId', ${photo.publicId}::text,
       'order', jsonb_array_length("photos")))
@@ -69,7 +75,7 @@ export async function appendPhoto(
 /** Αφαίρεση μίας και επαναρίθμηση (0, 1, 2, …). */
 export async function removePhoto(vehicle: PhotoVehicle, photoId: string): Promise<VehiclePhoto[]> {
   const rows = await db.$queryRaw<{ photos: unknown }[]>(Prisma.sql`
-    UPDATE "vehicles"
+    UPDATE ${tableSql(vehicle)}
     SET "photos" = COALESCE((
       SELECT jsonb_agg(s.e || jsonb_build_object('order', s.rn - 1) ORDER BY s.rn)
       FROM (
@@ -93,7 +99,7 @@ export async function savePhotoOrder(
   next: VehiclePhoto[]
 ): Promise<VehiclePhoto[] | null> {
   const rows = await db.$queryRaw<{ photos: unknown }[]>(Prisma.sql`
-    UPDATE "vehicles"
+    UPDATE ${tableSql(vehicle)}
     SET "photos" = ${JSON.stringify(next)}::jsonb
     WHERE "id" = ${vehicle.id} AND "tenantId" = ${vehicle.tenantId}
       AND "photos" = ${JSON.stringify(vehicle.raw ?? [])}::jsonb

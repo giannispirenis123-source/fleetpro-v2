@@ -42,6 +42,14 @@ const eur = (n: number, locale: string) =>
 const num = (n: number, locale: string) =>
   new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR").format(n);
 
+export interface VehicleGroupOption {
+  id: string;
+  label: string;
+  isActive: boolean;
+}
+
+const VEHICLE_TYPES = ["car", "moto", "atv"] as const;
+
 type StatusFilter = "ALL" | (typeof VEHICLE_STATUSES)[number];
 
 const FILTERS: StatusFilter[] = ["ALL", "AVAILABLE", "RENTED", "MAINTENANCE"];
@@ -62,6 +70,8 @@ const emptyForm = () => ({
   transmission: "Manual",
   ac: true,
   publicVisible: true,
+  rentalGroupId: "",
+  vehicleType: "car",
   km: "0",
   nextServiceKm: "",
   nextServiceDate: "",
@@ -87,6 +97,8 @@ const formFromVehicle = (v: VehicleDTO): FormState => ({
   transmission: v.transmission,
   ac: v.ac,
   publicVisible: v.publicVisible,
+  rentalGroupId: v.rentalGroupId ?? "",
+  vehicleType: v.vehicleType,
   km: String(v.km),
   nextServiceKm: v.nextServiceKm === null ? "" : String(v.nextServiceKm),
   nextServiceDate: v.nextServiceDate ?? "",
@@ -111,6 +123,8 @@ const formToPayload = (f: FormState) => ({
   transmission: f.transmission.trim() || "Manual",
   ac: f.ac,
   publicVisible: f.publicVisible,
+  rentalGroupId: f.rentalGroupId || null,
+  vehicleType: f.vehicleType,
   km: Number(f.km || 0),
   nextServiceKm: f.nextServiceKm === "" ? null : Number(f.nextServiceKm),
   nextServiceDate: f.nextServiceDate || null,
@@ -124,6 +138,7 @@ export default function FleetClient({
   role,
   limitMessage,
   publicSite,
+  groups,
 }: {
   initialVehicles: VehicleDTO[];
   role: string;
@@ -131,6 +146,8 @@ export default function FleetClient({
   limitMessage: string | null;
   /** Το πακέτο έχει δημόσια σελίδα → φαίνεται ο διακόπτης «Εμφάνιση». */
   publicSite: boolean;
+  /** Ομάδες του site (SQL 21) για το πεδίο «Ομάδα». */
+  groups: VehicleGroupOption[];
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -243,6 +260,7 @@ export default function FleetClient({
         <VehicleModal
           mode="create"
           publicSite={publicSite}
+          groups={groups}
           tr={tr}
           onClose={() => setShowCreate(false)}
           onSaved={(vehicle) => {
@@ -265,6 +283,7 @@ export default function FleetClient({
           photos={vehicles.find((v) => v.id === editing.id)?.photos ?? editing.photos}
           onPhotos={photosUpdater(editing.id)}
           publicSite={publicSite}
+          groups={groups}
           tr={tr}
           onClose={() => setEditing(null)}
           onSaved={(vehicle) => {
@@ -488,12 +507,14 @@ function VehicleModal({
   photos,
   onPhotos,
   publicSite,
+  groups,
   tr,
   onClose,
   onSaved,
 }: {
   mode: "create" | "edit";
   publicSite: boolean;
+  groups: VehicleGroupOption[];
   vehicle?: VehicleDTO;
   /** Οι τρέχουσες φωτογραφίες (από τη λίστα, όχι από το στιγμιότυπο). */
   photos?: VehiclePhotoView[];
@@ -690,6 +711,32 @@ function VehicleModal({
               />
               {tr("fleet.ac")}
             </label>
+            <label className="dash-field">
+              {tr("fleet.vehicleType")}
+              <select value={form.vehicleType} onChange={(e) => set("vehicleType", e.target.value)}>
+                {VEHICLE_TYPES.map((vt) => (
+                  <option key={vt} value={vt}>
+                    {tr(`fleet.vehicleType_${vt}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {publicSite && (
+              <label className="dash-field">
+                {tr("fleet.rentalGroup")}
+                <select value={form.rentalGroupId} onChange={(e) => set("rentalGroupId", e.target.value)}>
+                  <option value="">{tr("fleet.noGroup")}</option>
+                  {groups
+                    .filter((g) => g.isActive || g.id === form.rentalGroupId)
+                    .map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.label}
+                      </option>
+                    ))}
+                </select>
+                <span className="dash-form-note">{tr("fleet.noGroupHint")}</span>
+              </label>
+            )}
             {publicSite && (
               <label className="dash-field dash-field--check">
                 <input

@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { readLocalized } from "@/lib/public/text";
 import { ok, badRequest, notFound, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { CHARGE_TYPES, EXTRA_TYPES, toExtraDTO } from "@/lib/extras";
@@ -39,13 +40,17 @@ export const PATCH = withPermission(
       const extra = await db.extra.update({
         where: { id: current.id },
         data: {
-          ...(data.name !== undefined && { name: data.name.trim() }),
+          ...(data.name !== undefined && {
+            name: data.name.trim(),
+            // Το ελληνικό όνομα του site ακολουθεί το κύριο όνομα (SQL 21).
+            nameI18n: { ...readLocalized(current.nameI18n), el: data.name.trim() },
+          }),
           ...(data.price !== undefined && { price: data.price }),
           ...(data.chargeType !== undefined && { chargeType: data.chargeType }),
           ...(data.type !== undefined && { type: data.type }),
           ...(data.excess !== undefined && { excess: data.excess }),
           // Πρόσθετο που δεν είναι (πια) ασφάλεια δεν κρατά απαλλαγή.
-          ...((data.type ?? current.type) !== "INSURANCE" && { excess: null }),
+          ...((data.type ?? current.type) !== "INSURANCE" && { excess: null, isDefault: false }),
           ...(data.isActive !== undefined && { isActive: data.isActive }),
         },
       });

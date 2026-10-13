@@ -131,11 +131,6 @@ export default function StorefrontClient({
 
   return (
     <>
-      <div className="dash-page-head">
-        <h1 className="dash-page-title">{tr("storefront.title")}</h1>
-        <p className="dash-page-sub">{tr("storefront.subtitle")}</p>
-      </div>
-
       <div className="dash-panel dash-settings-panel">
         <label className="dash-switch">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
@@ -259,7 +254,6 @@ export default function StorefrontClient({
           <input type="checkbox" checked={false} disabled />
           {tr("storefront.payOnline")} <span className="dash-soon">{tr("storefront.soon")}</span>
         </label>
-        <p className="dash-form-note">{tr("storefront.bookingMode")}</p>
         <p className="dash-form-note">{tr("storefront.vehiclesHint")}</p>
       </div>
 

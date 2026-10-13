@@ -50,7 +50,7 @@ export const PATCH = withPermission(
           ...(data.type !== undefined && { type: data.type }),
           ...(data.excess !== undefined && { excess: data.excess }),
           // Πρόσθετο που δεν είναι (πια) ασφάλεια δεν κρατά απαλλαγή.
-          ...((data.type ?? current.type) !== "INSURANCE" && { excess: null }),
+          ...((data.type ?? current.type) !== "INSURANCE" && { excess: null, isDefault: false }),
           ...(data.isActive !== undefined && { isActive: data.isActive }),
         },
       });

@@ -13,6 +13,9 @@
 --             όπως η "price"), "maxQuantity", "vehicleTypes" TEXT[] (κενό = όλα), "sortOrder".
 --             Τα ποσά των extras μένουν σε € (Decimal)· η μετατροπή σε cents γίνεται
 --             μόνο στον κώδικα (src/lib/public/money.ts).
+--             "isDefault" (BOOLEAN, false): η προεπιλεγμένη ΑΣΦΑΛΕΙΑ. Κανόνας: το πολύ
+--             ΜΙΑ ασφάλεια ανά εταιρία και ανά τύπο οχήματος (κενό vehicleTypes = όλοι)·
+--             τον εφαρμόζει το API, το verification τον ελέγχει. CHECK: μόνο INSURANCE.
 -- · tenants."storefrontSettings": αφαιρείται το κλειδί "bookingMode" — ο τρόπος
 --   κράτησης ζει ΜΟΝΟ στο tenants."rentalMode" (BOOKING = απευθείας, REQUEST = αίτημα).
 --
@@ -145,6 +148,8 @@ ALTER TABLE "extras" ADD COLUMN IF NOT EXISTS "maxTotal" DECIMAL(10,2);
 ALTER TABLE "extras" ADD COLUMN IF NOT EXISTS "maxQuantity" INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE "extras" ADD COLUMN IF NOT EXISTS "vehicleTypes" TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE "extras" ADD COLUMN IF NOT EXISTS "sortOrder" INTEGER NOT NULL DEFAULT 0;
+-- Καμία υπάρχουσα τιμή δεν αλλάζει: όλα ξεκινούν false.
+ALTER TABLE "extras" ADD COLUMN IF NOT EXISTS "isDefault" BOOLEAN NOT NULL DEFAULT false;
 -- Αρχική τιμή: το υπάρχον όνομα ως ελληνικό.
 UPDATE "extras" SET "nameI18n" = jsonb_build_object('el', "name") WHERE "nameI18n" = '{}'::jsonb;
 
@@ -176,7 +181,8 @@ BEGIN
     ('seasons_monthday_check',           'ALTER TABLE "seasons" ADD CONSTRAINT "seasons_monthday_check" CHECK ("startMonthDay" ~ ''^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'' AND "endMonthDay" ~ ''^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'')'),
     ('rates_target_check',               'ALTER TABLE "rates" ADD CONSTRAINT "rates_target_check" CHECK (("rentalGroupId" IS NULL) <> ("vehicleId" IS NULL))'),
     ('driver_age_bands_surchargeType_check', 'ALTER TABLE "driver_age_bands" ADD CONSTRAINT "driver_age_bands_surchargeType_check" CHECK ("surchargeType" IN (''none'',''per_day'',''per_rental''))'),
-    ('driver_age_bands_range_check',     'ALTER TABLE "driver_age_bands" ADD CONSTRAINT "driver_age_bands_range_check" CHECK ("minAge" <= "maxAge")')
+    ('driver_age_bands_range_check',     'ALTER TABLE "driver_age_bands" ADD CONSTRAINT "driver_age_bands_range_check" CHECK ("minAge" <= "maxAge")'),
+    ('extras_isDefault_insurance_check', 'ALTER TABLE "extras" ADD CONSTRAINT "extras_isDefault_insurance_check" CHECK (NOT "isDefault" OR "type" = ''INSURANCE'')')
   ) AS t(name, ddl)
   LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = c.name) THEN
@@ -188,8 +194,9 @@ END $$;
 COMMIT;
 
 -- Verification — αναμενόμενο:
---   new_tables = 5 · vehicle_columns = 2 · extras_columns = 6 · constraints = 18
+--   new_tables = 5 · vehicle_columns = 2 · extras_columns = 7 · constraints = 19
 --   unique_indexes = 3 · extras_without_name_el = 0 · tenants_with_bookingMode = 0
+--   default_insurance_conflicts = 0
 SELECT
   (SELECT count(*) FROM information_schema.tables
     WHERE table_name IN ('rental_groups','pickup_locations','seasons','rates','driver_age_bands')) AS new_tables,
@@ -197,16 +204,21 @@ SELECT
     WHERE table_name = 'vehicles' AND column_name IN ('rentalGroupId','vehicleType')) AS vehicle_columns,
   (SELECT count(*) FROM information_schema.columns
     WHERE table_name = 'extras'
-      AND column_name IN ('nameI18n','descriptionI18n','maxTotal','maxQuantity','vehicleTypes','sortOrder')) AS extras_columns,
+      AND column_name IN ('nameI18n','descriptionI18n','maxTotal','maxQuantity','vehicleTypes','sortOrder','isDefault')) AS extras_columns,
   (SELECT count(*) FROM pg_constraint WHERE conname IN (
     'rental_groups_tenantId_fkey','pickup_locations_tenantId_fkey','seasons_tenantId_fkey','rates_tenantId_fkey',
     'rates_seasonId_fkey','rates_rentalGroupId_fkey','rates_vehicleId_fkey','driver_age_bands_tenantId_fkey',
     'vehicles_rentalGroupId_fkey','rental_groups_vehicleType_check','rental_groups_transmission_check',
     'vehicles_vehicleType_check','pickup_locations_type_check','pickup_locations_adjustmentType_check',
     'seasons_monthday_check','rates_target_check','driver_age_bands_surchargeType_check',
-    'driver_age_bands_range_check')) AS constraints,
+    'driver_age_bands_range_check','extras_isDefault_insurance_check')) AS constraints,
   (SELECT count(*) FROM pg_indexes WHERE indexname IN (
     'rental_groups_tenantId_code_key','pickup_locations_tenantId_slug_key',
     'rates_tenantId_seasonId_rentalGroupId_vehicleId_key')) AS unique_indexes,
   (SELECT count(*) FROM "extras" WHERE NOT ("nameI18n" ? 'el')) AS extras_without_name_el,
-  (SELECT count(*) FROM "tenants" WHERE "storefrontSettings" ? 'bookingMode') AS tenants_with_bookingMode;
+  (SELECT count(*) FROM "tenants" WHERE "storefrontSettings" ? 'bookingMode') AS tenants_with_bookingMode,
+  -- Ζεύγη προεπιλεγμένων ασφαλειών της ίδιας εταιρίας που καλύπτουν κοινό τύπο οχήματος.
+  (SELECT count(*) FROM "extras" a JOIN "extras" b
+     ON a."tenantId" = b."tenantId" AND a."id" < b."id"
+    WHERE a."type" = 'INSURANCE' AND b."type" = 'INSURANCE' AND a."isDefault" AND b."isDefault"
+      AND (a."vehicleTypes" = '{}' OR b."vehicleTypes" = '{}' OR a."vehicleTypes" && b."vehicleTypes")) AS default_insurance_conflicts;

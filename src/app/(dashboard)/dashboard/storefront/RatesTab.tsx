@@ -10,6 +10,7 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import { centsToInput, formatCents, parseEuroInput } from "@/lib/public/money";
 import type { QuoteResult, Tier } from "@/lib/public/pricing";
 import { tiersProblem } from "@/lib/public/rates";
+import { defaultInsuranceFor } from "@/lib/public/insuranceDefaults";
 import type { LocalizedText } from "@/lib/public/text";
 import { SeasonsList } from "./ListTabs";
 import { Status, api } from "./ui";
@@ -177,6 +178,8 @@ interface ExtraOpt {
   nameI18n: LocalizedText;
   maxQuantity: number;
   isActive: boolean;
+  isDefault: boolean;
+  vehicleTypes: string[];
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -230,6 +233,13 @@ function QuoteTester({ targets }: { targets: Target[] }) {
   useEffect(() => {
     if (!form.target && targets[0]) setForm((f) => ({ ...f, target: targetKey(targets[0]) }));
   }, [targets, form.target]);
+
+  // Η προεπιλεγμένη ασφάλεια για τον τύπο του οχήματος — όπως θα κάνει το site.
+  const vehicleType = targets.find((x) => targetKey(x) === form.target)?.vehicleType ?? "car";
+  useEffect(() => {
+    const def = defaultInsuranceFor(extras, vehicleType);
+    setForm((f) => ({ ...f, insuranceId: def?.id ?? "" }));
+  }, [extras, vehicleType]);
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 

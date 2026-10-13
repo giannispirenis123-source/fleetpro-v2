@@ -88,6 +88,8 @@ interface ExtraItem {
   vehicleTypes: string[];
   sortOrder: number;
   isActive: boolean;
+  /** Μόνο ασφάλειες: η προεπιλεγμένη για τους τύπους οχημάτων της. */
+  isDefault: boolean;
 }
 
 export function ExtrasTab() {
@@ -111,14 +113,14 @@ export function ExtrasTab() {
     if (!editing) return;
     setBusy(true);
     setError("");
-    const r = await api<{ item: ExtraItem }>(`/api/public-site/extras/${editing.id}`, "PATCH", editing);
+    const r = await api<{ item: ExtraItem; items: ExtraItem[] }>(`/api/public-site/extras/${editing.id}`, "PATCH", editing);
     setBusy(false);
     if (!r.ok || !r.data) {
       setError(r.message || t("errorSave"));
       return;
     }
-    const saved = r.data.item;
-    setItems((prev) => (prev ?? []).map((x) => (x.id === saved.id ? saved : x)));
+    // Όλη η λίστα: μια νέα προεπιλογή μπορεί να «έσβησε» την προηγούμενη.
+    setItems(r.data.items);
     setEditing(null);
   };
 
@@ -180,6 +182,12 @@ export function ExtrasTab() {
               <span className="dash-form-note">{t("vehicleTypesHint")}</span>
             </div>
             <Check label={t("isActive")} checked={editing.isActive} onChange={(v) => setEditing({ ...editing, isActive: v })} />
+            {editing.type === "INSURANCE" && (
+              <div className="dash-field dash-field--wide dash-ps-left">
+                <Check label={t("isDefault")} checked={editing.isDefault} onChange={(v) => setEditing({ ...editing, isDefault: v })} />
+                <span className="dash-form-note">{t("insuranceDefaultHint")}</span>
+              </div>
+            )}
           </div>
           <div className="dash-ps-actions">
             <button className="dash-btn" onClick={() => setEditing(null)} disabled={busy}>
@@ -202,6 +210,7 @@ export function ExtrasTab() {
                     {t(`kind_${x.type}`)} · {price(x)}
                     {x.maxTotalCents !== null && ` · ${t("maxTotal")}: ${formatCents(x.maxTotalCents)}`}
                     {x.vehicleTypes.length > 0 && ` · ${x.vehicleTypes.map((vt) => t(`vt_${vt}`)).join(", ")}`}
+                    {x.type === "INSURANCE" && x.isDefault && <span className="dash-ps-badge dash-ps-badge--ok">{t("isDefault")}</span>}
                     {!x.isActive && <span className="dash-ps-badge">{t("inactive")}</span>}
                   </div>
                 </div>

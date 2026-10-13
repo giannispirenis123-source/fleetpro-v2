@@ -1422,6 +1422,7 @@ export const el = {
     perRentalShort: "/ενοικίαση",
     maxTotal: "Ταβάνι ανά τεμάχιο",
     maxTotalHint: "Κενό = χωρίς ταβάνι.",
+    insuranceDefaultHint: "Στο site εμφανίζεται ήδη επιλεγμένη. Μία προεπιλογή ανά τύπο οχήματος: αν ορίσεις νέα, η προηγούμενη για τους ίδιους τύπους παύει.",
     maxQuantity: "Μέγιστη ποσότητα",
     vehicleTypes: "Για τύπους",
     vehicleTypesHint: "Κανένας επιλεγμένος = για όλους.",

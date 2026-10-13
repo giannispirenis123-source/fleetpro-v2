@@ -24,6 +24,7 @@ export function toPublicExtraDTO(e: Extra) {
     vehicleTypes: e.vehicleTypes,
     sortOrder: e.sortOrder,
     isActive: e.isActive,
+    isDefault: e.isDefault,
   };
 }
 
@@ -37,4 +38,6 @@ export const publicExtraSchema = z.object({
   vehicleTypes: z.array(z.enum(VEHICLE_TYPES)).max(3).transform((l) => Array.from(new Set(l))),
   sortOrder: z.number().int().min(0).max(10_000),
   isActive: z.boolean(),
+  /** Μόνο για ασφάλειες· στα πρόσθετα ο server το κρατά false. */
+  isDefault: z.boolean().default(false),
 });

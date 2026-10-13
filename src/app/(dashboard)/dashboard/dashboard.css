@@ -2749,3 +2749,4 @@ input.dash-invalid,
 .dash-ps-tabs { max-width: 720px; }
 .dash-ps-dt-field { grid-column: span 2; }
 @media (max-width: 640px) { .dash-ps-dt-field { grid-column: 1 / -1; } }
+.dash-ps-left .dash-field--check { align-self: flex-start; padding-bottom: 0; }

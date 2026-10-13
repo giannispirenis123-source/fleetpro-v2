@@ -131,6 +131,29 @@ BEGIN
   )
   ON CONFLICT DO NOTHING;
 
+  /* ── Βασική ασφάλεια = προεπιλογή (μόνο αν η εταιρία δεν έχει ήδη προεπιλογή) ──
+     · Υπάρχουν ασφάλειες: γίνεται προεπιλογή η «βασική» (όνομα με «βασικ»/«basic»),
+       αλλιώς η φθηνότερη.
+     · Δεν υπάρχει καμία: προστίθεται «Βασική ασφάλεια» (0 €/ημέρα, απαλλαγή 800 €). */
+  IF NOT EXISTS (SELECT 1 FROM "extras" WHERE "tenantId" = v_tenant AND "type" = 'INSURANCE' AND "isDefault") THEN
+    IF EXISTS (SELECT 1 FROM "extras" WHERE "tenantId" = v_tenant AND "type" = 'INSURANCE') THEN
+      UPDATE "extras" SET "isDefault" = true, "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = (
+        SELECT "id" FROM "extras"
+        WHERE "tenantId" = v_tenant AND "type" = 'INSURANCE'
+        ORDER BY ("name" ILIKE '%βασικ%' OR "name" ILIKE '%basic%') DESC, "isActive" DESC, "price" ASC, "name" ASC
+        LIMIT 1
+      );
+    ELSE
+      INSERT INTO "extras" ("id","tenantId","name","price","chargeType","type","excess","nameI18n","descriptionI18n","isDefault","sortOrder","updatedAt")
+      VALUES ('psd_' || left(md5(v_tenant || ':insurance:basic'), 20), v_tenant, 'Βασική ασφάλεια', 0, 'PER_DAY', 'INSURANCE', 800,
+              '{"el":"Βασική ασφάλεια","en":"Basic insurance"}'::jsonb,
+              '{"el":"Περιλαμβάνεται στην τιμή, με απαλλαγή 800 €.","en":"Included in the price, with an excess of 800 €."}'::jsonb,
+              true, 0, CURRENT_TIMESTAMP)
+      ON CONFLICT DO NOTHING;
+    END IF;
+  END IF;
+
   /* ── Ενότητες εμπιστοσύνης + εμφάνιση (μόνο αν δεν έχουν οριστεί) ── */
   UPDATE "tenants" SET "storefrontSettings" = "storefrontSettings" || jsonb_build_object('trustBlocks', jsonb_build_array(
       jsonb_build_object('icon','Wallet','title',jsonb_build_object('el','Χωρίς προκαταβολή','en','No prepayment'),
@@ -155,6 +178,7 @@ COMMIT;
 
 -- Verification (αναμενόμενο στην πρώτη εκτέλεση, αν η εταιρία δεν είχε τίποτα):
 --   locations = 9 · age_bands = 3 · groups = 9 · seasons = 3 · rates = 27 · demo_extras = 3 · trust_blocks = 4
+--   default_insurance = 1 (πάντα 1: μία προεπιλεγμένη ασφάλεια για όλους τους τύπους)
 -- (demo_extras < 3 αν υπήρχαν ήδη extras με το ίδιο όνομα — σωστό.)
 SELECT
   (SELECT count(*) FROM "pickup_locations" l JOIN "tenants" t ON t."id" = l."tenantId" WHERE t."slug" = 'p-rentals') AS locations,
@@ -162,5 +186,7 @@ SELECT
   (SELECT count(*) FROM "rental_groups" g JOIN "tenants" t ON t."id" = g."tenantId" WHERE t."slug" = 'p-rentals') AS groups,
   (SELECT count(*) FROM "seasons" s JOIN "tenants" t ON t."id" = s."tenantId" WHERE t."slug" = 'p-rentals') AS seasons,
   (SELECT count(*) FROM "rates" r JOIN "tenants" t ON t."id" = r."tenantId" WHERE t."slug" = 'p-rentals') AS rates,
-  (SELECT count(*) FROM "extras" e JOIN "tenants" t ON t."id" = e."tenantId" WHERE t."slug" = 'p-rentals' AND e."id" LIKE 'psd_%') AS demo_extras,
-  (SELECT jsonb_array_length(COALESCE("storefrontSettings"->'trustBlocks','[]')) FROM "tenants" WHERE "slug" = 'p-rentals') AS trust_blocks;
+  (SELECT count(*) FROM "extras" e JOIN "tenants" t ON t."id" = e."tenantId" WHERE t."slug" = 'p-rentals' AND e."id" LIKE 'psd_%' AND e."type" = 'EXTRA') AS demo_extras,
+  (SELECT jsonb_array_length(COALESCE("storefrontSettings"->'trustBlocks','[]')) FROM "tenants" WHERE "slug" = 'p-rentals') AS trust_blocks,
+  (SELECT count(*) FROM "extras" e JOIN "tenants" t ON t."id" = e."tenantId"
+    WHERE t."slug" = 'p-rentals' AND e."type" = 'INSURANCE' AND e."isDefault") AS default_insurance;

@@ -1421,6 +1421,7 @@ export const en: Dictionary = {
     perRentalShort: "/rental",
     maxTotal: "Cap per item",
     maxTotalHint: "Empty = no cap.",
+    insuranceDefaultHint: "Pre-selected on the site. One default per vehicle type: setting a new one clears the previous one for the same types.",
     maxQuantity: "Max quantity",
     vehicleTypes: "For types",
     vehicleTypesHint: "None selected = all.",

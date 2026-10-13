@@ -89,10 +89,15 @@ export const locationSchema = z
     askFlightNumber: z.boolean().default(false),
     askFerryName: z.boolean().default(false),
     askAddress: z.boolean().default(false),
-    adjustmentType: z.enum(["none", "percent", "fixed"]),
-    adjustmentValue: z.number().int().min(-10_000_000).max(10_000_000).default(0),
+    // Μόνο ποσοστό: η σταθερή χρέωση έγινε χρεώσεις δρομολογίου (SQL 21c).
+    adjustmentType: z.enum(["none", "percent"]),
+    adjustmentValue: z.number().int().min(-100).max(100).default(0),
     adjustmentLabel: i18nField(80),
     afterHoursFeeCents: cents.nullable().default(null),
+    deliveryFeeCents: cents.default(0),
+    collectionFeeCents: cents.default(0),
+    feeFreeFromDays: optInt(1, 365),
+    feeLabel: i18nField(80),
     allowPickup: z.boolean().default(true),
     allowDropoff: z.boolean().default(true),
     sortOrder,
@@ -131,6 +136,44 @@ export const ageBandSchema = z
   })
   .refine((b) => b.minAge <= b.maxAge, { message: "Η ελάχιστη ηλικία δεν μπορεί να ξεπερνά τη μέγιστη", path: ["maxAge"] })
   .refine((b) => !b.isDefault || b.allowed, { message: "Η προεπιλογή πρέπει να είναι επιτρεπτή ηλικία", path: ["isDefault"] });
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const dateField = z
+  .string()
+  .regex(ISO_DATE, "Ημερομηνία σε μορφή ΕΕΕΕ-ΜΜ-ΗΗ")
+  .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v), "Μη έγκυρη ημερομηνία");
+const idList = z.array(z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)).max(200).default([]).transform((l) => Array.from(new Set(l)));
+
+export const promotionSchema = z
+  .object({
+    name: i18nField(80, true, "Το όνομα (ΕΛ)"),
+    badge: i18nField(60, true, "Το κείμενο στο site (ΕΛ)"),
+    isActive: z.boolean().default(true),
+    discountType: z.enum(["percent", "per_day", "per_rental"]),
+    discountValue: z.number().int().min(1, "Η έκπτωση πρέπει να είναι πάνω από 0").max(10_000_000),
+    validFrom: dateField,
+    validTo: dateField,
+    locationIds: idList,
+    locationMatch: z.enum(["pickup", "dropoff", "either"]).default("pickup"),
+    rentalGroupIds: idList,
+    vehicleIds: idList,
+    vehicleTypes: z.array(z.enum(VEHICLE_TYPES)).max(3).default([]).transform((l) => Array.from(new Set(l))),
+    minDays: optInt(1, 365),
+    sortOrder,
+  })
+  .refine((p) => p.discountType !== "percent" || p.discountValue <= 90, {
+    message: "Το ποσοστό έκπτωσης πρέπει να είναι έως 90%",
+    path: ["discountValue"],
+  })
+  .refine((p) => p.validFrom <= p.validTo, { message: "Το «Από» πρέπει να είναι πριν ή ίσο με το «Έως»", path: ["validTo"] })
+  .transform((p) => ({
+    ...p,
+    validFrom: new Date(`${p.validFrom}T00:00:00.000Z`),
+    validTo: new Date(`${p.validTo}T00:00:00.000Z`),
+  }));
+
+/** Ημερομηνία DATE από Prisma (UTC μεσάνυχτα) → "YYYY-MM-DD". */
+export const isoDate = (d: unknown): string => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d ?? ""));
 
 /* ─────────────────────────────────────────────
    Καταχωρητής
@@ -204,12 +247,37 @@ export const RESOURCES: Record<string, ResourceDef> = {
     delegate: () => db.pickupLocation as unknown as Delegate,
     schema: locationSchema,
     orderBy: [{ sortOrder: "asc" }, { slug: "asc" }],
-    toDTO: (row) => jsonText(strip(row), ["name", "adjustmentLabel"]),
+    toDTO: (row) => jsonText(strip(row), ["name", "adjustmentLabel", "feeLabel"]),
     uniqueMessage: "Υπάρχει ήδη τοποθεσία με αυτό το slug",
     // Οι κρατήσεις του site (PR 3) θα δείχνουν σε τοποθεσίες· τότε η χρήση
     // θα ελέγχεται εδώ. Μέχρι τότε καμία δεν είναι «σε χρήση».
     inUse: async () => false,
     deactivate: { isActive: false },
+  },
+  promotions: {
+    delegate: () => db.promotion as unknown as Delegate,
+    schema: promotionSchema,
+    orderBy: [{ sortOrder: "asc" }, { validFrom: "desc" }],
+    toDTO: (row) => {
+      const out = jsonText(strip(row), ["name", "badge"]);
+      return { ...out, validFrom: isoDate(row.validFrom), validTo: isoDate(row.validTo) };
+    },
+    // Τοποθεσίες, ομάδες και οχήματα πρέπει να είναι της ΙΔΙΑΣ εταιρίας.
+    check: async (companyId, data) => {
+      const [locs, groups, vehicles] = await Promise.all([
+        data.locationIds.length
+          ? db.pickupLocation.count({ where: { tenantId: companyId, id: { in: data.locationIds } } })
+          : 0,
+        data.rentalGroupIds.length
+          ? db.rentalGroup.count({ where: { tenantId: companyId, id: { in: data.rentalGroupIds } } })
+          : 0,
+        data.vehicleIds.length ? db.vehicle.count({ where: { tenantId: companyId, id: { in: data.vehicleIds } } }) : 0,
+      ]);
+      if (locs !== data.locationIds.length) return "Κάποια τοποθεσία δεν βρέθηκε";
+      if (groups !== data.rentalGroupIds.length) return "Κάποια ομάδα δεν βρέθηκε";
+      if (vehicles !== data.vehicleIds.length) return "Κάποιο όχημα δεν βρέθηκε";
+      return null;
+    },
   },
   seasons: {
     delegate: () => db.season as unknown as Delegate,

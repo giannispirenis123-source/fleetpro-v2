@@ -2,6 +2,7 @@
 
 // Καρτέλες: Ομάδες · Τοποθεσίες · Σεζόν · Ηλικίες οδηγού (πάνω στο ResourceList).
 
+import { useState } from "react";
 import VehiclePhotos from "@/components/photos/VehiclePhotos";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { formatCents } from "@/lib/public/money";
@@ -183,10 +184,14 @@ export interface LocationItem {
   askFlightNumber: boolean;
   askFerryName: boolean;
   askAddress: boolean;
-  adjustmentType: "none" | "percent" | "fixed";
+  adjustmentType: "none" | "percent";
   adjustmentValue: number;
   adjustmentLabel: LocalizedText;
   afterHoursFeeCents: number | null;
+  deliveryFeeCents: number;
+  collectionFeeCents: number;
+  feeFreeFromDays: number | null;
+  feeLabel: LocalizedText;
   allowPickup: boolean;
   allowDropoff: boolean;
   sortOrder: number;
@@ -198,15 +203,98 @@ const coord = (s: string): number | null => {
   return s.trim() === "" || !Number.isFinite(n) ? null : n;
 };
 
+/** Η έκπτωση τοποθεσίας ως θετικό % (0 = καμία). */
+const discountPct = (l: Pick<LocationItem, "adjustmentType" | "adjustmentValue">) =>
+  l.adjustmentType === "percent" && l.adjustmentValue < 0 ? -l.adjustmentValue : 0;
+
+/** % έκπτωσης → adjustmentType/Value (0 = καμία). */
+const withDiscount = <T extends LocationItem>(l: T, pct: number): T => ({
+  ...l,
+  adjustmentType: pct > 0 ? "percent" : "none",
+  adjustmentValue: pct > 0 ? -Math.min(100, pct) : 0,
+});
+
+/** Γρήγορη επεξεργασία ποσών μέσα στη λίστα. */
+function LocationQuickEdit({
+  item,
+  save,
+  close,
+}: {
+  item: LocationItem & { id: string };
+  save: (next: LocationItem & { id: string }) => Promise<string | null>;
+  close: () => void;
+}) {
+  const tr = useT();
+  const t = (k: string) => tr(`publicSite.${k}`);
+  const [v, setV] = useState(item);
+  const [pct, setPct] = useState(discountPct(item));
+  const [bad, setBad] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const mark = (k: string, ok: boolean) =>
+    setBad((prev) => {
+      const n = new Set(prev);
+      if (ok) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  return (
+    <>
+      <div className="dash-form-grid">
+        <MoneyInput
+          label={t("deliveryFee")}
+          cents={v.deliveryFeeCents}
+          onChange={(c, ok) => {
+            mark("d", ok);
+            if (ok) setV({ ...v, deliveryFeeCents: c ?? 0 });
+          }}
+        />
+        <MoneyInput
+          label={t("collectionFee")}
+          cents={v.collectionFeeCents}
+          onChange={(c, ok) => {
+            mark("c", ok);
+            if (ok) setV({ ...v, collectionFeeCents: c ?? 0 });
+          }}
+        />
+        <IntInput label={t("feeFreeFromDays")} value={v.feeFreeFromDays} onChange={(x) => setV({ ...v, feeFreeFromDays: x })} nullable min={1} max={365} />
+        <IntInput label={t("locationDiscount")} value={pct} onChange={(x) => setPct(Math.max(0, Math.min(100, x ?? 0)))} min={0} max={100} />
+      </div>
+      {error && <div className="dash-form-error">{error}</div>}
+      <div className="dash-ps-actions">
+        <button className="dash-btn dash-btn--sm" onClick={close} disabled={busy}>
+          {t("cancel")}
+        </button>
+        <button
+          className="dash-btn dash-btn--primary dash-btn--sm"
+          disabled={busy || bad.size > 0}
+          onClick={async () => {
+            setBusy(true);
+            const problem = await save(withDiscount(v, pct));
+            setBusy(false);
+            if (problem) setError(problem);
+            else close();
+          }}
+        >
+          {busy ? t("saving") : t("save")}
+        </button>
+      </div>
+    </>
+  );
+}
+
 export function LocationsTab() {
   const tr = useT();
   const t = (k: string) => tr(`publicSite.${k}`);
-  const adj = (l: LocationItem) =>
-    l.adjustmentType === "percent"
-      ? `${l.adjustmentValue > 0 ? "+" : ""}${l.adjustmentValue}%`
-      : l.adjustmentType === "fixed"
-        ? `${l.adjustmentValue > 0 ? "+" : ""}${formatCents(l.adjustmentValue)}`
-        : "";
+  const amounts = (l: LocationItem) => {
+    const parts: string[] = [];
+    if (l.deliveryFeeCents || l.collectionFeeCents) {
+      parts.push(`+${formatCents(l.deliveryFeeCents)} / +${formatCents(l.collectionFeeCents)}`);
+    }
+    if (l.feeFreeFromDays) parts.push(`${t("freeFrom")} ${l.feeFreeFromDays} ${t("daysShort")}`);
+    if (discountPct(l)) parts.push(`-${discountPct(l)}%`);
+    return parts.join(" · ");
+  };
   return (
     <ResourceList<LocationItem>
       resource="locations"
@@ -225,6 +313,10 @@ export function LocationsTab() {
         adjustmentValue: 0,
         adjustmentLabel: {},
         afterHoursFeeCents: null,
+        deliveryFeeCents: 0,
+        collectionFeeCents: 0,
+        feeFreeFromDays: null,
+        feeLabel: {},
         allowPickup: true,
         allowDropoff: true,
         sortOrder: 0,
@@ -234,10 +326,14 @@ export function LocationsTab() {
       summary={(l) => (
         <>
           {t(`lt_${l.type}`)} · /{l.slug}
-          {adj(l) && ` · ${adj(l)}`}
+          {amounts(l) && <strong className="dash-ps-amounts"> · {amounts(l)}</strong>}
           {!l.isActive && <span className="dash-ps-badge">{t("inactive")}</span>}
         </>
       )}
+      quickEdit={{
+        label: t("quickAmounts"),
+        render: (item, save, close) => <LocationQuickEdit item={item} save={save} close={close} />,
+      }}
       renderForm={(f) => {
         const v = f.value;
         return (
@@ -270,21 +366,31 @@ export function LocationsTab() {
               {t("lng")}
               <input inputMode="decimal" defaultValue={v.lng ?? ""} onChange={(e) => f.set("lng", coord(e.target.value))} />
             </label>
-            <Select
-              label={t("adjustmentType")}
-              value={v.adjustmentType}
-              options={(["none", "percent", "fixed"] as const).map((x) => ({ value: x, label: t(`adj_${x}`) }))}
-              onChange={(x) => {
-                f.set("adjustmentType", x);
-                f.set("adjustmentValue", 0);
-                f.markInvalid("adjustmentValue", false);
-              }}
+            {money(f, "deliveryFeeCents", t("deliveryFee"))}
+            {money(f, "collectionFeeCents", t("collectionFee"))}
+            <IntInput
+              label={t("feeFreeFromDays")}
+              value={v.feeFreeFromDays}
+              onChange={(x) => f.set("feeFreeFromDays", x)}
+              nullable
+              min={1}
+              max={365}
+              hint={t("feeFreeHint")}
             />
-            {v.adjustmentType === "percent" && (
-              <IntInput label={t("adjustmentPercent")} value={v.adjustmentValue} onChange={(x) => f.set("adjustmentValue", x ?? 0)} min={-100} max={100} />
-            )}
-            {v.adjustmentType === "fixed" && money(f, "adjustmentValue", t("adjustmentFixed"), { allowNegative: true })}
-            {v.adjustmentType !== "none" && (
+            <I18nInput label={t("feeLabel")} value={v.feeLabel} onChange={(x) => f.set("feeLabel", x)} maxLength={80} />
+            <IntInput
+              label={t("locationDiscount")}
+              value={discountPct(v)}
+              onChange={(x) => {
+                const next = withDiscount(v, Math.max(0, Math.min(100, x ?? 0)));
+                f.set("adjustmentType", next.adjustmentType);
+                f.set("adjustmentValue", next.adjustmentValue);
+              }}
+              min={0}
+              max={100}
+              hint={t("locationDiscountHint")}
+            />
+            {discountPct(v) > 0 && (
               <I18nInput label={t("adjustmentLabel")} value={v.adjustmentLabel} onChange={(x) => f.set("adjustmentLabel", x)} maxLength={80} />
             )}
             {money(f, "afterHoursFeeCents", t("afterHoursFee"), { nullable: true, hint: t("afterHoursFeeHint") })}

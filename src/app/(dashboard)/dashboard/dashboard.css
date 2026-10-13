@@ -2750,3 +2750,18 @@ input.dash-invalid,
 .dash-ps-dt-field { grid-column: span 2; }
 @media (max-width: 640px) { .dash-ps-dt-field { grid-column: 1 / -1; } }
 .dash-ps-left .dash-field--check { align-self: flex-start; padding-bottom: 0; }
+.dash-ps-item { flex-wrap: wrap; }
+.dash-ps-quick { flex: 1 1 100%; border-top: 1px dashed var(--border); padding-top: 10px; margin-top: 4px; }
+.dash-ps-quick .dash-form-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.dash-btn.is-on { border-color: var(--primary); color: var(--primary); }
+.dash-ps-lost { color: var(--text-4); }
+.dash-ps-discounts { margin-top: 8px; }
+.dash-ps-status { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.dash-ps-status--now { background: rgba(34,197,94,.14); color: #15803d; }
+.dash-ps-status--future { background: rgba(59,130,246,.14); color: #1d4ed8; }
+.dash-ps-status--expired { background: var(--hover-2); color: var(--text-3); }
+.dash-ps-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.dash-ps-checks .dash-field--check { padding-bottom: 0; }
+.dash-ps-amounts { color: var(--text-2); font-weight: 600; }
+.dash-ps-switch { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-3); padding: 0 4px; cursor: pointer; }
+.dash-ps-switch input { accent-color: var(--primary); }

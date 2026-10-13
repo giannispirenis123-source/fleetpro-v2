@@ -53,6 +53,7 @@ export const POST = withPublicSite(async (req, companyId) => {
         return charge ? [{ charge, qty: e.qty }] : [];
       }),
       insurance: input.insuranceId ? extraOf(input.insuranceId, "INSURANCE") ?? null : null,
+      promotions: ctx.promotions,
       settings: ctx.settings,
       now: new Date(),
     });

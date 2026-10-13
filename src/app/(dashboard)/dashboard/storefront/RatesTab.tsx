@@ -402,7 +402,7 @@ function QuoteView({ result }: { result: QuoteResult }) {
             </tbody>
           </table>
           <div className="dash-ps-quote-total">
-            {result.discountBadge && <span className="dash-ps-discount">{result.discountBadge}</span>}
+            {result.discountBadge && <span className="dash-ps-discount">{el(result.discountBadge)}</span>}
             {result.discountCents > 0 && <s className="dash-ps-list-price">{formatCents(result.listTotalCents)}</s>}
             <span className="dash-ps-total">
               {t("total")}: {formatCents(result.totalCents)}
@@ -411,6 +411,23 @@ function QuoteView({ result }: { result: QuoteResult }) {
               {formatCents(result.avgDailyCents)} {t("perDay")} · {t("vatIncluded")} {formatCents(result.vatCents)}
             </span>
           </div>
+          {(result.discounts.applied || result.discounts.others.length > 0) && (
+            <div className="dash-ps-discounts">
+              {result.discounts.applied && (
+                <p className="dash-form-note">
+                  ✓ {t("discountApplied")}: <strong>{el(result.discounts.applied.name)}</strong> (
+                  {t(result.discounts.applied.source === "location" ? "discountFromLocation" : "discountFromPromotion")}) −
+                  {formatCents(result.discounts.applied.amountCents)}
+                </p>
+              )}
+              {result.discounts.others.map((o) => (
+                <p key={`${o.source}:${o.id}`} className="dash-form-note dash-ps-lost">
+                  ✗ {t("discountLost")}: {el(o.name)} (
+                  {t(o.source === "location" ? "discountFromLocation" : "discountFromPromotion")}) −{formatCents(o.amountCents)}
+                </p>
+              ))}
+            </div>
+          )}
           {(result.depositCents !== null || result.excessCents !== null) && (
             <p className="dash-form-note">
               {result.depositCents !== null && `${t("deposit")}: ${formatCents(result.depositCents)}`}

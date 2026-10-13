@@ -6,7 +6,7 @@
 // χρησιμοποιείται, ο server την κάνει «Ανενεργή».
 
 import { useCallback, useEffect, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { ConfirmModal, Status, api } from "./ui";
 
@@ -27,6 +27,9 @@ export default function ResourceList<T extends object>({
   summary,
   renderForm,
   onItems,
+  quickEdit,
+  copy,
+  extraActions,
 }: {
   resource: string;
   intro: string;
@@ -35,6 +38,15 @@ export default function ResourceList<T extends object>({
   summary: (item: T & { id: string }) => React.ReactNode;
   renderForm: (form: FormApi<T>) => React.ReactNode;
   onItems?: (items: (T & { id: string })[]) => void;
+  /** Γρήγορη επεξεργασία μέσα στη λίστα (π.χ. ποσά τοποθεσίας), χωρίς όλη τη φόρμα. */
+  quickEdit?: {
+    label: string;
+    render: (item: T & { id: string }, save: (next: T & { id: string }) => Promise<string | null>, close: () => void) => React.ReactNode;
+  };
+  /** «Αντιγραφή»: νέα εγγραφή από μια υπάρχουσα (π.χ. προσφορά). */
+  copy?: (item: T & { id: string }) => T;
+  /** Επιπλέον κουμπιά ανά γραμμή· `save` αποθηκεύει όλη την εγγραφή. */
+  extraActions?: (item: T & { id: string }, save: (next: T & { id: string }) => Promise<string | null>) => React.ReactNode;
 }) {
   const tr = useT();
   const url = `/api/public-site/${resource}`;
@@ -46,6 +58,7 @@ export default function ResourceList<T extends object>({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [deleting, setDeleting] = useState<(T & { id: string }) | null>(null);
+  const [quickId, setQuickId] = useState<string | null>(null);
 
   const update = useCallback(
     (next: (T & { id: string })[]) => {
@@ -91,6 +104,17 @@ export default function ResourceList<T extends object>({
     if (draft.id) setDraft(null);
     else setDraft({ value: saved, id: saved.id });
     setNotice(tr("publicSite.saved"));
+  };
+
+  /** Αποθήκευση ΟΛΗΣ της εγγραφής από τη λίστα (γρήγορη επεξεργασία, διακόπτες). */
+  const saveItem = async (next: T & { id: string }): Promise<string | null> => {
+    const { id, ...body } = next;
+    const r = await api<{ item: T & { id: string } }>(`${url}/${id}`, "PATCH", body);
+    if (!r.ok || !r.data) return r.message || tr("publicSite.errorSave");
+    const saved = r.data.item;
+    update((items ?? []).map((i) => (i.id === saved.id ? saved : i)));
+    setNotice(tr("publicSite.saved"));
+    return null;
   };
 
   const remove = async () => {
@@ -171,6 +195,32 @@ export default function ResourceList<T extends object>({
                   <div className="dash-ps-item-sub">{summary(item)}</div>
                 </div>
                 <div className="dash-ps-item-actions">
+                  {extraActions?.(item, saveItem)}
+                  {quickEdit && (
+                    <button
+                      className={`dash-btn dash-btn--sm ${quickId === item.id ? "is-on" : ""}`}
+                      onClick={() => setQuickId(quickId === item.id ? null : item.id)}
+                      aria-label={quickEdit.label}
+                      title={quickEdit.label}
+                    >
+                      <Zap size={14} /> <span className="dash-ps-hide-xs">{quickEdit.label}</span>
+                    </button>
+                  )}
+                  {copy && (
+                    <button
+                      className="dash-btn dash-btn--sm"
+                      onClick={() => {
+                        setError("");
+                        setNotice("");
+                        setInvalid(new Set());
+                        setDraft({ value: copy(item), id: null });
+                      }}
+                      aria-label={tr("publicSite.copy")}
+                      title={tr("publicSite.copy")}
+                    >
+                      <Copy size={14} />
+                    </button>
+                  )}
                   <button className="dash-btn dash-btn--sm" onClick={() => open(item)} aria-label={tr("publicSite.edit")}>
                     <Pencil size={14} /> <span className="dash-ps-hide-xs">{tr("publicSite.edit")}</span>
                   </button>
@@ -185,6 +235,9 @@ export default function ResourceList<T extends object>({
                     <Trash2 size={14} />
                   </button>
                 </div>
+                {quickEdit && quickId === item.id && (
+                  <div className="dash-ps-quick">{quickEdit.render(item, saveItem, () => setQuickId(null))}</div>
+                )}
               </li>
             ))}
           </ul>

@@ -14,7 +14,7 @@ register(
     )
 );
 
-const { quote, fromPrice, seasonFor, rentalDays, pickTier, inWindow } = await import("../src/lib/public/pricing.ts");
+const { quote, fromPrice, seasonFor, rentalDays, pickTier, inWindow, migrateLegacyFixed } = await import("../src/lib/public/pricing.ts");
 const { toCents, parseEuroInput, centsToInput } = await import("../src/lib/public/money.ts");
 
 /* ── Δεδομένα ── */
@@ -69,8 +69,8 @@ const OFFICE = loc("office", {
   adjustmentLabel: { el: "Έκπτωση γραφείου 10%", en: "Office discount 10%" },
   afterHoursFeeCents: 0,
 });
-const AIRPORT = loc("airport", { adjustmentType: "fixed", adjustmentValue: 1000 });
-const PORT = loc("port", { adjustmentType: "fixed", adjustmentValue: 1500 });
+const AIRPORT = loc("airport", { deliveryFeeCents: 1000, collectionFeeCents: 1000 });
+const PORT = loc("port", { deliveryFeeCents: 1500, collectionFeeCents: 1500 });
 
 const AGES = [
   { minAge: 18, maxAge: 20, label: { el: "Κάτω των 21" }, allowed: false, isDefault: false, surchargeType: "none", surchargeCents: 0, surchargeMaxCents: null },
@@ -144,13 +144,14 @@ test("αλλαγή ώρας (29/3, Αθήνα): 3 ημερολογιακές η�
 test("γραφείο −10%: μόνο στο ενοίκιο, listTotal χωρίς την έκπτωση, σήμα «-10%»", () => {
   const r = quote(base({ pickupLocation: OFFICE }));
   assert.equal(r.ok, true);
-  const disc = r.lines.find((l) => l.kind === "location_discount");
+  const disc = r.lines.find((l) => l.kind === "discount");
   assert.equal(disc.totalCents, -1050);
-  assert.equal(disc.label.el, "Έκπτωση γραφείου 10%");
+  assert.equal(disc.label.el, "Έκπτωση γραφείου 10%", "χωρίς διπλό «Έκπτωση:»");
   assert.equal(r.listTotalCents, 10500);
   assert.equal(r.discountCents, 1050);
   assert.equal(r.totalCents, 9450);
-  assert.equal(r.discountBadge, "-10%");
+  assert.deepEqual(r.discountBadge, { el: "-10%", en: "-10%" });
+  assert.equal(r.discounts.applied.source, "location");
 });
 
 test("γραφείο −10% με extra: η έκπτωση ΔΕΝ πιάνει τα extras", () => {
@@ -160,14 +161,11 @@ test("γραφείο −10% με extra: η έκπτωση ΔΕΝ πιάνει τ
   assert.equal(r.totalCents, 10500 + 1000 - 1050);
 });
 
-test("επιστροφή σε άλλο σημείο: και οι δύο σταθερές χρεώσεις + oneWayFee", () => {
+test("επιστροφή σε άλλο σημείο: παράδοση στο ένα, παραλαβή από το άλλο + oneWayFee", () => {
   const r = quote(base({ pickupLocation: AIRPORT, dropoffLocation: PORT }));
   const kinds = r.lines.map((l) => [l.kind, l.totalCents]);
-  assert.deepEqual(kinds.filter(([k]) => k !== "rental"), [["location", 1000], ["location", 1500], ["one_way", 2000]]);
+  assert.deepEqual(kinds.filter(([k]) => k !== "rental"), [["delivery", 1000], ["collection", 1500], ["one_way", 2000]]);
   assert.equal(r.totalCents, 10500 + 1000 + 1500 + 2000);
-  // Ίδιο σημείο: μόνο η παραλαβή, χωρίς oneWay.
-  const same = quote(base({ pickupLocation: AIRPORT, dropoffLocation: AIRPORT }));
-  assert.equal(same.totalCents, 10500 + 1000);
 });
 
 test("σημείο χωρίς επιστροφή → σφάλμα", () => {
@@ -273,10 +271,10 @@ test("pickTier: κλίμακα από τις συνολικές ημέρες, μ
 /* ── fromPrice ── */
 
 test("fromPrice: η φθηνότερη ημερήσια τιμή των επόμενων 365 ημερών", () => {
-  assert.equal(fromPrice(TARGET, RATES, SEASONS, "2026-03-01"), 2600);
+  assert.equal(fromPrice(TARGET, RATES, SEASONS, "2026-03-01").dailyCents, 2600);
   // Μόνο υψηλή σεζόν ορατή μέσα σε 30 ημέρες από 1/7
-  assert.equal(fromPrice(TARGET, RATES, SEASONS, "2026-07-01", 30), 6000);
-  assert.equal(fromPrice(TARGET, [], SEASONS, "2026-03-01"), 9900, "χωρίς rates → βάση");
+  assert.equal(fromPrice(TARGET, RATES, SEASONS, "2026-07-01", { horizonDays: 30 }).dailyCents, 6000);
+  assert.equal(fromPrice(TARGET, [], SEASONS, "2026-03-01").dailyCents, 9900, "χωρίς rates → βάση");
   assert.equal(fromPrice({ basePriceCents: 0 }, [], [], "2026-03-01"), null);
 });
 
@@ -294,4 +292,179 @@ test("money: € ↔ cents σε ΕΝΑ σημείο", () => {
   assert.ok(Number.isNaN(parseEuroInput("3,555")));
   assert.equal(centsToInput(3550), "35,50");
   assert.equal(centsToInput(3500), "35");
+});
+
+
+/* ══ Χρεώσεις δρομολογίου (SQL 21c) ══ */
+
+const HER = loc("her", {
+  name: { el: "Αεροδρόμιο Ηρακλείου", en: "Heraklion Airport" },
+  deliveryFeeCents: 5000,
+  collectionFeeCents: 5000,
+  feeLabel: { el: "Ηράκλειο", en: "Heraklion" },
+});
+
+test("παράδοση ΚΑΙ παραλαβή στο Ηράκλειο: δύο γραμμές (δύο δρομολόγια)", () => {
+  const r = quote(base({ pickupLocation: HER, dropoffLocation: HER }));
+  const route = r.lines.filter((l) => l.kind === "delivery" || l.kind === "collection");
+  assert.deepEqual(route.map((l) => [l.kind, l.totalCents]), [["delivery", 5000], ["collection", 5000]]);
+  assert.equal(route[0].label.el, "Παράδοση: Ηράκλειο");
+  assert.equal(route[1].label.el, "Παραλαβή: Ηράκλειο");
+  assert.equal(r.lines.some((l) => l.kind === "one_way"), false, "ίδιο σημείο = όχι oneWay");
+  assert.equal(r.totalCents, 10500 + 10000);
+});
+
+test("χωρίς σημείο επιστροφής = ίδιο με την παραλαβή (δύο δρομολόγια)", () => {
+  const r = quote(base({ pickupLocation: HER }));
+  assert.equal(r.lines.filter((l) => l.kind === "delivery" || l.kind === "collection").length, 2);
+});
+
+test("παράδοση σε Ηράκλειο, επιστροφή σε σημείο χωρίς χρέωση: μόνο η παράδοση", () => {
+  const r = quote(base({ pickupLocation: HER, dropoffLocation: loc("chq") }));
+  assert.deepEqual(r.lines.filter((l) => ["delivery", "collection"].includes(l.kind)).map((l) => l.totalCents), [5000]);
+});
+
+test("feeFreeFromDays: από 7 ημέρες οι χρεώσεις δρομολογίου γίνονται 0 με ένδειξη", () => {
+  const free = { ...HER, feeFreeFromDays: 7 };
+  const short = quote(base({ pickupLocation: free }));
+  assert.equal(short.lines.find((l) => l.kind === "delivery").totalCents, 5000);
+  const long = quote(base({ pickupLocation: free, dropoffAt: "2026-03-17T10:00" }));
+  const route = long.lines.filter((l) => l.kind === "delivery" || l.kind === "collection");
+  assert.deepEqual(route.map((l) => l.totalCents), [0, 0]);
+  assert.match(route[0].label.el, /Δωρεάν από 7 ημέρες/);
+});
+
+test("μεταφορά παλιού 'fixed' (θετικό) → παράδοση + παραλαβή, ίδιος κανόνας με το SQL 21c", () => {
+  const old = { adjustmentType: "fixed", adjustmentValue: 5000, adjustmentLabel: { el: "Παράδοση στο Ηράκλειο" }, deliveryFeeCents: 0, collectionFeeCents: 0, feeLabel: {} };
+  const m = migrateLegacyFixed(old);
+  assert.equal(m.deliveryFeeCents, 5000);
+  assert.equal(m.collectionFeeCents, 5000);
+  assert.deepEqual(m.feeLabel, { el: "Παράδοση στο Ηράκλειο" });
+  assert.equal(m.adjustmentType, "none");
+  assert.equal(m.adjustmentValue, 0);
+  assert.equal(migrateLegacyFixed({ ...old, adjustmentType: "percent", adjustmentValue: -10 }).adjustmentType, "percent");
+  assert.equal(migrateLegacyFixed({ ...old, adjustmentValue: -500 }).adjustmentType, "fixed", "αρνητικό: δεν μεταφέρεται");
+});
+
+/* ══ Προσφορές (SQL 21c) ══ */
+
+const GROUP_TARGET = { ...TARGET, rentalGroupId: "grpA", vehicleId: null };
+
+const promo = (over = {}) => ({
+  id: "p1",
+  name: { el: "Φθινόπωρο" },
+  badge: { el: "Προσφορά φθινοπώρου", en: "Autumn offer" },
+  isActive: true,
+  discountType: "percent",
+  discountValue: 15,
+  validFrom: "2026-03-01",
+  validTo: "2026-03-31",
+  locationIds: [],
+  locationMatch: "pickup",
+  rentalGroupIds: [],
+  vehicleIds: [],
+  vehicleTypes: [],
+  minDays: null,
+  sortOrder: 0,
+  ...over,
+});
+
+const pq = (over = {}) => quote(base({ target: GROUP_TARGET, ...over }));
+
+test("προσφορά -15%: μία αρνητική γραμμή, διαγραμμένη τιμή και σήμα", () => {
+  const r = pq({ promotions: [promo()] });
+  const d = r.lines.find((l) => l.kind === "discount");
+  assert.equal(d.totalCents, -Math.round(10500 * 0.15));
+  assert.equal(d.label.el, "Έκπτωση: Προσφορά φθινοπώρου");
+  assert.equal(r.listTotalCents, 10500);
+  assert.deepEqual(r.discountBadge, { el: "-15%", en: "-15%" });
+  assert.equal(r.discounts.applied.id, "p1");
+});
+
+test("προσφορά μόνο σε μία ομάδα: ισχύει για αυτήν, όχι για άλλη", () => {
+  assert.equal(pq({ promotions: [promo({ rentalGroupIds: ["grpA"] })] }).discountCents, 1575);
+  assert.equal(pq({ promotions: [promo({ rentalGroupIds: ["grpB"] })] }).discountCents, 0);
+  assert.equal(pq({ promotions: [promo({ rentalGroupIds: ["grpB"], vehicleTypes: ["car"] })] }).discountCents, 1575, "αρκεί ΕΝΑ από τα κριτήρια");
+});
+
+test("προσφορά που καλύπτει μόνο μερικές ημέρες: έκπτωση μόνο σε αυτές", () => {
+  // 10–12/3 (3 ημέρες × 35€)· η προσφορά ισχύει 12/3–31/3 → μόνο η 3η ημέρα
+  const r = pq({ promotions: [promo({ validFrom: "2026-03-12" })] });
+  assert.equal(r.discountCents, Math.round(3500 * 0.15));
+});
+
+test("per_day: ποσό × ημέρες μέσα στο διάστημα, ποτέ κάτω από 0 ανά ημέρα", () => {
+  assert.equal(pq({ promotions: [promo({ discountType: "per_day", discountValue: 500 })] }).discountCents, 1500);
+  assert.equal(pq({ promotions: [promo({ discountType: "per_day", discountValue: 500, validFrom: "2026-03-11" })] }).discountCents, 1000);
+  assert.equal(pq({ promotions: [promo({ discountType: "per_day", discountValue: 99999 })] }).discountCents, 10500);
+});
+
+test("per_rental: μία φορά· το σήμα είναι το κείμενο της προσφοράς", () => {
+  const r = pq({ promotions: [promo({ discountType: "per_rental", discountValue: 2000 })] });
+  assert.equal(r.discountCents, 2000);
+  assert.deepEqual(r.discountBadge, { el: "Προσφορά φθινοπώρου", en: "Autumn offer" });
+});
+
+test("minDays: κάτω από το όριο δεν ισχύει", () => {
+  assert.equal(pq({ promotions: [promo({ minDays: 4 })] }).discountCents, 0);
+  assert.equal(pq({ promotions: [promo({ minDays: 3 })] }).discountCents, 1575);
+});
+
+test("τοποθεσία επιστροφής (locationMatch 'dropoff')", () => {
+  const p = promo({ locationIds: ["port"], locationMatch: "dropoff" });
+  assert.equal(pq({ promotions: [p], pickupLocation: AIRPORT, dropoffLocation: PORT }).discountCents, 1575);
+  assert.equal(pq({ promotions: [p], pickupLocation: PORT, dropoffLocation: AIRPORT }).discountCents, 0);
+  const either = promo({ locationIds: ["port"], locationMatch: "either" });
+  assert.equal(pq({ promotions: [either], pickupLocation: PORT, dropoffLocation: AIRPORT }).discountCents, 1575);
+  const pick = promo({ locationIds: ["port"], locationMatch: "pickup" });
+  assert.equal(pq({ promotions: [pick], pickupLocation: AIRPORT, dropoffLocation: PORT }).discountCents, 0);
+});
+
+test("χωρίς άθροισμα: γραφείο -10% vs προσφορά -15% → κερδίζει η μεγαλύτερη, η άλλη φαίνεται ως «έχασε»", () => {
+  const r = pq({ pickupLocation: OFFICE, promotions: [promo()] });
+  assert.equal(r.lines.filter((l) => l.kind === "discount").length, 1);
+  assert.equal(r.discountCents, 1575);
+  assert.equal(r.discounts.applied.source, "promotion");
+  assert.deepEqual(r.discounts.others.map((o) => [o.source, o.amountCents]), [["location", 1050]]);
+  const small = pq({ pickupLocation: OFFICE, promotions: [promo({ discountValue: 5 })] });
+  assert.equal(small.discounts.applied.source, "location");
+  assert.equal(small.discountCents, 1050);
+});
+
+test("ισοπαλία: κερδίζει η μικρότερη sortOrder", () => {
+  const r = pq({ promotions: [promo({ id: "b", sortOrder: 5 }), promo({ id: "a", sortOrder: 1 })] });
+  assert.equal(r.discounts.applied.id, "a");
+  assert.equal(r.discounts.others[0].id, "b");
+});
+
+test("ανενεργή ή ληγμένη προσφορά δεν ισχύει", () => {
+  assert.equal(pq({ promotions: [promo({ isActive: false })] }).discountCents, 0);
+  assert.equal(pq({ promotions: [promo({ validFrom: "2025-01-01", validTo: "2025-12-31" })] }).discountCents, 0);
+  assert.equal(pq({ promotions: [promo({ validFrom: "2026-04-01", validTo: "2026-04-30" })] }).discountCents, 0);
+});
+
+test("extras, ασφάλεια, ηλικία και χρεώσεις δρομολογίου ΔΕΝ εκπτώνονται", () => {
+  const gps = { id: "gps", name: { el: "GPS" }, priceType: "per_rental", priceCents: 1000, maxTotalCents: null, maxQuantity: 1, vehicleTypes: [] };
+  const ins = { id: "ins", name: { el: "Πλήρης" }, priceType: "per_day", priceCents: 1000, maxTotalCents: null, maxQuantity: 1, vehicleTypes: [] };
+  const r = pq({
+    promotions: [promo({ discountValue: 50 })],
+    pickupLocation: HER,
+    extras: [{ charge: gps, qty: 1 }],
+    insurance: ins,
+    driverAge: 21,
+  });
+  assert.equal(r.discountCents, Math.round(10500 * 0.5), "μόνο το ενοίκιο");
+  const notRental = r.lines.filter((l) => !["rental", "discount"].includes(l.kind)).reduce((s, l) => s + l.totalCents, 0);
+  assert.equal(r.totalCents, 10500 - 5250 + notRental);
+  assert.equal(r.listTotalCents, r.totalCents + r.discountCents);
+});
+
+test("fromPrice: προσφορά χωρίς τοποθεσία μετρά (με badge)· με τοποθεσία όχι", () => {
+  const r = fromPrice(GROUP_TARGET, RATES, SEASONS, "2026-03-01", { promotions: [promo({ discountValue: 50 })] });
+  assert.equal(r.dailyCents, 1300, "2600 × 50%");
+  assert.equal(r.listDailyCents, 2600);
+  assert.deepEqual(r.badge, { el: "-50%", en: "-50%" });
+  const withLoc = fromPrice(GROUP_TARGET, RATES, SEASONS, "2026-03-01", { promotions: [promo({ discountValue: 50, locationIds: ["office"] })] });
+  assert.equal(withLoc.dailyCents, 2600);
+  assert.equal(withLoc.badge, null);
 });

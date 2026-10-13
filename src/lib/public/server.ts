@@ -9,10 +9,13 @@ import { db } from "../db";
 import { normalizeStorefrontSettings } from "../storefront/settings";
 import { toCents, toCentsOrNull } from "./money";
 import { readLocalized } from "./text";
+import { migrateLegacyFixed } from "./pricing";
+import { isoDate } from "./resources";
 import type {
   AgeBandInput,
   ChargeInput,
   LocationInput,
+  PromotionInput,
   QuoteSettings,
   RateInput,
   SeasonInput,
@@ -46,6 +49,7 @@ export interface QuoteContext {
   seasons: SeasonInput[];
   locations: (LocationInput & { isActive: boolean })[];
   ageBands: AgeBandInput[];
+  promotions: PromotionInput[];
   extras: (ChargeInput & { kind: "EXTRA" | "INSURANCE"; isActive: boolean })[];
   /** Ομάδες και οχήματα χωρίς ομάδα, με τα rates τους. */
   groups: Map<string, { target: TargetInput; rates: RateInput[] }>;
@@ -53,7 +57,7 @@ export interface QuoteContext {
 }
 
 export async function loadQuoteContext(companyId: string): Promise<QuoteContext | null> {
-  const [tenant, seasons, locations, ageBands, extras, groups, vehicles, rates] = await Promise.all([
+  const [tenant, seasons, locations, ageBands, extras, groups, vehicles, rates, promotions] = await Promise.all([
     db.tenant.findUnique({ where: { id: companyId }, select: { vatRate: true, storefrontSettings: true } }),
     db.season.findMany({ where: { tenantId: companyId } }),
     db.pickupLocation.findMany({ where: { tenantId: companyId } }),
@@ -62,9 +66,10 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
     db.rentalGroup.findMany({ where: { tenantId: companyId } }),
     db.vehicle.findMany({
       where: { tenantId: companyId, isActive: true },
-      select: { id: true, dailyRate: true, vehicleType: true },
+      select: { id: true, dailyRate: true, vehicleType: true, rentalGroupId: true },
     }),
     db.rate.findMany({ where: { tenantId: companyId } }),
+    db.promotion.findMany({ where: { tenantId: companyId }, orderBy: [{ sortOrder: "asc" }] }),
   ]);
   if (!tenant) return null;
   const booking = normalizeStorefrontSettings(tenant.storefrontSettings).booking;
@@ -91,7 +96,8 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
       priority: s.priority,
       sortOrder: s.sortOrder,
     })),
-    locations: locations.map((l) => ({
+    // migrateLegacyFixed: ίδιος κανόνας με το SQL 21c, για όποια γραμμή δεν έχει περάσει ακόμα.
+    locations: locations.map((l) => migrateLegacyFixed({
       id: l.id,
       name: readLocalized(l.name),
       adjustmentType: l.adjustmentType === "percent" || l.adjustmentType === "fixed" ? l.adjustmentType : "none",
@@ -101,6 +107,27 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
       allowPickup: l.allowPickup,
       allowDropoff: l.allowDropoff,
       isActive: l.isActive,
+      deliveryFeeCents: l.deliveryFeeCents,
+      collectionFeeCents: l.collectionFeeCents,
+      feeFreeFromDays: l.feeFreeFromDays,
+      feeLabel: readLocalized(l.feeLabel),
+    }) as LocationInput & { isActive: boolean }),
+    promotions: promotions.map((p) => ({
+      id: p.id,
+      name: readLocalized(p.name),
+      badge: readLocalized(p.badge),
+      isActive: p.isActive,
+      discountType: p.discountType === "per_day" || p.discountType === "per_rental" ? p.discountType : "percent",
+      discountValue: p.discountValue,
+      validFrom: isoDate(p.validFrom),
+      validTo: isoDate(p.validTo),
+      locationIds: p.locationIds,
+      locationMatch: p.locationMatch === "dropoff" || p.locationMatch === "either" ? p.locationMatch : "pickup",
+      rentalGroupIds: p.rentalGroupIds,
+      vehicleIds: p.vehicleIds,
+      vehicleTypes: p.vehicleTypes,
+      minDays: p.minDays,
+      sortOrder: p.sortOrder,
     })),
     ageBands: ageBands.map((b) => ({
       minAge: b.minAge,
@@ -134,6 +161,8 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
         {
           target: {
             vehicleType: asVehicleType(g.vehicleType),
+            rentalGroupId: g.id,
+            vehicleId: null,
             basePriceCents: g.basePriceCents,
             depositCents: g.depositCents,
             excessCents: g.excessCents,
@@ -149,6 +178,8 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
         {
           target: {
             vehicleType: asVehicleType(v.vehicleType),
+            rentalGroupId: v.rentalGroupId,
+            vehicleId: v.id,
             basePriceCents: toCents(v.dailyRate),
             depositCents: null,
             excessCents: null,

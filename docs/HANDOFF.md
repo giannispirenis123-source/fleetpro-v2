@@ -450,6 +450,8 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 - **Dashboard «Η σελίδα μου» → «Εμφάνιση»:** πάνω πάνω κουτί «Η δημόσια σελίδα σου» με τα πλήρη links ανά γλώσσα (από `window.location.origin`, όχι env — σωστό σε production και preview), «Άνοιγμα» (νέα καρτέλα) και «Αντιγραφή». Χωρίς slug: «Βάλε διεύθυνση σελίδας (slug) και αποθήκευσε.» Αν η σελίδα δεν είναι ανοιχτή: κόκκινο μήνυμα με τον λόγο (μόνο εδώ, ποτέ στο δημόσιο).
 - **Tests:** `tests/storefront-visibility.test.mjs` (ταίριασμα slug, middleware redirect, φόρμα, άγνωστο slug / ανενεργή / χωρίς publicSite → 404, ενεργή → 200, override, αναστολή, μη έγκυρη γλώσσα, προορισμοί redirect). Τοπικά HTTP: όλα τα παραπάνω + `/s/Fleet-Pro-Chania` → 308, `/gr` → 307 `/el`, ανενεργή → 404, `planKey='dashboard'` → 404, άγνωστο → 404.
 
+- **Συνέχεια (screenshot του Giannis):** το 404 είχε τίτλο «404: This page could not be found.». Αυτός ο τίτλος βγαίνει **μόνο** σε διεύθυνση που δεν υπάρχει καθόλου, για χρήστη ήδη συνδεδεμένο — δηλαδή στη **ρίζα `/` του preview** (το link του PR/Vercel ανοίγει τη ρίζα, που δεν είχε σελίδα). Το 404 του δημόσιου site έχει άλλο τίτλο («FleetPro — …»), άρα δεν ήταν το `/s/…`. **Διόρθωση:** `src/app/page.tsx` — η ρίζα πάει σε `/dashboard` (ή `/super-admin`, ή `/login` χωρίς συνεδρία). Φιλικό 404 στα ελληνικά (`src/app/not-found.tsx`) και ξεχωριστό, ουδέτερο 404 για το δημόσιο site (`src/app/(storefront)/s/[slug]/not-found.tsx`, χωρίς link προς το FleetPro).
+
 ### Δημόσιο site — design (PR 2)
 
 Αναφορά: **prentals.gr**. Να κρατήσουμε:
@@ -539,6 +541,7 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 | Commit | Τι |
 |---|---|
+| _(PR #23, 5ο commit)_ | Η ρίζα `/` οδηγεί σε dashboard/super-admin/login (ήταν 404 στο link του preview), φιλικά 404 (εφαρμογή + δημόσιο site). Χωρίς SQL |
 | _(PR #23, 4ο commit)_ | 404 δημόσιου site: μία πηγή αλήθειας `visibility.ts`, slug ανεκτικό σε κεφαλαία/κενά/τόνους (308), μη έγκυρη γλώσσα → redirect, λόγος 404 στα logs, κουτί «Η δημόσια σελίδα σου» στην «Εμφάνιση». Χωρίς SQL |
 | _(branch `claude/public-site-home-search`)_ | Δημόσιο site 2/4: `/s/<slug>/<lang>` με hero + αναζήτηση, `/search` με καρτέλες τύπου, κάρτες ομάδων («ή παρόμοιο», τιμή από quote(), «Μόνο Ν διαθέσιμα»), διαθεσιμότητα από `bookings` (ένα query, `availability.ts`), προσωρινή `/book`, `<html lang>`, noindex. Χωρίς SQL |
 | `d9742fe` | Merge του PR #22 (δημόσιο site 1/4). Migrations `21`, `21b`, `21c` |

@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 14/10/2026 · **main:** `d9742fe` (merge του PR #22 — δημόσιο site 1/4, SQL `21`, `21b`, `21c` έχουν τρέξει). **Ανοιχτό:** branch `claude/public-site-home-search` — **Δημόσιο site 2/4: αρχική με hero και αναζήτηση, κάρτες ομάδων, διαθεσιμότητα** (§5.4). **Χωρίς νέο SQL.** Επόμενος ελεύθερος αριθμός SQL: `22`.
+**Ημερομηνία:** 14/10/2026 · **main:** `d9742fe` (merge του PR #22 — δημόσιο site 1/4, SQL `21`, `21b`, `21c` έχουν τρέξει). **Ανοιχτό:** PR #23, branch `claude/public-site-home-search` — **Δημόσιο site 2/4: αρχική με hero και αναζήτηση, κάρτες ομάδων, διαθεσιμότητα** (§5.4) + διόρθωση 404 και κουτί «Η δημόσια σελίδα σου» (§5.4.1). **Χωρίς νέο SQL.** Επόμενος ελεύθερος αριθμός SQL: `22`.
 
 > **Επόμενο βήμα:** δοκιμή του PR 2 στο preview και merge· μετά PR 3 (φόρμα κράτησης). Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
@@ -433,6 +433,23 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 **Γνωστά / για αργότερα:** τα URL του Cloudinary περιέχουν τον φάκελο `fleetpro/{companyId}/…`, άρα το εσωτερικό id της εταιρίας φαίνεται στις διευθύνσεις φωτογραφιών (ισχύει από το PR #19, όχι νέο)· διόρθωση μόνο με νέα ονομασία φακέλων.
 
+#### 5.4.1 404 στο preview του PR #23 — διάγνωση και διόρθωση
+
+**Αναφορά:** στο preview η δημόσια σελίδα της demo έβγαζε «This page could not be found», ενώ στο «Η σελίδα μου» ήταν ενεργή με publicSite. Δεν ήταν γνωστό το ακριβές URL.
+
+**Διάγνωση (τοπικά, PostgreSQL 16 με `01 → 21c` + demo, slug `fleet-pro-chania`):**
+- `/s/<slug>` → 307 σε `/s/<slug>/el` · `/el`, `/en` → 200 · `/el/search` χωρίς κριτήρια → 307 στην αρχική, με κριτήρια → 200 · `/el/book` χωρίς κριτήρια → 307, με κριτήρια → 200 · `/s/<slug>/v/<id>` → 307 σε `/el/v/<id>` → 200.
+- **Δεν αναπαράχθηκε** 404 με σωστό URL. Ο κανόνας «ενεργή + publicSite» ήταν ήδη ίδιος σε dashboard και site: ίδια στήλη `tenants."storefrontEnabled"` (ο διακόπτης της καρτέλας «Σελίδα»), ίδια στήλη `tenants."storefrontSlug"` (όχι μέσα στο JSON), ίδιο `resolveEntitlements` για το publicSite. Δεν υπάρχει `generateStaticParams`· όλες οι σελίδες `force-dynamic`· το middleware αφήνει ελεύθερα τα `/s/*`.
+- **Βρέθηκαν δύο πραγματικές αιτίες 404 σε ενεργή σελίδα:** (1) slug στο URL όχι ακριβώς πεζό (π.χ. `/s/Fleet-Pro-Chania` από αυτόματο κεφαλαίο του κινητού, κενό, τόνος, `%20`) — ο κώδικας ζητούσε ακριβές ταίριασμα· (2) γλώσσα που δεν υποστηρίζεται (`/s/<slug>/gr`, `/fr`, ή `/en` όταν τα αγγλικά είναι κλειστά) — ο νέος κανόνας του PR #23 «πάντα με γλώσσα» το έκανε 404. Επιπλέον, ο server **δεν έγραφε πουθενά** γιατί έβγαλε 404, άρα τα Logs του Vercel δεν βοηθούσαν.
+
+**Διόρθωση:**
+- **ΜΙΑ πηγή αλήθειας:** `src/lib/storefront/visibility.ts` → `storefrontVisibility` / `storefrontRowVisibility` (slug + `storefrontEnabled` + publicSite + όχι SUSPENDED/CANCELLED). Τη χρησιμοποιούν το `resolveStorefrontCompany` (404) και το `GET/PATCH /api/public-site/settings` (κατάσταση στο dashboard, με λόγο).
+- 404 μένει μόνο για άγνωστο slug, ανενεργή σελίδα, χωρίς publicSite (και αναστολή) — **ίδιο 404** προς τα έξω. Ο λόγος γράφεται μόνο στα logs: `[FleetPro] site 404 { slug, reason }` (`unknown_slug` / `disabled` / `no_public_site` / `suspended` / `no_slug`). **Για διάγνωση στο Vercel:** Logs → φίλτρο «site 404».
+- **Slug ανεκτικό στο URL:** `canonicalSlug` (κεφαλαία → πεζά, κενά, τόνοι, `%20`)· το middleware κάνει **308** στην κανονική διεύθυνση (`canonicalSitePath`, και `/EL` → `/el`). Η φόρμα μένει αυστηρή (μόνο μικρά λατινικά, αριθμοί, παύλα — καθαρό ελληνικό μήνυμα), μοναδικό σε όλη τη βάση (UNIQUE `tenants_storefrontSlug_key` + έλεγχος στο API).
+- **Μη έγκυρη γλώσσα:** redirect (όχι 404) στην ίδια σελίδα με τα ίδια κριτήρια· `/gr` → `/el`, άγνωστη → προεπιλεγμένη (`chooseLanguage` στο `slug.ts`).
+- **Dashboard «Η σελίδα μου» → «Εμφάνιση»:** πάνω πάνω κουτί «Η δημόσια σελίδα σου» με τα πλήρη links ανά γλώσσα (από `window.location.origin`, όχι env — σωστό σε production και preview), «Άνοιγμα» (νέα καρτέλα) και «Αντιγραφή». Χωρίς slug: «Βάλε διεύθυνση σελίδας (slug) και αποθήκευσε.» Αν η σελίδα δεν είναι ανοιχτή: κόκκινο μήνυμα με τον λόγο (μόνο εδώ, ποτέ στο δημόσιο).
+- **Tests:** `tests/storefront-visibility.test.mjs` (ταίριασμα slug, middleware redirect, φόρμα, άγνωστο slug / ανενεργή / χωρίς publicSite → 404, ενεργή → 200, override, αναστολή, μη έγκυρη γλώσσα, προορισμοί redirect). Τοπικά HTTP: όλα τα παραπάνω + `/s/Fleet-Pro-Chania` → 308, `/gr` → 307 `/el`, ανενεργή → 404, `planKey='dashboard'` → 404, άγνωστο → 404.
+
 ### Δημόσιο site — design (PR 2)
 
 Αναφορά: **prentals.gr**. Να κρατήσουμε:
@@ -522,6 +539,7 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 | Commit | Τι |
 |---|---|
+| _(PR #23, 4ο commit)_ | 404 δημόσιου site: μία πηγή αλήθειας `visibility.ts`, slug ανεκτικό σε κεφαλαία/κενά/τόνους (308), μη έγκυρη γλώσσα → redirect, λόγος 404 στα logs, κουτί «Η δημόσια σελίδα σου» στην «Εμφάνιση». Χωρίς SQL |
 | _(branch `claude/public-site-home-search`)_ | Δημόσιο site 2/4: `/s/<slug>/<lang>` με hero + αναζήτηση, `/search` με καρτέλες τύπου, κάρτες ομάδων («ή παρόμοιο», τιμή από quote(), «Μόνο Ν διαθέσιμα»), διαθεσιμότητα από `bookings` (ένα query, `availability.ts`), προσωρινή `/book`, `<html lang>`, noindex. Χωρίς SQL |
 | `d9742fe` | Merge του PR #22 (δημόσιο site 1/4). Migrations `21`, `21b`, `21c` |
 | _(branch `claude/public-site-settings`, 3ο commit)_ | Χρεώσεις δρομολογίου ανά σκέλος (παράδοση/παραλαβή, δωρεάν από Ν ημέρες), προσφορές με ημερομηνίες (πίνακας `promotions`, καρτέλα «Προσφορές»), κανόνας «μόνο η μεγαλύτερη έκπτωση», «Ποσά» για γρήγορη αλλαγή χρεώσεων. Migration `21c` |

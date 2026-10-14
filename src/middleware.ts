@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 import { PUBLIC_CONTRACT_PATH_RE } from "@/lib/contractLink";
 import { SITE_LANG_HEADER } from "@/lib/storefront/lang";
+import { canonicalSitePath } from "@/lib/storefront/slug";
 
 // Routes που δεν χρειάζονται auth
 const PUBLIC_ROUTES = ["/login", "/api/auth/login"];
@@ -42,6 +43,14 @@ export async function middleware(req: NextRequest) {
   // Η γλώσσα του URL (/s/<slug>/<lang>/…) περνά στο root layout για το
   // <html lang>. Αναζήτηση και περίληψη κράτησης: noindex.
   if (pathname.startsWith("/s/")) {
+    // Slug/γλώσσα με κεφαλαία, κενά ή τόνους (π.χ. από το πληκτρολόγιο του
+    // κινητού) → η κανονική διεύθυνση, αντί για 404.
+    const canonical = canonicalSitePath(pathname);
+    if (canonical) {
+      const url = req.nextUrl.clone();
+      url.pathname = canonical;
+      return NextResponse.redirect(url, 308);
+    }
     const headers = new Headers(req.headers);
     const lang = pathname.split("/")[3] ?? "";
     if (/^[a-z]{2}$/.test(lang)) headers.set(SITE_LANG_HEADER, lang);

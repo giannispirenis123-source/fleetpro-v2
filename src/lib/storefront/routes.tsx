@@ -44,6 +44,15 @@ export interface StorefrontParams {
 type SearchParams = Record<string, string | string[] | undefined>;
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/** Τα query params όπως ήρθαν (για να κρατηθούν σε redirect γλώσσας). */
+function rawQuery(sp: SearchParams = {}): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    for (const x of Array.isArray(v) ? v : v === undefined ? [] : [v]) q.append(k, x);
+  }
+  return q.toString();
+}
 const sortOf = (sp: SearchParams): SortOrder => {
   const s = first(sp.sort);
   return isSortOrder(s) ? s : "price_asc";
@@ -94,8 +103,8 @@ async function catalogOr404(companyId: string) {
    Αρχική
    ───────────────────────────────────────────── */
 
-export async function storefrontHomeMetadata(p: StorefrontParams): Promise<Metadata> {
-  const { company, lang } = await openStorefront(p.slug, p.lang);
+export async function storefrontHomeMetadata(p: StorefrontParams, sp: SearchParams = {}): Promise<Metadata> {
+  const { company, lang } = await openStorefront(p.slug, p.lang, "", rawQuery(sp));
   const s = company.settings;
   const description = textFor(s.theme.heroSubtitle, lang) || pickText(s.tagline, lang, s.defaultLanguage) || undefined;
   const title = homeTitle(company, lang);
@@ -111,7 +120,7 @@ export async function storefrontHomeMetadata(p: StorefrontParams): Promise<Metad
 }
 
 export async function StorefrontHomePage({ params, searchParams = {} }: { params: StorefrontParams; searchParams?: SearchParams }) {
-  const { company, companyId, lang } = await openStorefront(params.slug, params.lang);
+  const { company, companyId, lang } = await openStorefront(params.slug, params.lang, "", rawQuery(searchParams));
   const cat = await catalogOr404(companyId);
   const initial = defaultCriteria(cat.rules);
   return (
@@ -130,8 +139,8 @@ export async function StorefrontHomePage({ params, searchParams = {} }: { params
    Αναζήτηση — noindex
    ───────────────────────────────────────────── */
 
-export async function storefrontSearchMetadata(p: StorefrontParams): Promise<Metadata> {
-  const { company, lang } = await openStorefront(p.slug, p.lang);
+export async function storefrontSearchMetadata(p: StorefrontParams, sp: SearchParams = {}): Promise<Metadata> {
+  const { company, lang } = await openStorefront(p.slug, p.lang, "search", rawQuery(sp));
   const d = storefrontDictionary(lang);
   return {
     title: `${d.resultsTitle} — ${company.name}`,
@@ -141,7 +150,7 @@ export async function storefrontSearchMetadata(p: StorefrontParams): Promise<Met
 }
 
 export async function StorefrontSearchPage({ params, searchParams }: { params: StorefrontParams; searchParams: SearchParams }) {
-  const { company, companyId, lang } = await openStorefront(params.slug, params.lang);
+  const { company, companyId, lang } = await openStorefront(params.slug, params.lang, "search", rawQuery(searchParams));
   if (!hasSearch(searchParams)) redirect(storefrontPath(company.slug, lang));
   const cat = await catalogOr404(companyId);
   const d = storefrontDictionary(lang);
@@ -178,8 +187,8 @@ export async function StorefrontSearchPage({ params, searchParams }: { params: S
    Περίληψη κράτησης (μέχρι το PR 3) — noindex
    ───────────────────────────────────────────── */
 
-export async function storefrontBookMetadata(p: StorefrontParams): Promise<Metadata> {
-  const { company, lang } = await openStorefront(p.slug, p.lang);
+export async function storefrontBookMetadata(p: StorefrontParams, sp: SearchParams = {}): Promise<Metadata> {
+  const { company, lang } = await openStorefront(p.slug, p.lang, "book", rawQuery(sp));
   const d = storefrontDictionary(lang);
   return {
     title: `${company.rentalMode === "REQUEST" ? d.requestTitle : d.bookTitle} — ${company.name}`,
@@ -188,7 +197,7 @@ export async function storefrontBookMetadata(p: StorefrontParams): Promise<Metad
 }
 
 export async function StorefrontBookPage({ params, searchParams }: { params: StorefrontParams; searchParams: SearchParams }) {
-  const { company, companyId, lang } = await openStorefront(params.slug, params.lang);
+  const { company, companyId, lang } = await openStorefront(params.slug, params.lang, "book", rawQuery(searchParams));
   const key = first(searchParams.g);
   if (!hasSearch(searchParams) || !isCardKey(key)) redirect(storefrontPath(company.slug, lang));
   const cat = await catalogOr404(companyId);
@@ -228,13 +237,13 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
    ───────────────────────────────────────────── */
 
 export async function storefrontVehicleMetadata(p: StorefrontParams): Promise<Metadata> {
-  const { company, companyId } = await openStorefront(p.slug, p.lang);
+  const { company, companyId } = await openStorefront(p.slug, p.lang, { vehicleId: p.vehicleId ?? "" });
   const vehicle = p.vehicleId ? await loadPublicVehicle(companyId, p.vehicleId) : null;
   return { title: vehicle ? `${vehicle.brand} ${vehicle.model} — ${company.name}` : company.name };
 }
 
 export async function StorefrontVehiclePage({ params }: { params: StorefrontParams }) {
-  const { company, companyId, lang } = await openStorefront(params.slug, params.lang);
+  const { company, companyId, lang } = await openStorefront(params.slug, params.lang, { vehicleId: params.vehicleId ?? "" });
   const vehicle = params.vehicleId ? await loadPublicVehicle(companyId, params.vehicleId) : null;
   if (!vehicle) notFound();
   return <StorefrontVehicle company={company} vehicle={vehicle} lang={lang} />;

@@ -1271,6 +1271,13 @@ export const en: Dictionary = {
   },
 
   publicSite: {
+    siteBoxTitle: "Your public page",
+    siteOpenBtn: "Open",
+    siteCopyBtn: "Copy",
+    siteCopied: "Copied",
+    siteNoSlug: "Set a page address (slug) and save.",
+    siteHidden: "The page is not visible to the public yet (visitors see “not found”):",
+    siteGoToPage: "Open the “Page” tab",
     tabPromotions: "Offers",
     copy: "Duplicate",
     copySuffix: "copy",

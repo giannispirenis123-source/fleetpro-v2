@@ -90,8 +90,10 @@ export default function DateRangePicker({ start, end, minDate, maxDate, d, onCha
     if (!open) return;
     const el = dialogRef.current?.querySelector<HTMLButtonElement>(`[data-date="${draftStart}"]`)
       ?? dialogRef.current?.querySelector<HTMLButtonElement>("button[data-date]:not([disabled])");
-    el?.focus();
-    el?.scrollIntoView({ block: "center" });
+    // Κύλιση ΜΟΝΟ της λίστας μηνών (όχι της σελίδας/του παραθύρου).
+    const list = dialogRef.current?.querySelector<HTMLElement>(".sf-cal-months");
+    if (el && list) list.scrollTop = Math.max(0, el.offsetTop - 80);
+    el?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 

@@ -110,6 +110,15 @@ export const vehicleKey = (id: string) => `v.${id}`;
 const KEY_RE = /^(g\.[A-Z0-9][A-Z0-9-]{0,19}|v\.[A-Za-z0-9_-]{1,64})$/;
 export const isCardKey = (k: unknown): k is string => typeof k === "string" && KEY_RE.test(k);
 
+/**
+ * Το «παρόμοιο μοντέλο» χωρίς το «ή παρόμοιο» / «or similar» στο τέλος (το
+ * προσθέτει το λεξικό της σελίδας). Τα demo δεδομένα και πολλοί χρήστες το
+ * γράφουν ήδη μέσα στο κείμενο.
+ */
+export function similarModelName(text: string): string {
+  return text.replace(/[\s,·-]*(ή|or|ou|oder|o|lub)\s+(παρόμοιο|παρόμοια|similar|similaire|ähnlich|simile|podobny)\.?\s*$/iu, "").trim();
+}
+
 /** Ορατά οχήματα: ενεργά, όχι «Ανενεργό» (σε service μετρούν ως ύπαρξη, όχι ως διαθέσιμα). */
 const listed = (v: CatalogVehicle) => v.isActive && v.status !== "INACTIVE";
 
@@ -123,7 +132,7 @@ export function buildCards(groups: CatalogGroup[], vehicles: CatalogVehicle[], l
   for (const g of groups) {
     const members = vehicles.filter((v) => v.rentalGroupId === g.id && listed(v));
     if (members.length === 0) continue;
-    const similar = textFor(g.similarModels, lang).trim();
+    const similar = similarModelName(textFor(g.similarModels, lang));
     cards.push({
       key: groupKey(g.code),
       type: asVehicleType(g.vehicleType),

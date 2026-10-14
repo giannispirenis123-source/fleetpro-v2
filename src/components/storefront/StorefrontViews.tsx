@@ -312,7 +312,7 @@ export function StorefrontSearch({
     <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, "search", query)}>
       <section className="sf-search-band">
         <div className="sf-wrap">
-          <h1 className="sf-h1 sf-h1--dark sf-h1--sm">{d.resultsTitle}</h1>
+          <h1 className="sf-h1 sf-h1--dark sf-h1--sm">{d.searchTitle}</h1>
           <SearchBox {...search} lang={lang} d={d} serverProblems={problems} compact />
         </div>
       </section>
@@ -399,7 +399,7 @@ export function StorefrontBook({
         ) : (
           <div className="sf-book-grid">
             <div>
-              <GroupCard card={{ ...card, bookHref: null }} mode="search" rentalMode={company.rentalMode} lang={lang} d={d} eager />
+              <GroupCard card={card} summary mode="search" rentalMode={company.rentalMode} lang={lang} d={d} eager />
             </div>
             <div className="sf-book-panel">
               <dl className="sf-dl sf-dl--left">

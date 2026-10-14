@@ -104,8 +104,8 @@ function Specs({ card, d }: { card: ResultCard; d: StorefrontDictionary }) {
   items.push({ icon: <Cog size={15} aria-hidden />, text: d.transmissions[s.transmission] ?? s.transmission });
   items.push({ icon: <Fuel size={15} aria-hidden />, text: d.fuels[s.fuel] ?? s.fuel });
   if (s.engineCc && card.type !== "car") items.push({ icon: <Gauge size={15} aria-hidden />, text: fill(d.engineCc, { n: s.engineCc }) });
-  if (s.bagsLarge > 0) items.push({ icon: <Briefcase size={15} aria-hidden />, text: fill(d.bagsN, { n: s.bagsLarge }) });
-  if (s.bagsSmall > 0) items.push({ icon: <Briefcase size={13} aria-hidden />, text: fill(d.smallBagsN, { n: s.bagsSmall }) });
+  if (s.bagsLarge > 0) items.push({ icon: <Briefcase size={15} aria-hidden />, text: s.bagsLarge === 1 ? d.bagsOne : fill(d.bagsN, { n: s.bagsLarge }) });
+  if (s.bagsSmall > 0) items.push({ icon: <Briefcase size={13} aria-hidden />, text: s.bagsSmall === 1 ? d.smallBagsOne : fill(d.smallBagsN, { n: s.bagsSmall }) });
   if (card.type === "car" && s.doors) items.push({ icon: <DoorOpen size={15} aria-hidden />, text: fill(d.doorsN, { n: s.doors }) });
   if (s.ac && card.type === "car") items.push({ icon: <Snowflake size={15} aria-hidden />, text: d.acShort });
   return (
@@ -127,6 +127,7 @@ export function GroupCard({
   lang,
   d,
   eager,
+  summary,
 }: {
   card: ResultCard;
   mode: "home" | "search";
@@ -134,6 +135,8 @@ export function GroupCard({
   lang: string;
   d: StorefrontDictionary;
   eager?: boolean;
+  /** Στην περίληψη κράτησης: τιμή χωρίς κουμπί. */
+  summary?: boolean;
 }) {
   const off = mode === "search" && !c.bookHref;
   const badge = mode === "search" ? c.price?.badge : c.from?.badge;
@@ -187,9 +190,11 @@ export function GroupCard({
                   </span>
                   <span className="sf-gcard-daily">{fill(d.perDay, { price: formatCents(c.price.avgDailyCents, lang) })}</span>
                 </div>
-                <a href={c.bookHref!} className="sf-btn sf-btn--primary">
-                  {rentalMode === "REQUEST" ? d.requestBooking : d.bookNow}
-                </a>
+                {!summary && (
+                  <a href={c.bookHref!} className="sf-btn sf-btn--primary">
+                    {rentalMode === "REQUEST" ? d.requestBooking : d.bookNow}
+                  </a>
+                )}
               </>
             ) : null
           ) : (

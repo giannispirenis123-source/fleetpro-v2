@@ -28,7 +28,7 @@ const {
   TIME_SLOTS,
   hasSearch,
 } = await import("../src/lib/public/search.ts");
-const { buildCards, typeTabs, filterByType, sortCards, vehicleCardKey, isCardKey } = await import("../src/lib/public/catalog.ts");
+const { buildCards, typeTabs, filterByType, sortCards, vehicleCardKey, isCardKey, similarModelName } = await import("../src/lib/public/catalog.ts");
 const { textFor } = await import("../src/lib/public/text.ts");
 const { htmlLang } = await import("../src/lib/storefront/lang.ts");
 const { formatDay, storefrontDictionary } = await import("../src/lib/storefront/i18n.ts");
@@ -390,6 +390,16 @@ test("κάρτες: fallback γλώσσας ζητούμενη → en → el →
   assert.equal(textFor({ el: "Γεια" }, "en"), "Γεια");
   assert.equal(textFor({ de: "Hallo" }, "en"), "Hallo");
   assert.equal(textFor(null, "el"), "");
+});
+
+test("«ή παρόμοιο» δεν διπλασιάζεται όταν είναι ήδη στο κείμενο", () => {
+  assert.equal(similarModelName("Fiat Panda ή παρόμοιο"), "Fiat Panda");
+  assert.equal(similarModelName("Fiat Panda or similar"), "Fiat Panda");
+  assert.equal(similarModelName("Fiat Panda, or Similar."), "Fiat Panda");
+  assert.equal(similarModelName("Fiat Panda"), "Fiat Panda");
+  const groups = [{ ...GROUPS[0], similarModels: { el: "Fiat Panda ή παρόμοιο", en: "Fiat Panda or similar" } }];
+  assert.equal(buildCards(groups, VEHICLES, "el")[0].similar, "Fiat Panda");
+  assert.equal(buildCards(groups, VEHICLES, "en")[0].similar, "Fiat Panda");
 });
 
 test("καρτέλες: μόνο τύποι με κάρτες, καμία με έναν τύπο· φίλτρο τύπου", () => {

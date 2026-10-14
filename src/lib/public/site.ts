@@ -148,7 +148,16 @@ async function loadCatalog(companyId: string): Promise<SiteCatalog | null> {
       defaultPickupTime: booking.defaultPickupTime,
       defaultDropoffTime: booking.defaultDropoffTime,
       defaultRentalDays: booking.defaultRentalDays,
-      seasons: ctx.seasons,
+      // Πάνε και στον browser: χωρίς τα εσωτερικά ids των σεζόν.
+      seasons: ctx.seasons.map((x, i) => ({
+        id: `s${i}`,
+        name: x.name,
+        startMonthDay: x.startMonthDay,
+        endMonthDay: x.endMonthDay,
+        minDays: x.minDays,
+        priority: x.priority,
+        sortOrder: x.sortOrder,
+      })),
       // Όλες οι κλίμακες (και οι μη επιτρεπτές), για σωστό μήνυμα ηλικίας.
       ageBands: ctx.ageBands.map((b) => ({
         minAge: b.minAge,

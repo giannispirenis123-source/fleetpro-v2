@@ -84,6 +84,8 @@ const en = {
   doorsN: "{n} doors",
   bagsN: "{n} suitcases",
   smallBagsN: "{n} small bags",
+  bagsOne: "1 suitcase",
+  smallBagsOne: "1 small bag",
   engineCc: "{n} cc",
   acShort: "A/C",
   // ── Περίληψη κράτησης ──
@@ -199,6 +201,8 @@ const el: Partial<StorefrontDictionary> = {
   doorsN: "{n} πόρτες",
   bagsN: "{n} βαλίτσες",
   smallBagsN: "{n} μικρές τσάντες",
+  bagsOne: "1 βαλίτσα",
+  smallBagsOne: "1 μικρή τσάντα",
   engineCc: "{n} cc",
   acShort: "A/C",
   bookTitle: "Η κράτησή σας",

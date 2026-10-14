@@ -85,7 +85,7 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
     const onPrefill = (e: Event) => {
       const t = (e as CustomEvent<{ type?: VehicleType }>).detail?.type ?? null;
       setType(t);
-      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      rootRef.current?.scrollIntoView({ block: "start" });
       setOpenSignal((n) => n + 1);
     };
     window.addEventListener(PREFILL_EVENT, onPrefill);

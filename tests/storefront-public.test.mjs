@@ -94,7 +94,7 @@ test("εταιρία: μόνο τα επιτρεπόμενα πεδία", () => 
   const pub = toPublicCompany(FULL_TENANT, "https://signed.example/logo.png");
   assert.deepEqual(
     Object.keys(pub).sort(),
-    ["address", "brandColor", "email", "logoUrl", "name", "phone", "region", "settings", "slug"]
+    ["address", "brandColor", "email", "logoUrl", "name", "phone", "region", "rentalMode", "settings", "slug"]
   );
   assert.equal(pub.slug, "chania-cars", "το δημόσιο slug, όχι το εσωτερικό");
   const json = JSON.stringify(pub);

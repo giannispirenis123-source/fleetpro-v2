@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth";
 import { PUBLIC_CONTRACT_PATH_RE } from "@/lib/contractLink";
+import { SITE_LANG_HEADER } from "@/lib/storefront/lang";
 
 // Routes που δεν χρειάζονται auth
 const PUBLIC_ROUTES = ["/login", "/api/auth/login"];
@@ -38,8 +39,18 @@ export async function middleware(req: NextRequest) {
   // Δημόσια σελίδα εταιρίας /s/<slug>/...: χωρίς login. Ποια εταιρία και
   // αν επιτρέπεται (ενεργή σελίδα + πακέτο με publicSite) το κρίνει ΜΟΝΟ το
   // resolveStorefrontCompany (src/lib/storefront/resolve.ts) — αλλιώς 404.
+  // Η γλώσσα του URL (/s/<slug>/<lang>/…) περνά στο root layout για το
+  // <html lang>. Αναζήτηση και περίληψη κράτησης: noindex.
   if (pathname.startsWith("/s/")) {
-    return NextResponse.next();
+    const headers = new Headers(req.headers);
+    const lang = pathname.split("/")[3] ?? "";
+    if (/^[a-z]{2}$/.test(lang)) headers.set(SITE_LANG_HEADER, lang);
+    else headers.delete(SITE_LANG_HEADER);
+    const res = NextResponse.next({ request: { headers } });
+    if (/^\/s\/[^/]+\/[a-z]{2}\/(search|book)\/?$/.test(pathname)) {
+      res.headers.set("X-Robots-Tag", "noindex, nofollow");
+    }
+    return res;
   }
 
   // Επιτρέπουμε public routes

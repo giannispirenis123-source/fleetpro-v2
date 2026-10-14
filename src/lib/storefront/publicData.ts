@@ -18,6 +18,8 @@ export interface PublicCompany {
   email: string | null;
   address: string | null;
   region: string | null;
+  /** Τρόπος κράτησης — ΜΟΝΗ πηγή: tenants.rentalMode (BOOKING = απευθείας, REQUEST = αίτημα). */
+  rentalMode: "BOOKING" | "REQUEST";
   settings: StorefrontSettings;
 }
 
@@ -61,6 +63,7 @@ export interface CompanySource {
   email: string | null;
   address: string | null;
   region: string | null;
+  rentalMode?: string | null;
   storefrontSettings: unknown;
 }
 
@@ -74,6 +77,7 @@ export function toPublicCompany(t: CompanySource, logoUrl: string | null): Publi
     email: t.email || null,
     address: t.address || null,
     region: t.region || null,
+    rentalMode: t.rentalMode === "REQUEST" ? "REQUEST" : "BOOKING",
     settings: publicSettings(normalizeStorefrontSettings(t.storefrontSettings)),
   };
 }

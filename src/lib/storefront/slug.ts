@@ -75,16 +75,19 @@ export function checkSlugAvailability(
 }
 
 /**
- * Η διεύθυνση μιας δημόσιας σελίδας. Η προεπιλεγμένη γλώσσα της εταιρίας
- * δεν μπαίνει στο URL (/s/<slug>)· οι άλλες ναι (/s/<slug>/en).
+ * Η διεύθυνση μιας δημόσιας σελίδας: ΠΑΝΤΑ με τη γλώσσα (/s/<slug>/<lang>),
+ * ώστε αρχική, αναζήτηση και κράτηση να έχουν την ίδια μορφή
+ * (/s/<slug>/<lang>/search, …/book, …/v/<id>). Το σκέτο /s/<slug> κάνει
+ * redirect στην προεπιλεγμένη γλώσσα.
+ * `page`: "" (αρχική), "search", "book", ή { vehicleId }.
  */
 export function storefrontPath(
   slug: string,
   lang: string,
-  defaultLanguage: string,
-  vehicleId?: string
+  page: "" | "search" | "book" | { vehicleId: string } = "",
+  query = ""
 ): string {
-  const langPart = lang === defaultLanguage ? "" : `/${lang}`;
-  const vehiclePart = vehicleId ? `/v/${encodeURIComponent(vehicleId)}` : "";
-  return `/s/${slug}${langPart}${vehiclePart}`;
+  const tail =
+    typeof page === "object" ? `/v/${encodeURIComponent(page.vehicleId)}` : page ? `/${page}` : "";
+  return `/s/${slug}/${lang}${tail}${query ? `?${query}` : ""}`;
 }

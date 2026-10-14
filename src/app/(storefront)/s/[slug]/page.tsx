@@ -1,9 +1,8 @@
-// Δημόσια σελίδα εταιρίας — βλ. src/lib/storefront/routes.tsx.
-import { StorefrontHomePage, storefrontHomeMetadata, type StorefrontParams } from "@/lib/storefront/routes";
+// /s/<slug> → /s/<slug>/<προεπιλεγμένη γλώσσα> — βλ. src/lib/storefront/page.ts.
+import { redirectToDefaultLanguage } from "@/lib/storefront/page";
 
 export const dynamic = "force-dynamic";
 
-export const generateMetadata = ({ params }: { params: StorefrontParams }) =>
-  storefrontHomeMetadata(params);
-
-export default StorefrontHomePage;
+export default async function StorefrontRoot({ params }: { params: { slug: string } }) {
+  return redirectToDefaultLanguage(params.slug);
+}

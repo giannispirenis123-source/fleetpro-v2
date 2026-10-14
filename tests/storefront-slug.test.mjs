@@ -65,9 +65,11 @@ test("μοναδικότητα: η μορφή ελέγχεται πρώτη", ()
   assert.equal(checkSlugAvailability("api", null, "tenant_a").reason, "reserved");
 });
 
-test("διευθύνσεις: η προεπιλεγμένη γλώσσα χωρίς πρόθεμα", () => {
-  assert.equal(storefrontPath("chania-cars", "el", "el"), "/s/chania-cars");
-  assert.equal(storefrontPath("chania-cars", "en", "el"), "/s/chania-cars/en");
-  assert.equal(storefrontPath("chania-cars", "en", "el", "veh1"), "/s/chania-cars/en/v/veh1");
-  assert.equal(storefrontPath("chania-cars", "el", "el", "veh1"), "/s/chania-cars/v/veh1");
+test("διευθύνσεις: πάντα με γλώσσα (/s/<slug>/<lang>)", () => {
+  assert.equal(storefrontPath("chania-cars", "el"), "/s/chania-cars/el");
+  assert.equal(storefrontPath("chania-cars", "en"), "/s/chania-cars/en");
+  assert.equal(storefrontPath("chania-cars", "en", { vehicleId: "veh1" }), "/s/chania-cars/en/v/veh1");
+  assert.equal(storefrontPath("chania-cars", "el", { vehicleId: "veh1" }), "/s/chania-cars/el/v/veh1");
+  assert.equal(storefrontPath("chania-cars", "el", "search", "from=x"), "/s/chania-cars/el/search?from=x");
+  assert.equal(storefrontPath("chania-cars", "en", "book"), "/s/chania-cars/en/book");
 });

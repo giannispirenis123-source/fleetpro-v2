@@ -45,10 +45,14 @@ export function groupPhotoFolder(companyId: string, groupId: string): string | n
   return `fleetpro/${companyId}/groups/${groupId}`;
 }
 
-/** fleetpro/{companyId}/site — εικόνες του δημόσιου site (hero). */
+/**
+ * fleetpro/{companyId}/site/hero — η φωτογραφία hero του δημόσιου site.
+ * (Παλιότερα ανεβάσματα ζουν στο fleetpro/{companyId}/site· σβήνονται κανονικά
+ * με το publicId τους όταν αντικατασταθούν.)
+ */
 export function sitePhotoFolder(companyId: string): string | null {
   if (!SAFE_SEGMENT_RE.test(companyId)) return null;
-  return `fleetpro/${companyId}/site`;
+  return `fleetpro/${companyId}/site/hero`;
 }
 
 /** Το publicId ανήκει ΑΚΡΙΒΩΣ σε αυτόν τον φάκελο (χωρίς υποφακέλους, χωρίς «..»). */

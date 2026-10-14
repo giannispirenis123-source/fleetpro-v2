@@ -52,6 +52,7 @@ export async function resolveStorefrontCompany(
       address: true,
       region: true,
       logoPath: true,
+      rentalMode: true,
       entitlementOverrides: true,
       entitlementPlan: { select: { key: true, name: true, modules: true, limits: true } },
     },

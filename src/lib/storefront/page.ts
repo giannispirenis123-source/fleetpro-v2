@@ -16,26 +16,24 @@ export interface StorefrontPage extends ResolvedStorefront {
 }
 
 /**
- * `langParam` = το τμήμα γλώσσας του URL (undefined στο /s/<slug>).
- * · Γλώσσα που δεν υποστηρίζει η εταιρία → 404.
- * · Η προεπιλεγμένη γλώσσα με πρόθεμα (/s/x/el όταν default = el) →
- *   redirect στο κανονικό URL χωρίς πρόθεμα.
+ * `langParam` = το τμήμα γλώσσας του URL (/s/<slug>/<lang>/…).
+ * Άγνωστη εταιρία ή γλώσσα που δεν υποστηρίζει η εταιρία → 404.
  */
-export async function openStorefront(
-  slug: string,
-  langParam: string | undefined,
-  vehicleId?: string
-): Promise<StorefrontPage> {
+export async function openStorefront(slug: string, langParam: string | undefined): Promise<StorefrontPage> {
   const resolved = await resolveOnce(slug);
-  if (!resolved) notFound();
-
-  const { supportedLanguages, defaultLanguage } = resolved.company.settings;
-  const lang = langParam ?? defaultLanguage;
-  if (!supportedLanguages.includes(lang)) notFound();
-  if (langParam !== undefined && langParam === defaultLanguage) {
-    redirect(storefrontPath(resolved.company.slug, lang, defaultLanguage, vehicleId));
-  }
-
-  return { ...resolved, lang };
+  if (!resolved || !langParam) notFound();
+  if (!resolved.company.settings.supportedLanguages.includes(langParam)) notFound();
+  return { ...resolved, lang: langParam };
 }
 
+/**
+ * Τα παλιά URL χωρίς γλώσσα (/s/<slug>, /s/<slug>/v/<id>) → η ίδια σελίδα
+ * στην προεπιλεγμένη γλώσσα της εταιρίας. Τα links που έχουν ήδη μοιραστεί
+ * συνεχίζουν να δουλεύουν.
+ */
+export async function redirectToDefaultLanguage(slug: string, vehicleId?: string): Promise<never> {
+  const resolved = await resolveOnce(slug);
+  if (!resolved) notFound();
+  const { company } = resolved;
+  redirect(storefrontPath(company.slug, company.settings.defaultLanguage, vehicleId ? { vehicleId } : ""));
+}

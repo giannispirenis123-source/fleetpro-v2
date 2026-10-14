@@ -1,9 +1,12 @@
-// Δημόσια σελίδα εταιρίας — βλ. src/lib/storefront/routes.tsx.
+// Αρχική του δημόσιου site /s/<slug>/<lang> — βλ. src/lib/storefront/routes.tsx.
 import { StorefrontHomePage, storefrontHomeMetadata, type StorefrontParams } from "@/lib/storefront/routes";
 
 export const dynamic = "force-dynamic";
 
-export const generateMetadata = ({ params }: { params: StorefrontParams }) =>
-  storefrontHomeMetadata(params);
+type Props = { params: StorefrontParams; searchParams: Record<string, string | string[] | undefined> };
 
-export default StorefrontHomePage;
+export const generateMetadata = ({ params }: Props) => storefrontHomeMetadata(params);
+
+export default function Page(props: Props) {
+  return StorefrontHomePage(props);
+}

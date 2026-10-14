@@ -1,15 +1,19 @@
 /* src/components/storefront/storefront.css
- * Δημόσια σελίδα εταιρίας (/s/<slug>) — πρόθεμα sf-*.
- * Το χρώμα της εταιρίας έρχεται ως --sf-brand (μόνο έγκυρο #RRGGBB).
+ * Δημόσιο site εταιρίας (/s/<slug>/<lang>) — πρόθεμα sf-*.
+ * Χρώματα εταιρίας: --sf-brand (brandColor), --sf-accent (theme.accentColor),
+ * γωνίες κουμπιών --sf-btn-radius (theme.cornerStyle). Μόνο έγκυρα #RRGGBB.
  * Mobile-first· 16px περιθώριο στο κινητό, χωρίς οριζόντιο scroll.
  */
 
 .sf {
   --sf-brand: #2563eb;
+  --sf-accent: var(--sf-brand);
+  --sf-btn-radius: 999px;
   --sf-text: #0f172a;
   --sf-text-2: #475569;
   --sf-border: #e2e8f0;
   --sf-bg-2: #f8fafc;
+  --sf-danger: #b91c1c;
   min-height: 100vh;
   background: #fff;
   color: var(--sf-text);
@@ -19,12 +23,18 @@
 }
 .sf main { flex: 1; }
 .sf a { color: inherit; }
-.sf-wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+.sf-wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 16px; }
 .sf-muted { color: var(--sf-text-2); }
+.sf-small { font-size: 13px; margin: 6px 0 0; }
+.sf-section { padding-top: 28px; padding-bottom: 44px; }
+.sf :focus-visible { outline: 3px solid color-mix(in srgb, var(--sf-brand) 70%, #000); outline-offset: 2px; }
+
+.sf-skip { position: absolute; left: -9999px; top: 8px; z-index: 50; background: #fff; padding: 8px 12px; border-radius: 8px; }
+.sf-skip:focus { left: 8px; }
 
 /* ── Κεφαλίδα ── */
-.sf-header { border-bottom: 1px solid var(--sf-border); background: #fff; position: sticky; top: 0; z-index: 10; }
-.sf-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; }
+.sf-header { border-bottom: 1px solid var(--sf-border); background: #fff; position: sticky; top: 0; z-index: 20; }
+.sf-header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 60px; }
 .sf-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; min-width: 0; }
 .sf-logo { max-height: 40px; max-width: 120px; object-fit: contain; }
 .sf-logo-mark {
@@ -34,57 +44,212 @@
 .sf-brand-name { font-weight: 700; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sf-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .sf-langs { display: flex; border: 1px solid var(--sf-border); border-radius: 8px; overflow: hidden; }
-.sf-lang { padding: 6px 9px; font-size: 13px; font-weight: 600; text-decoration: none; color: var(--sf-text-2); }
+.sf-lang { padding: 7px 10px; font-size: 13px; font-weight: 600; text-decoration: none; color: var(--sf-text-2); min-width: 40px; text-align: center; }
 .sf-lang.is-active { background: var(--sf-brand); color: #fff; }
 
 /* ── Κουμπιά ── */
 .sf-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px;
+  padding: 12px 20px; border-radius: var(--sf-btn-radius); font-weight: 650; font-size: 15px;
   text-decoration: none; border: 1px solid transparent; cursor: pointer; line-height: 1.2;
-  overflow-wrap: anywhere; text-align: center;
+  overflow-wrap: anywhere; text-align: center; min-height: 44px; font-family: inherit;
 }
 .sf .sf-btn--primary { background: var(--sf-brand); color: #fff; }
 .sf .sf-btn--ghost { background: #fff; color: var(--sf-text); border-color: var(--sf-border); }
-.sf .sf-btn--light { background: #fff; color: var(--sf-brand); }
-.sf-btn--sm { padding: 7px 12px; font-size: 14px; }
+.sf-btn--sm { padding: 7px 14px; font-size: 14px; min-height: 36px; }
 .sf-btn--block { width: 100%; margin-top: 16px; }
-.sf-btn:hover { filter: brightness(0.95); }
+.sf-btn:hover { filter: brightness(0.94); }
+.sf-btn:disabled { opacity: .6; cursor: progress; }
 
-/* ── Hero ── */
-.sf-hero {
-  background: linear-gradient(135deg, var(--sf-brand), color-mix(in srgb, var(--sf-brand) 65%, #000));
-  color: #fff; padding: 48px 0 44px;
-}
-.sf-h1 { font-size: clamp(28px, 6vw, 44px); line-height: 1.15; margin: 0 0 10px; font-weight: 800; overflow-wrap: anywhere; }
+/* ── Τίτλοι ── */
+.sf-h1 { font-size: clamp(26px, 6vw, 46px); line-height: 1.12; margin: 0 0 10px; font-weight: 800; overflow-wrap: anywhere; }
 .sf-h1--dark { color: var(--sf-text); font-size: clamp(24px, 5vw, 34px); }
-.sf-tagline { font-size: clamp(16px, 3.5vw, 20px); opacity: 0.92; margin: 0 0 22px; max-width: 680px; }
-.sf-h2 { font-size: 24px; margin: 0 0 8px; font-weight: 750; }
+.sf-h1--sm { font-size: clamp(20px, 4vw, 26px); margin-bottom: 14px; }
+.sf-h2 { font-size: 22px; margin: 0 0 8px; font-weight: 750; }
+.sf-h3 { font-size: 17px; margin: 22px 0 10px; font-weight: 700; }
+.sf-tagline { font-size: clamp(16px, 3.5vw, 20px); margin: 0; max-width: 680px; }
 
+/* ── Hero ──
+ * Κινητό: η φωτογραφία μόνο στο πάνω μέρος (με τον τίτλο), το κουτί από κάτω
+ * σε πλήρες πλάτος. Desktop: φωτογραφία σε όλο το ύψος, κουτί από πάνω.
+ * Χωρίς φωτογραφία: gradient με το χρώμα της εταιρίας. */
+.sf-hero { position: relative; background: var(--sf-bg-2); }
+.sf-hero-bg {
+  position: absolute; left: 0; right: 0; top: 0; height: 250px; overflow: hidden;
+  background: linear-gradient(135deg, var(--sf-brand), color-mix(in srgb, var(--sf-brand) 55%, #000));
+}
+.sf-hero-bg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sf-hero.has-photo .sf-hero-bg::after {
+  content: ""; position: absolute; inset: 0;
+  /* Σκούρο overlay: λευκό κείμενο με αντίθεση ≥ 4.5:1 σε κάθε φωτογραφία. */
+  background: linear-gradient(180deg, rgba(0, 0, 0, .45) 0%, rgba(0, 0, 0, .62) 100%);
+}
+.sf-hero-inner { position: relative; padding-bottom: 20px; }
+.sf-hero-head {
+  min-height: 250px; display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 24px 0 22px; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+}
+.sf-hero-head .sf-tagline { opacity: .95; }
+
+@media (min-width: 900px) {
+  .sf-hero-bg { height: 100%; }
+  .sf-hero-inner { padding-bottom: 56px; }
+  .sf-hero-head { min-height: 0; padding: 110px 0 28px; }
+  .sf-hero .sf-search { box-shadow: 0 18px 50px rgba(15, 23, 42, .25); }
+}
+
+/* ── Κουτί αναζήτησης ── */
+.sf-search {
+  background: #fff; border: 1px solid var(--sf-border); border-radius: 18px;
+  padding: 14px; box-shadow: 0 6px 24px rgba(15, 23, 42, .08); scroll-margin-top: 76px;
+}
+.sf-search-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.sf-search-loc { display: grid; gap: 8px; }
+.sf-search-when { display: grid; gap: 10px; }
+.sf-search-times { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sf-search-go { width: 100%; font-size: 16px; }
+.sf-search-note { margin: 10px 2px 0; font-size: 12.5px; color: var(--sf-text-2); }
+
+.sf-field {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  border: 1px solid #cbd5e1; border-radius: 12px; padding: 7px 12px 8px; background: #fff;
+  min-height: 52px; min-width: 0;
+}
+.sf-field:focus-within { border-color: var(--sf-brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sf-brand) 22%, transparent); }
+.sf-field.is-invalid { border-color: var(--sf-danger); background: #fef2f2; }
+.sf-label { font-size: 12px; font-weight: 650; color: var(--sf-text-2); }
+.sf-value { font-size: 15.5px; font-weight: 650; color: var(--sf-text); white-space: nowrap; }
+.sf-field select {
+  border: 0; padding: 0; background: transparent; font: inherit; font-size: 15.5px; font-weight: 600;
+  color: var(--sf-text); width: 100%; min-width: 0; outline: none; cursor: pointer;
+}
+.sf-field--btn { cursor: pointer; font: inherit; color: inherit; }
+.sf-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; padding: 2px; min-height: 32px; }
+.sf-check input { width: 18px; height: 18px; accent-color: var(--sf-brand); }
+
+.sf-dates .sf-field--btn { flex-direction: row; align-items: center; gap: 10px; width: 100%; }
+.sf-dates-half { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.sf-dates-arrow { color: var(--sf-text-2); font-weight: 700; }
+
+.sf-search-errors {
+  margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: #fef2f2;
+  border: 1px solid #fecaca; color: var(--sf-danger); font-size: 14px;
+}
+.sf-search-errors ul { margin: 6px 0 0; padding-left: 18px; }
+
+@media (min-width: 900px) {
+  .sf-search { padding: 16px; }
+  .sf-search-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) minmax(0, .8fr) auto; align-items: start; }
+  .sf-search-when { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  .sf-search-go { width: auto; min-height: 52px; padding: 0 26px; }
+  .sf-search-grid > .sf-search-age:only-of-type { min-width: 120px; }
+}
+
+.sf-search-band { background: var(--sf-bg-2); border-bottom: 1px solid var(--sf-border); padding: 18px 0 20px; }
+.sf-search--compact { box-shadow: none; }
+
+/* ── Ημερολόγιο ── */
+.sf-cal-backdrop {
+  position: fixed; inset: 0; z-index: 60; background: rgba(15, 23, 42, .45);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sf-cal {
+  background: #fff; width: 100%; height: 100%; display: flex; flex-direction: column;
+  color: var(--sf-text);
+}
+@media (min-width: 640px) {
+  .sf-cal-backdrop { align-items: center; padding: 24px; }
+  .sf-cal { max-width: 440px; height: min(640px, 92vh); border-radius: 18px; box-shadow: 0 24px 60px rgba(15, 23, 42, .3); }
+}
+.sf-cal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px; font-size: 16px; }
+.sf-cal-x { border: 0; background: var(--sf-bg-2); width: 40px; height: 40px; border-radius: 50%; font-size: 24px; line-height: 1; cursor: pointer; color: var(--sf-text); }
+.sf-cal-week, .sf-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.sf-cal-week { padding: 6px 12px; border-bottom: 1px solid var(--sf-border); font-size: 12px; color: var(--sf-text-2); text-align: center; }
+.sf-cal-months { flex: 1; overflow-y: auto; padding: 0 12px 12px; overscroll-behavior: contain; }
+.sf-cal-month h3 { font-size: 15px; margin: 16px 4px 8px; }
+.sf-cal-grid { row-gap: 4px; }
+.sf-day {
+  height: 44px; border: 0; background: transparent; font: inherit; font-size: 15px; cursor: pointer;
+  color: var(--sf-text); border-radius: 0;
+}
+.sf-day:disabled { color: #cbd5e1; cursor: default; }
+.sf-day.is-range { background: color-mix(in srgb, var(--sf-brand) 14%, #fff); }
+.sf-day.is-start, .sf-day.is-end { background: var(--sf-brand); color: #fff; font-weight: 700; border-radius: 10px; }
+.sf-day:not(:disabled):not(.is-start):not(.is-end):hover { background: var(--sf-bg-2); }
+.sf-cal-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--sf-border);
+}
+.sf-cal-sum { font-weight: 650; font-size: 14.5px; }
+
+/* ── Αποτελέσματα / κάρτες ── */
+.sf-results-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sf-results-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 10px 0 16px; }
+.sf-tabs { display: flex; gap: 8px; overflow-x: auto; max-width: 100%; padding-bottom: 2px; }
+.sf-tab {
+  border: 1px solid var(--sf-border); background: #fff; border-radius: 999px; padding: 9px 16px;
+  font: inherit; font-size: 14.5px; font-weight: 650; cursor: pointer; white-space: nowrap; min-height: 40px; color: var(--sf-text);
+}
+.sf-tab[aria-pressed="true"] { background: var(--sf-brand); border-color: var(--sf-brand); color: #fff; }
+.sf-sort { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--sf-text-2); }
+.sf-sort select { font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--sf-border); background: #fff; color: var(--sf-text); }
+
+.sf-gcards { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 700px) { .sf-gcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1080px) { .sf-gcards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.sf-gcard {
+  display: flex; flex-direction: column; border: 1px solid var(--sf-border); border-radius: 20px;
+  overflow: hidden; background: #fff; transition: box-shadow .15s;
+}
+.sf-gcard:hover { box-shadow: 0 10px 28px rgba(15, 23, 42, .08); }
+.sf-gcard.is-off { opacity: .62; filter: grayscale(.85); }
+.sf-gcard.is-off:hover { box-shadow: none; }
+.sf-gcard-img { position: relative; aspect-ratio: 16 / 10; background: var(--sf-bg-2); display: grid; place-items: center; }
+.sf-gcard-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sf-gcard-ph { color: #94a3b8; display: grid; place-items: center; width: 100%; height: 100%; }
+.sf-badge { position: absolute; top: 12px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.sf-badge--deal { left: 12px; background: #dc2626; color: #fff; }
+.sf-badge--few { right: 12px; background: #fff; color: #9a3412; border: 1px solid #fed7aa; }
+.sf-gcard-body { padding: 14px 16px 16px; display: flex; flex-direction: column; flex: 1; }
+.sf-gcard-title { font-size: 18px; margin: 0; font-weight: 750; }
+.sf-gcard-similar { margin: 2px 0 0; color: var(--sf-text-2); font-size: 14px; }
+.sf-feats { list-style: none; padding: 0; margin: 12px 0 14px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13.5px; color: var(--sf-text-2); }
+.sf-feats li { display: inline-flex; align-items: center; gap: 5px; }
+.sf-gcard-foot { margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sf-gcard-price { display: flex; flex-direction: column; line-height: 1.25; }
+.sf-gcard-price strong { font-size: 22px; font-weight: 800; color: var(--sf-text); }
+.sf-gcard-price .sf-muted { font-size: 12.5px; }
+.sf-gcard-daily { font-size: 13.5px; font-weight: 650; color: var(--sf-brand); }
+.sf-was { color: var(--sf-text-2); font-size: 14px; }
+.sf-gcard-off { margin: 0; font-weight: 650; color: var(--sf-text-2); }
+
+.sf-empty { padding: 8px 0 0; }
+.sf-empty .sf-results { margin-top: 28px; }
+
+/* ── Περίληψη κράτησης ── */
+.sf-book-grid { display: grid; gap: 20px; }
+@media (min-width: 900px) { .sf-book-grid { grid-template-columns: 2fr 3fr; align-items: start; } }
+.sf-book-panel { border: 1px solid var(--sf-border); border-radius: 18px; padding: 18px; }
+.sf-lines { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.sf-lines th { text-align: left; font-weight: 500; padding: 7px 0; }
+.sf-lines td { text-align: right; padding: 7px 0 7px 12px; white-space: nowrap; }
+.sf-lines tbody tr + tr { border-top: 1px solid var(--sf-border); }
+.sf-lines tr.is-discount td { color: #15803d; }
+.sf-lines tfoot tr { border-top: 2px solid var(--sf-text); }
+.sf-lines tfoot th, .sf-lines tfoot td { font-weight: 800; font-size: 17px; padding-top: 10px; }
+.sf-book-next { margin: 18px 0 0; padding: 12px 14px; border-radius: 12px; background: var(--sf-bg-2); font-size: 14.5px; }
+
+/* ── Σχετικά ── */
 .sf-about { padding-top: 28px; color: var(--sf-text-2); font-size: 16px; line-height: 1.6; }
 .sf-about p { margin: 0 0 12px; white-space: pre-line; max-width: 800px; }
 
-/* ── Λίστα οχημάτων ── */
-.sf-fleet { padding-top: 32px; padding-bottom: 40px; }
-.sf-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 16px; }
-@media (min-width: 640px) { .sf-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 960px) { .sf-grid { grid-template-columns: repeat(3, 1fr); } }
-.sf-card {
-  display: flex; flex-direction: column; border: 1px solid var(--sf-border); border-radius: 14px;
-  overflow: hidden; text-decoration: none; background: #fff; transition: box-shadow .15s, transform .15s;
-}
-.sf-card:hover { box-shadow: 0 8px 24px rgba(15, 23, 42, .08); transform: translateY(-2px); }
-.sf-card-img { aspect-ratio: 16 / 10; background: var(--sf-bg-2); display: grid; place-items: center; }
-.sf-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sf-noimg { color: #94a3b8; font-size: 14px; }
-.sf-card-body { padding: 14px 16px 16px; }
-.sf-card-title { font-size: 18px; margin: 0 0 8px; font-weight: 700; }
+/* ── Σελίδα οχήματος ── */
 .sf-specs { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-wrap: wrap; gap: 6px; }
 .sf-specs li { font-size: 13px; padding: 3px 8px; border-radius: 999px; background: var(--sf-bg-2); border: 1px solid var(--sf-border); color: var(--sf-text-2); }
 .sf-price { margin: 0; font-weight: 700; font-size: 17px; color: var(--sf-brand); }
 .sf-price .sf-muted { font-weight: 500; font-size: 13px; }
-
-/* ── Σελίδα οχήματος ── */
+.sf-noimg { color: #94a3b8; font-size: 14px; }
 .sf-vehicle { padding-top: 20px; padding-bottom: 40px; }
 .sf-back { display: inline-block; margin-bottom: 16px; text-decoration: none; color: var(--sf-text-2); font-weight: 600; }
 .sf-vehicle-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
@@ -105,6 +270,8 @@
 .sf-dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 16px 0 0; }
 .sf-dl dt { color: var(--sf-text-2); }
 .sf-dl dd { margin: 0; font-weight: 600; text-align: right; }
+.sf-dl--left dd { text-align: left; }
+.sf-dl--left { margin-top: 0; }
 
 /* ── Επικοινωνία / footer ── */
 .sf-contact { background: var(--sf-bg-2); border-top: 1px solid var(--sf-border); padding: 36px 0; scroll-margin-top: 64px; }
@@ -117,6 +284,7 @@
 
 @media (max-width: 480px) {
   .sf-brand-name { font-size: 15px; }
-  .sf-header-actions .sf-btn--sm { display: none; }
+  .sf-header-call { display: none; }
   .sf-contact-actions .sf-btn { width: 100%; }
+  .sf-gcard-foot .sf-btn { width: 100%; }
 }

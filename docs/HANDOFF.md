@@ -541,6 +541,7 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 | Commit | Τι |
 |---|---|
+| _(PR #23, 6ο commit)_ | Αποσύνδεση στο κινητό για τον Super Admin (η πλαϊνή στήλη κρυβόταν κάτω από 600px) + `GET /api/auth/logout` (αποσύνδεση με link → /login). Χωρίς SQL |
 | _(PR #23, 5ο commit)_ | Η ρίζα `/` οδηγεί σε dashboard/super-admin/login (ήταν 404 στο link του preview), φιλικά 404 (εφαρμογή + δημόσιο site). Χωρίς SQL |
 | _(PR #23, 4ο commit)_ | 404 δημόσιου site: μία πηγή αλήθειας `visibility.ts`, slug ανεκτικό σε κεφαλαία/κενά/τόνους (308), μη έγκυρη γλώσσα → redirect, λόγος 404 στα logs, κουτί «Η δημόσια σελίδα σου» στην «Εμφάνιση». Χωρίς SQL |
 | _(branch `claude/public-site-home-search`)_ | Δημόσιο site 2/4: `/s/<slug>/<lang>` με hero + αναζήτηση, `/search` με καρτέλες τύπου, κάρτες ομάδων («ή παρόμοιο», τιμή από quote(), «Μόνο Ν διαθέσιμα»), διαθεσιμότητα από `bookings` (ένα query, `availability.ts`), προσωρινή `/book`, `<html lang>`, noindex. Χωρίς SQL |

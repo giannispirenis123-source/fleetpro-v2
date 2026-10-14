@@ -270,6 +270,13 @@ export default function SuperAdminDashboard() {
 
       {/* ── Main Content ─────────────────── */}
       <main className="sa-main">
+        {/* Στο κινητό η πλαϊνή στήλη κρύβεται: αποσύνδεση εδώ. */}
+        <div className="sa-mobile-bar">
+          <span className="sa-user-name">Super Admin</span>
+          <button className="sa-mobile-logout" onClick={handleLogout}>
+            <LogOut size={14} /> Αποσύνδεση
+          </button>
+        </div>
         {/* Stats Bar */}
         {stats && (
           <div className="sa-stats-bar">
@@ -2659,8 +2666,17 @@ const superAdminStyles = `
     .sa-stats-bar { grid-template-columns: repeat(3, 1fr); }
     .sa-form-grid { grid-template-columns: 1fr; }
   }
+  .sa-mobile-bar { display: none; }
   @media (max-width: 600px) {
     .sa-sidebar { display: none; }
+    .sa-mobile-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
+    }
+    .sa-mobile-logout {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer;
+    }
     .sa-stats-bar { grid-template-columns: repeat(2, 1fr); }
   }
 `;

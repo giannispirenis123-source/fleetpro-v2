@@ -188,8 +188,19 @@ export const PATCH = withPermission(
       // Η τιμή ξαναβγαίνει ΜΟΝΟ όταν αλλάζει κάτι που την επηρεάζει. Μια απλή
       // αλλαγή κατάστασης/σημειώσεων δεν αγγίζει την τιμή μιας (παλιάς) κράτησης.
       const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+      // Αλλαγή οχήματος ΜΕΣΑ στην ίδια ομάδα (π.χ. ανάθεση σε κράτηση του site)
+      // δεν αλλάζει την τιμή: η ομάδα τιμολογείται ίδια.
+      let vehicleChangesPrice = vehicleId !== current.vehicleId;
+      if (vehicleChangesPrice) {
+        const pair = await db.vehicle.findMany({
+          where: { id: { in: [vehicleId, current.vehicleId] }, tenantId: session.tenantId! },
+          select: { id: true, rentalGroupId: true },
+        });
+        const groupOf = (id: string) => pair.find((v) => v.id === id)?.rentalGroupId ?? null;
+        if (groupOf(vehicleId) && groupOf(vehicleId) === groupOf(current.vehicleId)) vehicleChangesPrice = false;
+      }
       const pricingChanged =
-        vehicleId !== current.vehicleId ||
+        vehicleChangesPrice ||
         pickup !== current.pickupDate.toISOString().slice(0, 10) ||
         ret !== current.returnDate.toISOString().slice(0, 10) ||
         pickupTime !== current.pickupTime ||

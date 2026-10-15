@@ -288,3 +288,57 @@
   .sf-contact-actions .sf-btn { width: 100%; }
   .sf-gcard-foot .sf-btn { width: 100%; }
 }
+
+/* ── Φόρμα κράτησης (PR 3) ── */
+.sf-bk { display: grid; gap: 16px; }
+.sf-bk-box { border: 1px solid var(--sf-border); border-radius: 18px; padding: 16px; background: #fff; }
+.sf-bk-set { border: 0; margin: 0 0 12px; padding: 0; }
+.sf-bk-set legend { font-weight: 700; font-size: 16px; margin-bottom: 8px; padding: 0; }
+.sf-bk-opt {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px;
+  padding: 10px 0; border-top: 1px solid var(--sf-border); cursor: pointer; font-size: 15px;
+}
+.sf-bk-opt:first-of-type { border-top: 0; }
+.sf-bk-opt input { width: 20px; height: 20px; accent-color: var(--sf-brand); }
+.sf-bk-opt select { font: inherit; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--sf-border); }
+.sf-bk-opt-name small { color: var(--sf-text-2); }
+.sf-bk-opt-price { font-weight: 650; white-space: nowrap; }
+.sf-bk-pay { margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--sf-bg-2); font-size: 14px; font-weight: 600; }
+.sf-bk-grid { display: grid; gap: 12px; }
+@media (min-width: 640px) { .sf-bk-grid { grid-template-columns: 1fr 1fr; } }
+.sf-bk-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; min-width: 0; }
+.sf-bk-field label { font-size: 13.5px; font-weight: 650; color: var(--sf-text-2); }
+.sf-bk-field input, .sf-bk-field select, .sf-bk-field textarea {
+  font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 12px; border: 1px solid #cbd5e1;
+  background: #fff; color: var(--sf-text); min-width: 0; width: 100%; box-sizing: border-box;
+}
+.sf-bk-field textarea { resize: vertical; }
+.sf-bk-field small { color: var(--sf-text-2); font-size: 12.5px; }
+.sf-bk-field.is-invalid input, .sf-bk-field.is-invalid select, .sf-bk-field.is-invalid textarea { border-color: var(--sf-danger); background: #fef2f2; }
+.sf-bk-err { color: var(--sf-danger); font-size: 13px; font-weight: 600; }
+.sf-bk-phone { display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr); gap: 8px; }
+.sf-bk-terms { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; margin-top: 12px; font-size: 14.5px; }
+.sf-bk-terms input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--sf-brand); }
+.sf-bk-terms .sf-bk-err { grid-column: 1 / -1; }
+.sf-bk-submit { margin-top: 0; font-size: 17px; min-height: 52px; }
+.sf-bk-trip { margin-top: 16px; }
+/* Honeypot: εκτός οθόνης για ανθρώπους. */
+.sf-hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+/* ── Επιβεβαίωση ── */
+.sf-confirm-code {
+  margin: 18px 0; padding: 18px; border-radius: 18px; border: 2px dashed var(--sf-brand);
+  background: color-mix(in srgb, var(--sf-brand) 6%, #fff); display: grid; gap: 8px;
+}
+.sf-confirm-codeline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sf-confirm-codevalue { font-size: clamp(28px, 8vw, 40px); font-weight: 800; letter-spacing: .08em; color: var(--sf-text); }
+.sf-confirm-status { justify-self: start; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; background: #fef3c7; color: #92400e; }
+.sf-confirm-status.is-confirmed, .sf-confirm-status.is-active { background: #dcfce7; color: #166534; }
+.sf-confirm-status.is-cancelled { background: #fee2e2; color: #991b1b; }
+.sf-confirm-img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; margin-bottom: 8px; }
+.sf-confirm-contact { margin-top: 20px; }
+.sf-confirm-print { margin-top: 12px; }
+@media print {
+  .sf-header, .sf-footer, .sf-contact, .sf-confirm-print, .sf-skip { display: none !important; }
+  .sf-book-panel, .sf-confirm-code { break-inside: avoid; }
+}

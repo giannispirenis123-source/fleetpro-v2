@@ -205,9 +205,9 @@ model Tenant {
   // Δημόσια σελίδα /s/<storefrontSlug>. ΞΕΧΩΡΙΣΤΟ slug από το "slug" πιο
   // πάνω (δεμένο με login/JWT). Ρυθμίσεις στο storefrontSettings (κείμενα
   // ανά γλώσσα, γλώσσες, πληρωμή) — βλ. src/lib/storefront/settings.ts.
-  storefrontSlug       String? @unique
-  storefrontEnabled    Boolean @default(false)
-  storefrontSettings   Json    @default("{}")
+  storefrontSlug     String? @unique
+  storefrontEnabled  Boolean @default(false)
+  storefrontSettings Json    @default("{}")
 
   // Τιμολόγηση. Οι τιμές των κρατήσεων ΠΕΡΙΕΧΟΥΝ ΦΠΑ· το τιμολόγιο τις
   // σπάει ανάποδα σε καθαρή αξία και ΦΠΑ με αυτό το ποσοστό.
@@ -474,17 +474,25 @@ model Booking {
   // 'AUTO' (τιμή από τις ρυθμίσεις) | 'MANUAL' (χειροκίνητο ενοίκιο συμβολαίου). NULL = παλιά.
   priceMode  String?
 
+  // Κράτηση από το δημόσιο site (SQL 23): κωδικός που βλέπει ο πελάτης
+  // (XXXX-XXXX, μοναδικός σε όλη τη βάση), η ομάδα που διάλεξε και η πτήση.
+  // Τα σχόλια του πελάτη μπαίνουν στο notes.
+  publicCode    String? @unique
+  rentalGroupId String?
+  flightNumber  String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  vehicle   Vehicle   @relation(fields: [vehicleId], references: [id])
-  customer  Customer  @relation(fields: [customerId], references: [id])
-  partner   User?     @relation("PartnerBookings", fields: [partnerId], references: [id], onDelete: SetNull)
-  createdBy User?     @relation("CreatedBookings", fields: [createdById], references: [id], onDelete: SetNull)
-  contract  Contract?
-  invoice   Invoice?
-  damages   Damage[]
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle      @relation(fields: [vehicleId], references: [id])
+  customer    Customer     @relation(fields: [customerId], references: [id])
+  partner     User?        @relation("PartnerBookings", fields: [partnerId], references: [id], onDelete: SetNull)
+  createdBy   User?        @relation("CreatedBookings", fields: [createdById], references: [id], onDelete: SetNull)
+  contract    Contract?
+  invoice     Invoice?
+  damages     Damage[]
+  rentalGroup RentalGroup? @relation(fields: [rentalGroupId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, partnerId])
   @@index([tenantId, createdById])
@@ -540,31 +548,31 @@ model Contract {
   // Οδηγοί (ο πρώτος = κύριος), ο καθένας με την υπογραφή του (base64 PNG).
   drivers Json @default("[]")
 
-  pickupLocation String?
-  returnLocation String?
+  pickupLocation    String?
+  returnLocation    String?
   // Τύπος καυσίμου που δηλώθηκε στο συμβόλαιο (χωρίς προεπιλογή· null =
   // δεν επιλέχθηκε — το Α4 δείχνει τότε του οχήματος). Κλειδώνει με την υπογραφή.
-  fuelType       FuelType?
+  fuelType          FuelType?
   // Καύσιμο / μπαταρία σε όγδοα: 0–8.
-  fuelPickup     Int?
+  fuelPickup        Int?
   // ΠΑΛΙΟ: το καύσιμο παράδοσης δεν καταγράφεται πια. Μένει για τα παλιά
   // συμβόλαια (μόνο ανάγνωση). Δεν σβήνεται.
-  fuelReturn     Int?
+  fuelReturn        Int?
   // Σημάδια στο σκαρίφημα: [{ id, x, y, note }] με x, y σε % του σχεδίου.
   // ΠΑΛΙΟ: τα νέα συμβόλαια δεν έχουν σκαρίφημα· τα παλιά εμφανίζονται μόνο
   // για ανάγνωση. Δεν σβήνεται.
-  damageMarks    Json    @default("[]")
+  damageMarks       Json      @default("[]")
   // Φωτογραφίες ζημιών (Supabase Storage, ιδιωτικό bucket):
   // [{ id, path, group: "PICKUP" | "RETURN", takenAt, note }].
   // Δεν μπαίνουν στο searchText.
-  damagePhotos      Json    @default("[]")
+  damagePhotos      Json      @default("[]")
   // Ελεύθερη περιγραφή ζημιών ανά ομάδα. Η παραλαβής κλειδώνει με την
   // υπογραφή· η παράδοσης αλλάζει μέχρι την ολοκλήρωση.
-  damageNotesPickup String? @db.Text
-  damageNotesReturn String? @db.Text
+  damageNotesPickup String?   @db.Text
+  damageNotesReturn String?   @db.Text
   // Αλλαγές οχήματος: [{ id, vehicleId, label, plate, date }].
-  vehicleChanges Json    @default("[]")
-  notes          String? @db.Text
+  vehicleChanges    Json      @default("[]")
+  notes             String?   @db.Text
 
   paymentMethod String? // CASH | CARD | TRANSFER | OTHER
   depositAmount Decimal? @db.Decimal(10, 2)
@@ -576,7 +584,7 @@ model Contract {
   // Πλήρης αριθμός κάρτας ΚΡΥΠΤΟΓΡΑΦΗΜΕΝΟΣ (AES-256-GCM, κλειδί
   // CARD_ENCRYPTION_KEY): JSON { payment?, deposit? } — βλ. src/lib/cardCrypto.ts.
   // Αποκρυπτογραφείται μόνο στον server, μόνο για COMPANY_ADMIN. Ποτέ CVV.
-  cardNumberEnc String? @db.Text
+  cardNumberEnc String?  @db.Text
 
   // Κανονικοποιημένο κείμενο αναζήτησης (πεζά, χωρίς τόνους/κενά/σύμβολα),
   // ξαναϋπολογίζεται από τον server σε κάθε αλλαγή. GIN trigram index.
@@ -768,30 +776,30 @@ model Expense {
 // Πρόσθετα και ασφάλειες που ορίζει η κάθε εταιρία· θα μπαίνουν στις
 // κρατήσεις στο Βήμα 2.
 model Extra {
-  id         String     @id @default(cuid())
-  tenantId   String
-  name       String
-  price      Decimal    @db.Decimal(10, 2)
-  chargeType ChargeType @default(PER_DAY)
-  type       ExtraType  @default(EXTRA)
+  id              String     @id @default(cuid())
+  tenantId        String
+  name            String
+  price           Decimal    @db.Decimal(10, 2)
+  chargeType      ChargeType @default(PER_DAY)
+  type            ExtraType  @default(EXTRA)
   // Απαλλαγή (excess) σε € — μόνο για ασφάλειες. Snapshot στο συμβόλαιο.
-  excess     Decimal?   @db.Decimal(10, 2)
-  isActive   Boolean    @default(true)
+  excess          Decimal?   @db.Decimal(10, 2)
+  isActive        Boolean    @default(true)
   // Δημόσιο site (SQL 21). Τα ποσά μένουν σε € (Decimal)· cents μόνο στον
   // κώδικα (src/lib/public/money.ts). "name" μένει το κύριο (ελληνικό) όνομα.
-  nameI18n        Json     @default("{}")
-  descriptionI18n Json     @default("{}")
+  nameI18n        Json       @default("{}")
+  descriptionI18n Json       @default("{}")
   /// Ταβάνι συνολικής χρέωσης σε € (null = χωρίς ταβάνι).
-  maxTotal        Decimal? @db.Decimal(10, 2)
-  maxQuantity     Int      @default(1)
+  maxTotal        Decimal?   @db.Decimal(10, 2)
+  maxQuantity     Int        @default(1)
   /// 'car' | 'moto' | 'atv' — κενό = για όλα.
-  vehicleTypes    String[] @default([])
-  sortOrder       Int      @default(0)
+  vehicleTypes    String[]   @default([])
+  sortOrder       Int        @default(0)
   /// Προεπιλεγμένη ΑΣΦΑΛΕΙΑ: το πολύ μία ανά εταιρία και ανά τύπο οχήματος
   /// (κανόνας στο API: src/lib/public/insuranceDefaults.ts· CHECK: μόνο INSURANCE).
-  isDefault       Boolean  @default(false)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  isDefault       Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -942,6 +950,7 @@ model RentalGroup {
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vehicles Vehicle[]
   rates    Rate[]
+  bookings Booking[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -1130,4 +1139,15 @@ model PlatformDiscount {
 
   @@index([tenantId])
   @@map("platform_discounts")
+}
+
+/// Όρια κατάχρησης για τα δημόσια endpoints (SQL 23) — μετρητής ανά κλειδί
+/// και παράθυρο χρόνου. Το κλειδί είναι HASH (ποτέ IP ή email σε καθαρή μορφή).
+model RateLimit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@map("rate_limits")
 }

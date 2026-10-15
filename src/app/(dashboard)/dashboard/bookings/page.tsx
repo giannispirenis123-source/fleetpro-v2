@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function BookingsPage({
   searchParams,
 }: {
-  searchParams?: { booking?: string };
+  searchParams?: { booking?: string; status?: string };
 }) {
   // Ο φύλακας διαβάζει το ΙΔΙΟ κλειδί με το API: καμία σελίδα δεν δείχνει
   // κάτι που ο server θα αρνιόταν.
@@ -117,6 +117,7 @@ export default async function BookingsPage({
       canSeeCommission={viewerCan(viewer, "commission.view")}
       canContract={viewerCan(viewer, "contracts.view")}
       // Από το Ημερολόγιο: ποια κράτηση να ανοίξει μόλις φορτώσει η σελίδα.
+      initialStatus={searchParams?.status === "PENDING" ? "PENDING" : undefined}
       focusBookingId={searchParams?.booking ?? null}
     />
   );

@@ -1172,24 +1172,56 @@ export async function priceBookingExtras(
       vehicleId: true,
       customerId: true,
       pickupDate: true,
+      pickupTime: true,
       returnDate: true,
+      returnTime: true,
+      pickupLocation: true,
+      returnLocation: true,
       discountCode: true,
       discountAmount: true,
+      subtotal: true,
+      dailyRate: true,
+      totalDays: true,
+      priceQuote: true,
     },
   });
   if (!booking) return { ok: false, message: "Η κράτηση δεν βρέθηκε" };
 
+  // Παλιά κράτηση (πριν την ενιαία τιμολόγηση): ΔΕΝ ξανατιμολογείται — μένουν
+  // ενοίκιο και έκπτωση, αλλάζουν ΜΟΝΟ τα πρόσθετα (και δεν μπαίνει μόνη της ασφάλεια).
+  const legacy = booking.priceQuote === null;
   const priced = await priceBooking({
     tenantId,
     vehicleId: booking.vehicleId,
     customerId: booking.customerId,
-    totalDays: countDays(dateOnly(booking.pickupDate), dateOnly(booking.returnDate)),
+    pickupDate: dateOnly(booking.pickupDate),
+    pickupTime: booking.pickupTime,
+    returnDate: dateOnly(booking.returnDate),
+    returnTime: booking.returnTime,
+    pickupLocation: booking.pickupLocation,
+    returnLocation: booking.returnLocation,
     extraIds,
+    defaultInsurance: !legacy,
     ...discountOfBooking(booking),
   });
   if (!priced.ok) return priced;
 
   const b = priced.breakdown;
+  if (legacy) {
+    const subtotal = Number(booking.subtotal);
+    const discountAmount = Number(booking.discountAmount);
+    return {
+      ok: true,
+      data: {
+        subtotal,
+        discountAmount,
+        extrasTotal: b.extrasTotal,
+        insuranceCost: b.insuranceCost,
+        total: Math.max(0, Math.round((subtotal + b.extrasTotal + b.insuranceCost - discountAmount) * 100) / 100),
+        extras: priced.snapshot as unknown as Prisma.InputJsonValue,
+      },
+    };
+  }
   return {
     ok: true,
     data: {
@@ -1202,6 +1234,7 @@ export async function priceBookingExtras(
       discountCode: priced.discountCode,
       total: b.total,
       extras: priced.snapshot as unknown as Prisma.InputJsonValue,
+      priceQuote: priced.quote as unknown as Prisma.InputJsonValue,
     },
   };
 }

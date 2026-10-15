@@ -71,7 +71,7 @@ import {
 } from "@/lib/contracts";
 import { publicContractUrl, type PublicLinkDTO } from "@/lib/contractLink";
 import { isEmail, suggestEmailLang, type EmailLang } from "@/lib/contractEmail";
-import { computePrice, toDisplayBreakdown, type PricedExtraInput } from "@/lib/pricing";
+import { toDisplayBreakdown } from "@/lib/pricing";
 import { splitVatInclusive } from "@/lib/invoices";
 import {
   PRICE_REASON_MAX,
@@ -460,7 +460,12 @@ export default function ContractEditor({
   /* ── Νέο συμβόλαιο: πελάτης, όχημα, ημερομηνίες ── */
   const [linked, setLinked] = useState<{ id: string; name: string } | null>(null);
   const [duplicates, setDuplicates] = useState<WalkInCustomer[] | null>(null);
-  const draft = useWalkInDraft(isNew, form.extraIds, linked?.id ?? null);
+  // Η τιμή από τις ρυθμίσεις (ίδια με το site): σημεία + ηλικία κύριου οδηγού.
+  const draft = useWalkInDraft(isNew, form.extraIds, linked?.id ?? null, {
+    pickupLocation: form.pickupLocation,
+    returnLocation: form.returnLocation,
+    driverBirthDate: form.drivers[0]?.birthDate ?? "",
+  });
   const suggest = useCustomerSuggest(isNew && !linked);
   const canOverride = walkIn?.canOverride ?? false;
 
@@ -484,7 +489,46 @@ export default function ContractEditor({
   const hasSignatures = anySigned(savedDrivers);
   const extrasEditable = isNew || (!readOnly && !locked && contract?.extrasLock === null);
 
-  /* ── Χρεώσεις: αποθηκευμένες, ζωντανή προεπισκόπηση ή (νέο) από τον server ── */
+  /* ── Αλλαγή πρόσθετων σε υπάρχον συμβόλαιο: η τιμή από τον SERVER (ίδια
+     μηχανή με την αποθήκευση και το site) — καμία τιμή υπολογισμένη εδώ. ── */
+  type ExtrasPreview = {
+    totalDays: number;
+    dailyRate: number;
+    subtotal: number;
+    extrasTotal: number;
+    insuranceCost: number;
+    discountAmount: number;
+    total: number;
+    lines: { id: string; name: string; type: string; lineTotal: number; excess: number | null }[];
+  };
+  const [extrasPreview, setExtrasPreview] = useState<ExtrasPreview | null>(null);
+  const extrasKeyForPreview = [...form.extraIds].sort().join(",");
+  useEffect(() => {
+    if (isNew || !extrasDirty || !contract) {
+      setExtrasPreview(null);
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/contracts/${contract.id}/price-preview`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ extraIds: extrasKeyForPreview ? extrasKeyForPreview.split(",") : [] }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (alive) setExtrasPreview(res.ok ? body.data : null);
+      } catch {
+        if (alive) setExtrasPreview(null);
+      }
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [isNew, extrasDirty, contract, extrasKeyForPreview]);
+
+  /* ── Χρεώσεις: αποθηκευμένες, προεπισκόπηση ή (νέο) από τον server ── */
   const money = useMemo(() => {
     if (isNew) {
       const p = draft.preview;
@@ -504,7 +548,6 @@ export default function ContractEditor({
       };
     }
     if (!s) return null;
-    const extraById = new Map(extras.map((e) => [e.id, e]));
     if (!extrasDirty) {
       return {
         preview: false,
@@ -518,35 +561,23 @@ export default function ContractEditor({
         computed: computedTotalOf(s.booking, roundUpTotal),
       };
     }
-    // Ο ΙΔΙΟΣ υπολογισμός με την κράτηση. Ο server ξαναϋπολογίζει στην
-    // αποθήκευση — εδώ είναι μόνο προεπισκόπηση.
-    const chosen: PricedExtraInput[] = form.extraIds.flatMap((id) => {
-      const e = extraById.get(id);
-      return e ? [{ id, name: e.name, price: e.price, chargeType: e.chargeType, type: e.type }] : [];
-    });
-    const b = computePrice({
-      totalDays: s.booking.totalDays,
-      dailyRate: s.booking.dailyRate,
-      extras: chosen,
-      discountMode: s.booking.discountCode ? "CODE" : s.booking.discountAmount > 0 ? "AMOUNT" : "NONE",
-      discountValue: s.booking.discountAmount,
-      codeDiscountAmount: s.booking.discountAmount,
-      roundUpTotal,
-    });
+    // Η προεπισκόπηση του server (ίδια συνάρτηση με την αποθήκευση).
+    const b = extrasPreview;
+    if (!b) return null;
     return {
       preview: true,
-      totalDays: s.booking.totalDays,
-      dailyRate: s.booking.dailyRate,
+      totalDays: b.totalDays,
+      dailyRate: b.dailyRate,
       extras: b.lines.filter((l) => l.type !== "INSURANCE").map((l) => ({ name: l.name, lineTotal: l.lineTotal })),
       insurance: b.lines
         .filter((l) => l.type === "INSURANCE")
-        .map((l) => ({ name: l.name, lineTotal: l.lineTotal, excess: extraById.get(l.id)?.excess ?? null })),
+        .map((l) => ({ name: l.name, lineTotal: l.lineTotal, excess: l.excess })),
       display: toDisplayBreakdown(b),
       vatRate: s.vatRate ?? vatRate,
       parts: b,
       computed: b.total,
     };
-  }, [isNew, draft.preview, s, extras, extrasDirty, form.extraIds, roundUpTotal, vatRate]);
+  }, [isNew, draft.preview, s, extrasDirty, extrasPreview, roundUpTotal, vatRate]);
 
   /* ── Χειροκίνητο ενοίκιο: σύνολο = ενοίκιο + πρόσθετα + ασφάλεια − έκπτωση ──
      Τα πρόσθετα (και στην προεπισκόπηση) αλλάζουν αμέσως το σύνολο. */
@@ -1353,6 +1384,25 @@ export default function ContractEditor({
                 {vat.vatRate}% {eur(vat.vatAmount, locale)}
               </p>
             )}
+            {isNew && draft.preview && !draft.preview.autoPrice && (
+              <div className="dash-contract-warn">
+                <AlertTriangle size={15} /> {tr("contracts.noAutoPrice")}
+              </div>
+            )}
+            {isNew && draft.preview && draft.preview.warnings.filter((w) => w !== tr("contracts.noAutoPrice")).length > 0 && (
+              <p className="dash-form-note">{draft.preview.warnings.join(" · ")}</p>
+            )}
+            {isNew && draft.preview && draft.preview.quoteLines.length > 0 && (
+              <details className="dash-quote-lines">
+                <summary>{tr("contracts.quoteBreakdown")}</summary>
+                {draft.preview.quoteLines.map((l, i) => (
+                  <div key={i} className="dash-contract-line">
+                    <span>{locale === "en" ? l.label.en : l.label.el}</span>
+                    <span>{eur(l.totalCents / 100, locale)}</span>
+                  </div>
+                ))}
+              </details>
+            )}
             <p className="dash-form-note">
               {isNew ? tr("walkIn.priceNote") : money.preview ? tr("contracts.previewNote") : tr("contracts.snapshotNote")}
             </p>
@@ -1368,10 +1418,10 @@ export default function ContractEditor({
             )}
             {priceStale && (
               <div className="dash-contract-warn">
-                <AlertTriangle size={15} /> {tr("contracts.priceStale")} ({eur(money.parts.subtotal, locale)})
+                <AlertTriangle size={15} /> {tr("contracts.priceStale")} {eur(money.parts.subtotal, locale)}
                 {canChangePrice && (
                   <button type="button" className="dash-link-btn" onClick={() => set("price", null)}>
-                    {tr("contracts.priceReset")}
+                    {tr("contracts.priceUseAuto")}
                   </button>
                 )}
               </div>

@@ -25,7 +25,6 @@ import {
   BOOKING_STATUSES,
   RESERVING_STATUSES,
   TIME_RE,
-  countDays,
   instantOf,
   type BookingConflict,
   type BookingStatusValue,
@@ -34,6 +33,9 @@ import { checkVehicleConflicts } from "./bookingConflicts";
 import { priceBooking } from "./bookingPricing";
 import { applyDiscountUsage } from "./discounts";
 import { DISCOUNT_MODES, type PriceBreakdown } from "./pricing";
+import { NO_PRICE_MESSAGE } from "./public/engine";
+import type { QuoteLine } from "./public/pricing";
+import type { PriceMode, StoredQuote } from "./pricingBridge";
 
 /** Το κοινό `db` ή μια transaction. */
 type Client = Prisma.TransactionClient | typeof db;
@@ -63,6 +65,13 @@ export const bookingFields = {
   discountMode: z.enum(DISCOUNT_MODES).optional(),
   discountValue: z.number().min(0).optional(),
   discountCode: z.union([z.string(), z.null()]).optional(),
+
+  /* ── Για την τιμή από τις ρυθμίσεις (ίδια μηχανή με το site) ── */
+  /** Σημεία (ελεύθερο κείμενο· ταιριάζουν με τις τοποθεσίες του site κατά όνομα). */
+  pickupLocation: z.union([z.string().max(200), z.null()]).optional(),
+  returnLocation: z.union([z.string().max(200), z.null()]).optional(),
+  /** Ημερομηνία γέννησης κύριου οδηγού (κλίμακα ηλικίας). Αλλιώς του πελάτη. */
+  driverBirthDate: z.union([isoDate, z.null()]).optional(),
 };
 
 export const createBookingSchema = z.object({
@@ -92,6 +101,15 @@ export interface BookingPlan {
   breakdown: PriceBreakdown;
   snapshot: unknown;
   discountCode: string | null;
+  pickupLocation: string | null;
+  returnLocation: string | null;
+  /** Ολόκληρη η ανάλυση της quote() — αποθηκεύεται στο bookings."priceQuote". */
+  quote: StoredQuote;
+  quoteLines: QuoteLine[];
+  /** false = δεν υπάρχει τιμή στις ρυθμίσεις (χρειάζεται χειροκίνητη). */
+  autoPrice: boolean;
+  warnings: string[];
+  priceMode: PriceMode;
 }
 
 export type PrepareOutcome =
@@ -115,6 +133,8 @@ export async function prepareBooking(opts: {
   forceStatus?: BookingStatusValue;
   source?: string;
   preview?: boolean;
+  /** Θα δοθεί χειροκίνητο ενοίκιο (συμβόλαιο): η έλλειψη τιμής δεν σταματά. */
+  allowMissingPrice?: boolean;
 }): Promise<PrepareOutcome> {
   const { viewer, data } = opts;
   const tenantId = viewer.tenantId!;
@@ -183,7 +203,13 @@ export async function prepareBooking(opts: {
     tenantId,
     vehicleId: vehicle.id,
     customerId: customer?.id ?? "",
-    totalDays: countDays(data.pickupDate, data.returnDate),
+    pickupDate: data.pickupDate,
+    pickupTime: data.pickupTime,
+    returnDate: data.returnDate,
+    returnTime: data.returnTime,
+    pickupLocation: data.pickupLocation ?? null,
+    returnLocation: data.returnLocation ?? null,
+    ...(data.driverBirthDate !== undefined && { driverBirthDate: data.driverBirthDate }),
     extraIds: data.extraIds ?? [],
     discountMode: data.discountMode ?? "NONE",
     discountValue: data.discountValue,
@@ -191,6 +217,10 @@ export async function prepareBooking(opts: {
   });
 
   if (!priced.ok) return fail(badRequest(priced.message));
+  // Χωρίς τιμή στις ρυθμίσεις: μόνο με χειροκίνητο ενοίκιο (συμβόλαιο).
+  if (!priced.autoPrice && !opts.preview && !opts.allowMissingPrice) {
+    return fail(badRequest(`${NO_PRICE_MESSAGE.el}. Βάλτε τιμή με το χέρι στο συμβόλαιο.`));
+  }
 
   // Ποιος συνεργάτης χρεώνεται την κράτηση. Αν τη γράφει ο ίδιος ο
   // συνεργάτης, είναι ο εαυτός του και τίποτα από το body δεν το
@@ -219,6 +249,13 @@ export async function prepareBooking(opts: {
       breakdown: priced.breakdown,
       snapshot: priced.snapshot,
       discountCode: priced.discountCode,
+      pickupLocation: data.pickupLocation?.trim() || null,
+      returnLocation: data.returnLocation?.trim() || null,
+      quote: priced.quote,
+      quoteLines: priced.quoteLines,
+      autoPrice: priced.autoPrice,
+      warnings: priced.warnings,
+      priceMode: "AUTO",
     },
   };
 }
@@ -290,6 +327,12 @@ export async function writeBooking(tx: Client, plan: BookingPlan, customerId: st
       // κράτηση μένει όπως καταχωρήθηκε.
       extras: plan.snapshot as never,
       notes: plan.notes,
+      pickupLocation: plan.pickupLocation,
+      returnLocation: plan.returnLocation,
+      // Ολόκληρη η ανάλυση τη στιγμή της κράτησης + αυτόματη/χειροκίνητη.
+      // Αλλαγές ρυθμίσεων αργότερα ΔΕΝ την αγγίζουν.
+      priceQuote: plan.quote as never,
+      priceMode: plan.priceMode,
     },
     include: BOOKING_INCLUDE,
   });

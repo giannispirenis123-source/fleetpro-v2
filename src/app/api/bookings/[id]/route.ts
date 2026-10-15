@@ -25,6 +25,7 @@ import {
 } from "@/lib/bookings";
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
 import { discountOfBooking, priceBooking } from "@/lib/bookingPricing";
+import { NO_PRICE_MESSAGE } from "@/lib/public/engine";
 import { manualRentalOfBooking, pricePartsOf } from "@/lib/contractForm";
 import { totalWithRental } from "@/lib/priceOverride";
 import { applyDiscountUsage } from "@/lib/discounts";
@@ -172,8 +173,6 @@ export const PATCH = withPermission(
         }
       }
 
-      const totalDays = countDays(pickup, ret);
-
       // Ό,τι δεν στάλθηκε μένει όπως ήταν — τα πρόσθετα διαβάζονται από το
       // snapshot της κράτησης, ώστε μια απλή αλλαγή ημερομηνίας να μην τα χάνει.
       const extraIds =
@@ -186,25 +185,48 @@ export const PATCH = withPermission(
         data.discountValue ??
         (discountMode === "AMOUNT" ? Number(current.discountAmount) : undefined);
 
-      const priced = await priceBooking({
-        tenantId: session.tenantId!,
-        vehicleId,
-        customerId: data.customerId ?? current.customerId,
-        totalDays,
-        extraIds,
-        discountMode,
-        discountValue,
-        discountCode: data.discountCode ?? current.discountCode,
-      });
+      // Η τιμή ξαναβγαίνει ΜΟΝΟ όταν αλλάζει κάτι που την επηρεάζει. Μια απλή
+      // αλλαγή κατάστασης/σημειώσεων δεν αγγίζει την τιμή μιας (παλιάς) κράτησης.
+      const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+      const pricingChanged =
+        vehicleId !== current.vehicleId ||
+        pickup !== current.pickupDate.toISOString().slice(0, 10) ||
+        ret !== current.returnDate.toISOString().slice(0, 10) ||
+        pickupTime !== current.pickupTime ||
+        returnTime !== current.returnTime ||
+        (data.customerId !== undefined && data.customerId !== current.customerId) ||
+        !sameIds(extraIds, readExtrasSnapshot(current.extras).map((l) => l.id)) ||
+        data.discountMode !== undefined ||
+        data.discountValue !== undefined ||
+        (data.discountCode !== undefined && data.discountCode !== current.discountCode);
 
-      if (!priced.ok) return badRequest(priced.message);
+      const priced = pricingChanged
+        ? await priceBooking({
+            tenantId: session.tenantId!,
+            vehicleId,
+            customerId: data.customerId ?? current.customerId,
+            pickupDate: pickup,
+            pickupTime,
+            returnDate: ret,
+            returnTime,
+            pickupLocation: current.pickupLocation,
+            returnLocation: current.returnLocation,
+            extraIds,
+            discountMode,
+            discountValue,
+            discountCode: data.discountCode ?? current.discountCode,
+          })
+        : null;
 
-      const { breakdown } = priced;
+      if (priced && !priced.ok) return badRequest(priced.message);
 
       // Χειροκίνητο ενοίκιο από το συμβόλαιο (contracts.price): οι γραμμές
       // ξαναϋπολογίζονται, το ΕΝΟΙΚΙΟ μένει και το σύνολο = ενοίκιο +
       // πρόσθετα + ασφάλεια − έκπτωση (το συμβόλαιο προειδοποιεί).
-      const manualRental = await manualRentalOfBooking(db, current.id, pricePartsOf(current));
+      const manualRental = priced ? await manualRentalOfBooking(db, current.id, pricePartsOf(current)) : null;
+      if (priced && !priced.autoPrice && manualRental === null) {
+        return badRequest(`${NO_PRICE_MESSAGE.el}. Βάλτε τιμή με το χέρι στο συμβόλαιο.`);
+      }
 
       const partner = await resolvePartnerId({
         viewer: viewer!,
@@ -225,15 +247,19 @@ export const PATCH = withPermission(
           ...(data.returnTime !== undefined && { returnTime: data.returnTime }),
           ...(data.status !== undefined && { status: data.status }),
           ...(data.notes !== undefined && { notes: data.notes?.trim() || null }),
-          dailyRate: priced.dailyRate,
-          totalDays: breakdown.totalDays,
-          subtotal: breakdown.subtotal,
-          extrasTotal: breakdown.extrasTotal,
-          insuranceCost: breakdown.insuranceCost,
-          discountAmount: breakdown.discountAmount,
-          discountCode: priced.discountCode,
-          total: manualRental !== null ? totalWithRental(breakdown, manualRental) : breakdown.total,
-          extras: priced.snapshot as never,
+          ...(priced?.ok && {
+            dailyRate: priced.dailyRate,
+            totalDays: priced.breakdown.totalDays,
+            subtotal: priced.breakdown.subtotal,
+            extrasTotal: priced.breakdown.extrasTotal,
+            insuranceCost: priced.breakdown.insuranceCost,
+            discountAmount: priced.breakdown.discountAmount,
+            discountCode: priced.discountCode,
+            total: manualRental !== null ? totalWithRental(priced.breakdown, manualRental) : priced.breakdown.total,
+            extras: priced.snapshot as never,
+            priceQuote: priced.quote as never,
+            priceMode: manualRental !== null ? "MANUAL" : "AUTO",
+          }),
         },
         include: withRelations,
       });

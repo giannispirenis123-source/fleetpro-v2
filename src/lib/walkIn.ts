@@ -27,6 +27,8 @@ import {
 import { CONFLICT_STATUSES, findConflicts } from "./bookings";
 import { splitVatInclusive, type VatSplit } from "./invoices";
 import { toDisplayBreakdown, type DisplayBreakdown, type PriceBreakdown } from "./pricing";
+import type { QuoteLine } from "./public/pricing";
+import { textFor } from "./public/text";
 
 /* ─────────────────────────────────────────────
    Zod
@@ -281,12 +283,26 @@ export interface WalkInPreview {
   vat: VatSplit;
   discountCode: string | null;
   conflicts: unknown[];
+  /** false = δεν υπάρχει τιμή στις ρυθμίσεις → χειροκίνητη τιμή. */
+  autoPrice: boolean;
+  /** Μηνύματα της τιμής (π.χ. ελάχιστες ημέρες σεζόν) — ενημερωτικά. */
+  warnings: string[];
+  /** Η ανάλυση της quote() — ίδια με του site. */
+  quoteLines: { label: { el: string; en: string }; totalCents: number; kind: string }[];
 }
 
 /** Η τιμή όπως τη βγάζει ο server (priceBooking), με ανάλυση ΦΠΑ. */
 export async function toWalkInPreview(
   viewer: Viewer,
-  priced: { breakdown: PriceBreakdown; dailyRate: number; discountCode: string | null },
+  priced: {
+    breakdown: PriceBreakdown;
+    dailyRate: number;
+    discountCode: string | null;
+    autoPrice: boolean;
+    warnings: string[];
+    quoteLines: QuoteLine[];
+    quote: { manualDiscount: { cents: number; code: string | null } | null };
+  },
   conflicts: unknown[]
 ): Promise<WalkInPreview> {
   const tenant = await db.tenant.findUnique({
@@ -312,5 +328,24 @@ export async function toWalkInPreview(
     vat: splitVatInclusive(display.total, Number(tenant?.vatRate ?? 0)),
     discountCode: priced.discountCode,
     conflicts,
+    autoPrice: priced.autoPrice,
+    warnings: priced.warnings,
+    quoteLines: [
+      ...priced.quoteLines.map((l) => ({
+        label: { el: textFor(l.label, "el"), en: textFor(l.label, "en") },
+        totalCents: l.totalCents,
+        kind: l.kind as string,
+      })),
+      ...(priced.quote.manualDiscount
+        ? [{
+            label: {
+              el: priced.quote.manualDiscount.code ? `Κωδικός έκπτωσης ${priced.quote.manualDiscount.code}` : "Έκπτωση",
+              en: priced.quote.manualDiscount.code ? `Discount code ${priced.quote.manualDiscount.code}` : "Discount",
+            },
+            totalCents: -priced.quote.manualDiscount.cents,
+            kind: "manual_discount",
+          }]
+        : []),
+    ],
   };
 }

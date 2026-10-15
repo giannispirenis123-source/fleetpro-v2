@@ -10,7 +10,7 @@
 import { useState } from "react";
 import { Bike, Briefcase, CarFront, Cog, DoorOpen, Fuel, Snowflake, Users, Gauge } from "lucide-react";
 import { fill, type StorefrontDictionary } from "@/lib/storefront/i18n";
-import { formatCents } from "@/lib/public/money";
+import { formatCents, perDayOf } from "@/lib/public/money";
 import { cloudinaryThumb } from "@/lib/vehiclePhotos";
 import { filterByType, sortCards, typeTabs, type ResultCard, type SortOrder } from "@/lib/public/catalog";
 import type { VehicleType } from "@/lib/public/pricing";
@@ -188,7 +188,11 @@ export function GroupCard({
                   <span className="sf-muted">
                     {c.price.days === 1 ? d.daysTotalOne : fill(d.daysTotal, { n: c.price.days })}
                   </span>
-                  <span className="sf-gcard-daily">{fill(d.perDay, { price: formatCents(c.price.avgDailyCents, lang) })}</span>
+                  <span className="sf-gcard-daily">{(() => {
+                      // € ανά ημέρα = σύνολο ÷ ημέρες, στο πλησιέστερο €· «~» όταν δεν βγαίνει ακριβώς.
+                      const pd = perDayOf(c.price.totalCents, c.price.days);
+                      return fill(d.perDay, { price: `${pd.approx ? "~" : ""}${formatCents(pd.cents, lang)}` });
+                    })()}</span>
                 </div>
                 {!summary && (
                   <a href={c.bookHref!} className="sf-btn sf-btn--primary">

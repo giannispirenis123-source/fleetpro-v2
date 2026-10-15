@@ -77,10 +77,21 @@ export const POST = withPermission(
       // παρών, άρα CONFIRMED (το όχημα δεσμεύεται) ανεξάρτητα από rentalMode.
       const prepared = await prepareBooking({
         viewer: viewer!,
-        data: { ...data, customerId: data.customerId ?? null },
+        data: {
+          ...data,
+          customerId: data.customerId ?? null,
+          // Σημεία και ηλικία οδηγού από τη φόρμα του συμβολαίου (ίδια τιμή με το site).
+          pickupLocation: data.pickupLocation ?? data.contract?.pickupLocation ?? null,
+          returnLocation: data.returnLocation ?? data.contract?.returnLocation ?? null,
+          driverBirthDate:
+            data.driverBirthDate ??
+            (/^\d{4}-\d{2}-\d{2}$/.test(data.contract?.drivers?.[0]?.birthDate ?? "") ? data.contract!.drivers[0].birthDate : null),
+        },
         forceStatus: "CONFIRMED",
         source: "walk-in",
         preview: data.preview,
+        // Με χειροκίνητο ενοίκιο η έλλειψη τιμής στις ρυθμίσεις δεν σταματά.
+        allowMissingPrice: !!data.contract?.priceOverride,
       });
       if (!prepared.ok) return prepared.response;
 
@@ -122,7 +133,11 @@ export const POST = withPermission(
           return decision.status === 403 ? forbidden(decision.message) : badRequest(decision.message);
         }
         priceOverride = decision.override;
-        plan = { ...plan, breakdown: { ...b, total: decision.total, roundingAdjustment: 0 } };
+        plan = {
+          ...plan,
+          breakdown: { ...b, total: decision.total, roundingAdjustment: 0 },
+          priceMode: decision.override ? "MANUAL" : "AUTO",
+        };
       }
 
       // Αλλαγές οχήματος: μοντέλο/πινακίδα από τον Στόλο, ποτέ από τον client.

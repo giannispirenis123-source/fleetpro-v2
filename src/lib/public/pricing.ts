@@ -15,8 +15,15 @@
 // · Η κλίμακα (tier) διαλέγεται από τις ΣΥΝΟΛΙΚΕΣ ημέρες· κάθε ημέρα χρεώνεται
 //   με τη σεζόν της (κράτηση από χαμηλή σε υψηλή σπάει σωστά).
 // · ΦΠΑ μόνο για εμφάνιση: vat = total − total / (1 + vat%).
+// · ΣΤΡΟΓΓΥΛΟΠΟΙΗΣΗ (money.ts → roundToEuro, half up): κάθε ΠΑΡΑΓΩΓΗ γραμμή
+//   (ποσοστό τοποθεσίας, έκπτωση/προσφορά, επιβάρυνση ηλικίας) σε ακέραιο €·
+//   η «μεγαλύτερη έκπτωση» κρίνεται στα στρογγυλοποιημένα ποσά. Το σύνολο
+//   είναι ΠΑΝΤΑ ακέραιο €: αν μένουν λεπτά από τιμές που έδωσε ρητά ο
+//   διαχειριστής (π.χ. extra 4,50 €), μπαίνει γραμμή «Στρογγυλοποίηση» (< 1 €)
+//   ώστε οι γραμμές να αθροίζουν ακριβώς στο σύνολο.
 
 import { textFor, type LocalizedText } from "./text";
+import { perDayOf, roundToEuro } from "./money";
 
 export const VEHICLE_TYPES = ["car", "moto", "atv"] as const;
 export type VehicleType = (typeof VEHICLE_TYPES)[number];
@@ -161,10 +168,13 @@ export type LineKind =
   | "after_hours"
   | "driver_age"
   | "extra"
-  | "insurance";
+  | "insurance"
+  | "rounding";
 
 export interface QuoteLine {
   kind: LineKind;
+  /** id του extra/της ασφάλειας (μόνο σε αυτές τις γραμμές). */
+  refId?: string;
   label: LocalizedText;
   qty: number;
   unitCents: number;
@@ -560,7 +570,7 @@ export function quote(input: QuoteInput): QuoteResult {
 
   // ── Επιβάρυνση τοποθεσίας (μόνο θετικό ποσοστό· η έκπτωση πάει στις εκπτώσεις) ──
   if (pickupLoc && pickupLoc.adjustmentType === "percent" && pickupLoc.adjustmentValue > 0) {
-    const amount = Math.round((rentalCents * pickupLoc.adjustmentValue) / 100);
+    const amount = roundToEuro((rentalCents * pickupLoc.adjustmentValue) / 100);
     const n = nameOf(pickupLoc.name);
     const custom = nameOf(pickupLoc.adjustmentLabel);
     lines.push({
@@ -618,7 +628,7 @@ export function quote(input: QuoteInput): QuoteResult {
       source: "location",
       id: pickupLoc.id,
       name: both(custom.el || n.el, custom.en || n.en),
-      amountCents: Math.round((rentalCents * pct) / 100),
+      amountCents: roundToEuro((rentalCents * pct) / 100),
       badge: both(`-${pct}%`, `-${pct}%`),
       label: both(custom.el || `-${pct}%`, custom.en || custom.el || `-${pct}%`),
       sortOrder: -1,
@@ -634,12 +644,13 @@ export function quote(input: QuoteInput): QuoteResult {
       pickupLocationId: pickupLoc?.id ?? null,
       dropoffLocationId: dropoffLoc?.id ?? null,
     });
-    if (amount === null || amount <= 0) continue;
+    if (amount === null || roundToEuro(amount) <= 0) continue;
     candidates.push({
       source: "promotion",
       id: p.id,
       name: p.name,
-      amountCents: amount,
+      // Η σύγκριση «μεγαλύτερη σε €» γίνεται στο στρογγυλοποιημένο ποσό.
+      amountCents: roundToEuro(amount),
       badge: p.discountType === "percent" ? both(`-${p.discountValue}%`, `-${p.discountValue}%`) : p.badge,
       label: p.badge,
       sortOrder: p.sortOrder,
@@ -683,7 +694,7 @@ export function quote(input: QuoteInput): QuoteResult {
       errors.push(err("AGE_NOT_ALLOWED", "Η ηλικία οδηγού δεν επιτρέπεται.", "Driver age not allowed."));
     } else if (band.surchargeType !== "none" && band.surchargeCents > 0) {
       const raw = band.surchargeType === "per_day" ? band.surchargeCents * days : band.surchargeCents;
-      const total = band.surchargeMaxCents !== null ? Math.min(raw, band.surchargeMaxCents) : raw;
+      const total = roundToEuro(band.surchargeMaxCents !== null ? Math.min(raw, band.surchargeMaxCents) : raw);
       const l = nameOf(band.label);
       lines.push({
         kind: "driver_age",
@@ -724,6 +735,7 @@ export function quote(input: QuoteInput): QuoteResult {
     const capped = c.maxTotalCents !== null ? Math.min(perUnit, c.maxTotalCents) : perUnit;
     lines.push({
       kind,
+      refId: c.id,
       label: both(n.el, n.en),
       qty: c.priceType === "per_day" ? days * qty : qty,
       unitCents: c.priceCents,
@@ -733,10 +745,16 @@ export function quote(input: QuoteInput): QuoteResult {
   for (const e of input.extras ?? []) charge(e.charge, Math.floor(e.qty), "extra");
   if (input.insurance) charge(input.insurance, 1, "insurance");
 
-  // ── Σύνολα ──
-  const totalCents = Math.max(0, lines.reduce((s, l) => s + l.totalCents, 0));
+  // ── Σύνολα: ΠΑΝΤΑ ακέραιο € ──
+  const rawTotal = Math.max(0, lines.reduce((s, l) => s + l.totalCents, 0));
+  const totalCents = roundToEuro(rawTotal);
+  if (totalCents !== rawTotal) {
+    const diff = totalCents - rawTotal;
+    lines.push({ kind: "rounding", label: both("Στρογγυλοποίηση", "Rounding"), qty: 1, unitCents: diff, totalCents: diff });
+  }
   const discountCents = Math.abs(lines.filter((l) => l.kind === "discount").reduce((s, l) => s + l.totalCents, 0));
-  const listTotalCents = lines.filter((l) => l.kind !== "discount").reduce((s, l) => s + l.totalCents, 0);
+  // Αρχική (διαγραμμένη) τιμή = σύνολο + έκπτωση → κι αυτή ακέραιο €.
+  const listTotalCents = totalCents + discountCents;
   const vat = Math.max(0, settings.vatPercent);
   const vatCents = totalCents - Math.round(totalCents / (1 + vat / 100));
 
@@ -751,7 +769,8 @@ export function quote(input: QuoteInput): QuoteResult {
     discounts: { applied, others: candidates.slice(1) },
     totalCents,
     vatCents,
-    avgDailyCents: Math.round(totalCents / days),
+    // € ανά ημέρα από το σύνολο, στο πλησιέστερο € (η κάρτα δείχνει «~» αν δεν βγαίνει ακριβώς).
+    avgDailyCents: perDayOf(totalCents, days).cents,
     depositCents: target.depositCents,
     excessCents: input.insurance?.excessCents ?? target.excessCents,
   };
@@ -811,17 +830,20 @@ export function fromPrice(
       const prices = (rate && rate.tiers.length > 0 ? rate.tiers.map((x) => x.dailyPriceCents) : [target.basePriceCents]).filter((p) => p > 0);
       seasonMin.set(key, prices.length > 0 ? Math.min(...prices) : null);
     }
-    const list = seasonMin.get(key);
-    if (list == null) continue;
+    const exactList = seasonMin.get(key);
+    if (exactList == null) continue;
+    // Ίδιος κανόνας με την quote(): ακέραιο €.
+    const list = roundToEuro(exactList);
     const date = dateAfter(y, mo, d, i);
     let daily = list;
     let badge: LocalizedText | null = null;
     for (const p of promos) {
       if (date < p.validFrom || date > p.validTo) continue;
-      const v =
+      const v = roundToEuro(
         p.discountType === "percent"
-          ? Math.round(list * (1 - Math.min(90, Math.max(0, p.discountValue)) / 100))
-          : Math.max(0, list - Math.max(0, p.discountValue));
+          ? exactList * (1 - Math.min(90, Math.max(0, p.discountValue)) / 100)
+          : Math.max(0, exactList - Math.max(0, p.discountValue))
+      );
       if (v < daily) {
         daily = v;
         badge = p.discountType === "percent" ? both(`-${p.discountValue}%`, `-${p.discountValue}%`) : p.badge;

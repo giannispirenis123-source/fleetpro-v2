@@ -2780,3 +2780,8 @@ input.dash-invalid,
   .dash-ps-site-links li { grid-template-columns: auto minmax(0, 1fr) auto; }
   .dash-ps-site-btns { grid-column: auto; }
 }
+
+/* Συμβόλαιο: ανάλυση της quote() (ίδια με το site) */
+.dash-quote-lines { margin: 8px 0 4px; font-size: 13px; color: var(--text-3); }
+.dash-quote-lines summary { cursor: pointer; font-weight: 600; color: var(--text-2); padding: 4px 0; }
+.dash-quote-lines .dash-contract-line { font-size: 13px; }

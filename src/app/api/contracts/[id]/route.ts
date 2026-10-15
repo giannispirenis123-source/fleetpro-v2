@@ -159,7 +159,8 @@ export const PATCH = withPermission(
               ? conflict(decision.message)
               : badRequest(decision.message);
         }
-        bookingUpdate = { ...(bookingUpdate ?? {}), total: decision.total };
+        // Αυτόματη ή χειροκίνητη: αποθηκεύεται στην κράτηση (bookings."priceMode").
+        bookingUpdate = { ...(bookingUpdate ?? {}), total: decision.total, priceMode: decision.override ? "MANUAL" : "AUTO" };
         nextOverride = decision.override;
       } else if (currentOverride && currentRental !== undefined && bookingUpdate) {
         // Άλλαξαν τα πρόσθετα: το ΕΝΟΙΚΙΟ μένει χειροκίνητο και το σύνολο

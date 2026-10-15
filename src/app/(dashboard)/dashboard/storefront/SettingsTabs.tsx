@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Award, Baby, Ban, BadgeEuro, Bike, CarFront, ChevronDown, ChevronUp, Clock, CreditCard, Fuel,
+  Award, Baby, Ban, BadgeEuro, Bike, CarFront, ChevronDown, ChevronUp, Clock, Copy, CreditCard, ExternalLink, Fuel,
   Headphones, Heart, KeyRound, Lock, MapPin, MoonStar, Navigation, Pencil, Phone, Plane, Plus,
   ShieldCheck, Ship, Sparkles, Star, Sun, ThumbsUp, Trash2, Umbrella, UserPlus, Wallet,
 } from "lucide-react";
@@ -35,6 +35,8 @@ export interface SiteSettingsDTO {
   contact: ContactSettings;
   theme: ThemeSettings;
   trustBlocks: TrustBlock[];
+  /** Η δημόσια σελίδα: ίδιος κανόνας «ανοιχτή» με το site (visibility.ts). */
+  site: { slug: string | null; languages: string[]; defaultLanguage: string; open: boolean; reason: string | null };
 }
 
 function useSiteSettings() {
@@ -395,6 +397,72 @@ export function BookingTab() {
    Εμφάνιση
    ───────────────────────────────────────────── */
 
+/**
+ * «Η δημόσια σελίδα σου»: πλήρη links ανά γλώσσα, από το domain όπου
+ * δουλεύει τώρα ο χρήστης (production ή preview) — όχι από env.
+ */
+function PublicPageBox({ site }: { site: SiteSettingsDTO["site"] }) {
+  const tr = useT();
+  const t = (k: string) => tr(`publicSite.${k}`);
+  const [origin, setOrigin] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  const copy = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Παλιοί browsers / χωρίς άδεια: επιλογή κειμένου με το χέρι.
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    setCopied(url);
+    setTimeout(() => setCopied((c) => (c === url ? null : c)), 2000);
+  };
+
+  return (
+    <div className="dash-panel dash-settings-panel dash-ps-site">
+      <h2 className="dash-section-title">{t("siteBoxTitle")}</h2>
+      {!site.slug ? (
+        <p className="dash-form-note">
+          {t("siteNoSlug")} <Link href="/dashboard/storefront">{t("siteGoToPage")}</Link>
+        </p>
+      ) : (
+        <>
+          {!site.open && site.reason && (
+            <div className="dash-form-error">
+              {t("siteHidden")} {site.reason} <Link href="/dashboard/storefront">{t("siteGoToPage")}</Link>
+            </div>
+          )}
+          <ul className="dash-ps-site-links">
+            {[site.defaultLanguage, ...site.languages.filter((l) => l !== site.defaultLanguage)].map((lang) => {
+              const url = `${origin}/s/${site.slug}/${lang}`;
+              return (
+                <li key={lang}>
+                  <span className="dash-ps-site-lang">{lang.toUpperCase()}</span>
+                  <code className="dash-ps-site-url">{url}</code>
+                  <span className="dash-ps-site-btns">
+                    <a href={url} target="_blank" rel="noopener" className="dash-btn dash-btn--primary">
+                      <ExternalLink size={15} /> {t("siteOpenBtn")}
+                    </a>
+                    <button type="button" className="dash-btn" onClick={() => copy(url)} disabled={!origin}>
+                      <Copy size={15} /> {copied === url ? t("siteCopied") : t("siteCopyBtn")}
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Η συμπιεσμένη εικόνα (≈1600px) πρέπει να είναι οριζόντια και ≥ 1600px. */
 async function heroProblem(blob: Blob, message: string): Promise<string | null> {
   try {
@@ -428,6 +496,7 @@ export function AppearanceTab() {
 
   return (
     <>
+      <PublicPageBox site={data.site} />
       <div className="dash-panel dash-settings-panel">
         <h2 className="dash-section-title">{t("hero")}</h2>
         <p className="dash-form-note dash-settings-lead">{t("heroHint")}</p>

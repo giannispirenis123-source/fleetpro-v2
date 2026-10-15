@@ -10,7 +10,7 @@ import { ok, badRequest, forbidden, notFound, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { loadStorefrontAdmin, slugOwner, storefrontAccess } from "@/lib/storefront/admin";
 import { mergeStorefrontSettings, storefrontUpdateSchema } from "@/lib/storefront/settings";
-import { checkSlugAvailability } from "@/lib/storefront/slug";
+import { checkSlugAvailability, normalizeSlug } from "@/lib/storefront/slug";
 
 // GET /api/storefront
 export const GET = withPermission(
@@ -49,7 +49,7 @@ export const PATCH = withPermission(
         if (data.slug.trim() === "") {
           slug = null;
         } else {
-          const check = checkSlugAvailability(data.slug, await slugOwner(data.slug.trim().toLowerCase()), access.companyId);
+          const check = checkSlugAvailability(data.slug, await slugOwner(normalizeSlug(data.slug)), access.companyId);
           if (!check.ok) return badRequest(check.message);
           slug = check.slug;
         }

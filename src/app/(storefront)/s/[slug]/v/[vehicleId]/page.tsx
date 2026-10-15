@@ -1,9 +1,8 @@
-// Σελίδα οχήματος στο δημόσιο site — βλ. src/lib/storefront/routes.tsx.
-import { StorefrontVehiclePage, storefrontVehicleMetadata, type StorefrontParams } from "@/lib/storefront/routes";
+// /s/<slug>/v/<id> → /s/<slug>/<προεπιλεγμένη γλώσσα>/v/<id> — βλ. src/lib/storefront/page.ts.
+import { redirectToDefaultLanguage } from "@/lib/storefront/page";
 
 export const dynamic = "force-dynamic";
 
-export const generateMetadata = ({ params }: { params: StorefrontParams }) =>
-  storefrontVehicleMetadata(params);
-
-export default StorefrontVehiclePage;
+export default async function StorefrontVehicleRoot({ params }: { params: { slug: string; vehicleId: string } }) {
+  return redirectToDefaultLanguage(params.slug, params.vehicleId);
+}

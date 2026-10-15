@@ -48,7 +48,8 @@ export function validateSlug(input: string): SlugCheck {
     return {
       ok: false,
       reason: "format",
-      message: "Μόνο λατινικά πεζά (a-z), αριθμοί και παύλα — όχι στην αρχή/τέλος ή διπλή.",
+      message:
+        "Μόνο μικρά λατινικά γράμματα (a-z), αριθμοί και παύλα (-), χωρίς κενά και ελληνικά — η παύλα όχι στην αρχή/τέλος ή διπλή.",
     };
   }
   if (RESERVED_SLUGS.has(slug)) {
@@ -75,16 +76,72 @@ export function checkSlugAvailability(
 }
 
 /**
- * Η διεύθυνση μιας δημόσιας σελίδας. Η προεπιλεγμένη γλώσσα της εταιρίας
- * δεν μπαίνει στο URL (/s/<slug>)· οι άλλες ναι (/s/<slug>/en).
+ * Η διεύθυνση μιας δημόσιας σελίδας: ΠΑΝΤΑ με τη γλώσσα (/s/<slug>/<lang>),
+ * ώστε αρχική, αναζήτηση και κράτηση να έχουν την ίδια μορφή
+ * (/s/<slug>/<lang>/search, …/book, …/v/<id>). Το σκέτο /s/<slug> κάνει
+ * redirect στην προεπιλεγμένη γλώσσα.
+ * `page`: "" (αρχική), "search", "book", ή { vehicleId }.
  */
 export function storefrontPath(
   slug: string,
   lang: string,
-  defaultLanguage: string,
-  vehicleId?: string
+  page: "" | "search" | "book" | { vehicleId: string } = "",
+  query = ""
 ): string {
-  const langPart = lang === defaultLanguage ? "" : `/${lang}`;
-  const vehiclePart = vehicleId ? `/v/${encodeURIComponent(vehicleId)}` : "";
-  return `/s/${slug}${langPart}${vehiclePart}`;
+  const tail =
+    typeof page === "object" ? `/v/${encodeURIComponent(page.vehicleId)}` : page ? `/${page}` : "";
+  return `/s/${slug}/${lang}${tail}${query ? `?${query}` : ""}`;
+}
+
+/**
+ * Slug από το URL όπως μπορεί να το γράψει ένας άνθρωπος (κεφαλαία από το
+ * πληκτρολόγιο του κινητού, κενά, τόνοι, %20) → η κανονική μορφή, ή null αν
+ * δεν γίνεται έγκυρο slug. Π.χ. « Fleet-Pro-Chaniá » → «fleet-pro-chania».
+ */
+export function canonicalSlug(raw: string): string | null {
+  let s = raw;
+  try {
+    s = decodeURIComponent(raw);
+  } catch {
+    /* μένει όπως ήρθε */
+  }
+  // Στο URL ανεχόμαστε και τόνους (é → e)· η φόρμα τους απορρίπτει.
+  s = s.normalize("NFD").replace(/\p{M}/gu, "");
+  const check = validateSlug(s);
+  return check.ok ? check.slug : null;
+}
+
+/**
+ * Για το middleware (χωρίς βάση): /s/<slug>/<lang>/… με slug ή γλώσσα σε μη
+ * κανονική μορφή → η κανονική διαδρομή (για redirect). null = είναι ήδη
+ * κανονική ή δεν σώζεται (θα δώσει 404 η σελίδα).
+ */
+export function canonicalSitePath(pathname: string): string | null {
+  const parts = pathname.split("/");
+  if (parts[1] !== "s" || !parts[2]) return null;
+  const slug = canonicalSlug(parts[2]);
+  if (!slug) return null;
+  const next = [...parts];
+  next[2] = slug;
+  if (next[3] && /^[A-Za-z]{2}$/.test(next[3])) next[3] = next[3].toLowerCase();
+  const out = next.join("/");
+  return out === pathname ? null : out;
+}
+
+/** Συνήθη λάθη γλώσσας στο URL → ο σωστός κωδικός (π.χ. /gr → /el). */
+export const LANGUAGE_ALIASES: Readonly<Record<string, string>> = { gr: "el", ell: "el", eng: "en", uk: "en" };
+
+/**
+ * Η γλώσσα του URL: υποστηριζόμενη → η ίδια· αλλιώς σε ποια να γίνει
+ * redirect (γνωστό λάθος όπως /gr → el, αλλιώς η προεπιλεγμένη). Μη έγκυρη
+ * γλώσσα ΔΕΝ δίνει 404 σε ανοιχτή σελίδα.
+ */
+export function chooseLanguage(
+  langParam: string | undefined,
+  supported: string[],
+  defaultLanguage: string
+): { ok: true; lang: string } | { ok: false; redirectTo: string } {
+  if (langParam && supported.includes(langParam)) return { ok: true, lang: langParam };
+  const alias = langParam ? LANGUAGE_ALIASES[langParam.toLowerCase()] : undefined;
+  return { ok: false, redirectTo: alias && supported.includes(alias) ? alias : defaultLanguage };
 }

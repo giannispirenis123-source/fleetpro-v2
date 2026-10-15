@@ -1272,6 +1272,13 @@ export const el = {
   },
 
   publicSite: {
+    siteBoxTitle: "Η δημόσια σελίδα σου",
+    siteOpenBtn: "Άνοιγμα",
+    siteCopyBtn: "Αντιγραφή",
+    siteCopied: "Αντιγράφηκε",
+    siteNoSlug: "Βάλε διεύθυνση σελίδας (slug) και αποθήκευσε.",
+    siteHidden: "Η σελίδα δεν φαίνεται ακόμα στο κοινό (οι επισκέπτες βλέπουν «δεν βρέθηκε»):",
+    siteGoToPage: "Άνοιγμα καρτέλας «Σελίδα»",
     tabPromotions: "Προσφορές",
     copy: "Αντιγραφή",
     copySuffix: "αντίγραφο",

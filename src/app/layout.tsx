@@ -1,7 +1,9 @@
 // src/app/layout.tsx
 
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Inter } from "next/font/google";
+import { SITE_LANG_HEADER, htmlLang } from "@/lib/storefront/lang";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin", "greek"] });
@@ -18,8 +20,10 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Δημόσιο site: η γλώσσα της σελίδας (από το middleware)· αλλιώς ελληνικά.
+  const lang = htmlLang(headers().get(SITE_LANG_HEADER));
   return (
-    <html lang="el">
+    <html lang={lang}>
       <body className={inter.className}>{children}</body>
     </html>
   );

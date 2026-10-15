@@ -6,13 +6,14 @@
 // custom domain. Κάθε άλλο ερώτημα του site φιλτράρει με το companyId που
 // επέστρεψε αυτή η συνάρτηση — ποτέ με κάτι από το URL.
 //
-// Ανενεργή σελίδα, πακέτο χωρίς publicSite, ανασταλμένη/ακυρωμένη εταιρία ή
-// άγνωστο slug → null → 404, ΧΩΡΙΣ να φανερώνεται ότι η εταιρία υπάρχει.
+// Πότε είναι ανοιχτή: ΜΟΝΟ storefrontVisibility (visibility.ts) — ίδιος
+// κανόνας με το dashboard. Αλλιώς null → 404, ΧΩΡΙΣ να φανερώνεται ότι η
+// εταιρία υπάρχει ή ποιος είναι ο λόγος.
 
 import { db } from "../db";
 import { signUrls } from "../storage";
-import { resolveEntitlements } from "../entitlementsCore";
-import { validateSlug } from "./slug";
+import { canonicalSlug } from "./slug";
+import { storefrontRowVisibility } from "./visibility";
 import {
   PUBLIC_VEHICLE_SELECT,
   toPublicCompany,
@@ -27,18 +28,16 @@ export interface ResolvedStorefront {
   company: PublicCompany;
 }
 
-const HIDDEN_STATUSES = new Set(["SUSPENDED", "CANCELLED"]);
-
 export async function resolveStorefrontCompany(
   rawSlug: string
 ): Promise<ResolvedStorefront | null> {
-  const check = validateSlug(rawSlug);
-  // Το URL έρχεται ήδη πεζό από τα links μας· ό,τι δεν είναι ακριβώς ένα
-  // έγκυρο slug δεν ψάχνεται καν στη βάση.
-  if (!check.ok || check.slug !== rawSlug) return null;
+  // Το middleware έχει ήδη κάνει redirect σε κανονική μορφή· εδώ ξανά, για
+  // ασφάλεια (κεφαλαία/κενά/τόνοι δεν δίνουν 404 σε ενεργή σελίδα).
+  const slug = canonicalSlug(rawSlug);
+  if (!slug) return null;
 
   const tenant = await db.tenant.findUnique({
-    where: { storefrontSlug: check.slug },
+    where: { storefrontSlug: slug },
     select: {
       id: true,
       status: true,
@@ -52,14 +51,19 @@ export async function resolveStorefrontCompany(
       address: true,
       region: true,
       logoPath: true,
+      rentalMode: true,
       entitlementOverrides: true,
       entitlementPlan: { select: { key: true, name: true, modules: true, limits: true } },
     },
   });
 
-  if (!tenant || !tenant.storefrontEnabled || HIDDEN_STATUSES.has(tenant.status)) return null;
-  const entitlements = resolveEntitlements(tenant.entitlementPlan, tenant.entitlementOverrides);
-  if (!entitlements.modules.publicSite) return null;
+  const visibility = storefrontRowVisibility(tenant);
+  if (!tenant || !visibility.open) {
+    // Μόνο στα logs του server (Vercel → Logs): ποιο slug και γιατί. Ο
+    // επισκέπτης βλέπει το ίδιο 404 σε κάθε περίπτωση.
+    console.info("[FleetPro] site 404", { slug, reason: visibility.open ? "unknown_slug" : visibility.reason });
+    return null;
+  }
 
   const logoUrl = tenant.logoPath
     ? ((await signUrls([tenant.logoPath])).get(tenant.logoPath) ?? null)

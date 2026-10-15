@@ -126,7 +126,7 @@ export default function StorefrontClient({
   };
 
   const previewHref = saved.slug
-    ? storefrontPath(saved.slug, saved.settings.defaultLanguage, saved.settings.defaultLanguage)
+    ? storefrontPath(saved.slug, saved.settings.defaultLanguage)
     : null;
 
   return (

@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 // src/app/api/public-site/hero/sign/route.ts
-// Υπογραφή ανεβάσματος της φωτογραφίας hero — φάκελος fleetpro/{companyId}/site.
+// Υπογραφή ανεβάσματος της φωτογραφίας hero — φάκελος fleetpro/{companyId}/site/hero.
 
 import { NextResponse } from "next/server";
 import { serverError } from "@/lib/api";

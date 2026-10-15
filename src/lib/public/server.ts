@@ -8,7 +8,7 @@
 import { db } from "../db";
 import { normalizeStorefrontSettings } from "../storefront/settings";
 import { toCents, toCentsOrNull } from "./money";
-import { readLocalized } from "./text";
+import { readLocalized, type LocalizedText } from "./text";
 import { migrateLegacyFixed } from "./pricing";
 import { isoDate } from "./resources";
 import type {
@@ -47,10 +47,12 @@ const asVehicleType = (v: string): VehicleType => (v === "moto" || v === "atv" ?
 export interface QuoteContext {
   settings: QuoteSettings;
   seasons: SeasonInput[];
-  locations: (LocationInput & { isActive: boolean })[];
-  ageBands: AgeBandInput[];
+  /** Με τη σειρά τους (sortOrder)· slug για τα URL του site. */
+  locations: (LocationInput & { isActive: boolean; slug: string })[];
+  /** Με σειρά ηλικίας· explanation για την επιλογή στο site. */
+  ageBands: (AgeBandInput & { explanation: LocalizedText })[];
   promotions: PromotionInput[];
-  extras: (ChargeInput & { kind: "EXTRA" | "INSURANCE"; isActive: boolean })[];
+  extras: (ChargeInput & { kind: "EXTRA" | "INSURANCE"; isActive: boolean; isDefault: boolean })[];
   /** Ομάδες και οχήματα χωρίς ομάδα, με τα rates τους. */
   groups: Map<string, { target: TargetInput; rates: RateInput[] }>;
   vehicles: Map<string, { target: TargetInput; rates: RateInput[] }>;
@@ -60,8 +62,8 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
   const [tenant, seasons, locations, ageBands, extras, groups, vehicles, rates, promotions] = await Promise.all([
     db.tenant.findUnique({ where: { id: companyId }, select: { vatRate: true, storefrontSettings: true } }),
     db.season.findMany({ where: { tenantId: companyId } }),
-    db.pickupLocation.findMany({ where: { tenantId: companyId } }),
-    db.driverAgeBand.findMany({ where: { tenantId: companyId } }),
+    db.pickupLocation.findMany({ where: { tenantId: companyId }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
+    db.driverAgeBand.findMany({ where: { tenantId: companyId }, orderBy: [{ minAge: "asc" }] }),
     db.extra.findMany({ where: { tenantId: companyId } }),
     db.rentalGroup.findMany({ where: { tenantId: companyId } }),
     db.vehicle.findMany({
@@ -99,6 +101,7 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
     // migrateLegacyFixed: ίδιος κανόνας με το SQL 21c, για όποια γραμμή δεν έχει περάσει ακόμα.
     locations: locations.map((l) => migrateLegacyFixed({
       id: l.id,
+      slug: l.slug,
       name: readLocalized(l.name),
       adjustmentType: l.adjustmentType === "percent" || l.adjustmentType === "fixed" ? l.adjustmentType : "none",
       adjustmentValue: l.adjustmentValue,
@@ -111,7 +114,7 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
       collectionFeeCents: l.collectionFeeCents,
       feeFreeFromDays: l.feeFreeFromDays,
       feeLabel: readLocalized(l.feeLabel),
-    }) as LocationInput & { isActive: boolean }),
+    }) as LocationInput & { isActive: boolean; slug: string }),
     promotions: promotions.map((p) => ({
       id: p.id,
       name: readLocalized(p.name),
@@ -133,6 +136,7 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
       minAge: b.minAge,
       maxAge: b.maxAge,
       label: readLocalized(b.label),
+      explanation: readLocalized(b.explanation),
       allowed: b.allowed,
       isDefault: b.isDefault,
       surchargeType: b.surchargeType === "per_day" || b.surchargeType === "per_rental" ? b.surchargeType : "none",
@@ -146,6 +150,7 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
         id: e.id,
         kind: e.type,
         isActive: e.isActive,
+        isDefault: e.isDefault,
         name: name.el ? name : { ...name, el: e.name },
         priceType: e.chargeType === "PER_DAY" ? "per_day" : "per_rental",
         priceCents: toCents(e.price),

@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 15/10/2026 · **main:** `1c6cfbe` (merge του PR #23 — δημόσιο site 2/4). **Ανοιχτό:** branch `claude/unified-pricing` — **Ενιαία τιμολόγηση: μία μηχανή τιμής για dashboard και site, τιμές σε ακέραια €** (§5.5). **Θέλει SQL `22` ΠΡΙΝ τη δοκιμή στο preview.** Επόμενος ελεύθερος αριθμός SQL: `23`.
+**Ημερομηνία:** 15/10/2026 · **main:** `9311d33` (merge του PR #24 — ενιαία τιμολόγηση, SQL 22). **Ανοιχτό:** branch `claude/public-site-booking-flow` — **Δημόσιο site 3/4: ροή κράτησης (φόρμα, υποβολή, σελίδα επιβεβαίωσης, dashboard)** (§5.6). **Θέλει SQL `23` ΠΡΙΝ τη δοκιμή στο preview.** Επόμενος ελεύθερος αριθμός SQL: `24`.
 
-> **Επόμενο βήμα:** SQL 22 → δοκιμή της ενιαίας τιμολόγησης στο preview → merge· μετά PR 3 (φόρμα κράτησης του site). Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
+> **Επόμενο βήμα:** SQL 23 → δοκιμή της ροής κράτησης στο preview → merge· μετά PR 4 (SEO/νομικά/FAQ). Μετά το domain: **online πληρωμές (Stripe Connect)** και **email προς πελάτες** (επιβεβαίωση κράτησης). Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται **«Fleet-Pro Car Rental»**· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
 ---
 
@@ -480,6 +480,22 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 **Γνωστά / για αργότερα:** (1) Δύο συστήματα έκπτωσης: προσφορές (site + dashboard, αυτόματες) και κωδικοί `discounts` (μόνο dashboard, πάνω στο σύνολο). Αξίζει ενοποίηση. (2) Η ρύθμιση `roundUpTotal` δεν έχει πια αποτέλεσμα (το σύνολο είναι ήδη ακέραιο). (3) Το χειροκίνητο ενοίκιο δέχεται λεπτά (ρητή επιλογή του χρήστη) → τότε το σύνολο μπορεί να έχει λεπτά. (4) Η λίστα σημείων του συμβολαίου έχει σταθερά ονόματα Χανίων (`DEFAULT_LOCATIONS`)· χρεώσεις δρομολογίου μπαίνουν μόνο όταν το όνομα ταιριάζει με τοποθεσία του site — καλύτερα η λίστα να βγαίνει από τα `pickup_locations`. (5) Όχημα σε ομάδα τιμολογείται πλέον με τις τιμές της ομάδας (όπως στο site), όχι με το `dailyRate` του — οι νέες κρατήσεις μπορεί να βγουν διαφορετικές από πριν.
 
+### 5.6 Δημόσιο site 3/4 — ροή κράτησης (branch `claude/public-site-booking-flow`, SQL `23`)
+
+**Ροή:** αναζήτηση → «Κράτηση» → `/s/<slug>/<lang>/book` (περίληψη, ασφάλεια/πρόσθετα με τιμή από τον server μέσω `POST /api/public/quote`, ανάλυση τιμής, φόρμα) → `POST /api/public/booking` → `/s/<slug>/<lang>/booking/<code>`. Πληρωμή στην παραλαβή· **όχι Stripe, όχι email**.
+
+**Φόρμα** (`BookingForm.tsx`): όνομα, επώνυμο, email, κινητό με κωδικό χώρας, ημερομηνία γέννησης, πτήση (μόνο όταν το σημείο έχει `askFlightNumber` ή τύπο `airport`), σχόλια (≤500), όροι, honeypot `website`. Κανένα άλλο προσωπικό στοιχείο. Τα στοιχεία ΠΟΤΕ στο URL. Αν η ηλικία από τη γέννηση πέφτει σε άλλη κλίμακα → 409 + «Ενημέρωση τιμής» (πρόχειρο στο sessionStorage `sf-book-draft`, νέο `age` στο URL). Κουμπί «Υποβολή κράτησης» (BOOKING) ή «Αποστολή αιτήματος» (REQUEST)· η κατάσταση είναι **πάντα PENDING**, αλλάζει μόνο το κείμενο.
+
+**Υποβολή** (`bookingSubmit.ts` → `bookingPlan.ts` → `bookingWrite.ts`): εταιρία ΜΟΝΟ από slug (`resolveStorefrontCompany`)· zod + αφαίρεση HTML· όρια στη βάση (`rate_limits`, κλειδιά sha256 με pepper `JWT_SECRET`, χωρίς IP): 5/ώρα ανά email+εταιρία, 30/ώρα ανά εταιρία. Μετά `db.$transaction` + `pg_advisory_xact_lock(hashtext('site-booking:<companyId>'))`: ξανά όλοι οι έλεγχοι του `search.ts`, τιμή ΜΟΝΟ από `quoteFromContext` (τιμή του browser αγνοείται), διαθεσιμότητα τώρα, **αυτόματη ανάθεση του πρώτου ελεύθερου οχήματος της ομάδας** (`freeVehicleIds`) + `rentalGroupId`, πελάτης από το CRM με email (υπάρχων = χωρίς αλλαγές· αλλιώς νέος μόνο με όσα έδωσε), κράτηση `source='site'`, `PENDING`, `priceMode AUTO`, `priceQuote`, `publicCode` (XXXX-XXXX, αλφάβητο invoiceCode, έως 5 επαναλήψεις), ειδοποίηση `BOOKING_NEW` («Νέα κράτηση από το site»). Από ταυτόχρονες υποβολές για το τελευταίο όχημα περνά μόνο μία (οι άλλες 409).
+
+**Σελίδα επιβεβαίωσης:** κωδικός με αντιγραφή, «Σε αναμονή επιβεβαίωσης», ομάδα, ημερομηνίες/τοποθεσίες, **αποθηκευμένη** ανάλυση τιμής, «Πληρωμή στην παραλαβή», επικοινωνία με «Αναφέρετε τον κωδικό σας». Μόνο μικρό όνομα + μασκαρισμένο email. Λάθος κωδικός ή άλλη εταιρία → 404. Όριο 60/10΄ ανά hash του `x-forwarded-for` (πάνω από το όριο → 404). Middleware: `X-Robots-Tag noindex`, `Cache-Control no-store`, `Referrer-Policy no-referrer`.
+
+**Dashboard:** στις κρατήσεις ένδειξη «Από το site» + κωδικός, πτήση, σχόλια· `?status=PENDING` ανοίγει το φίλτρο «Εκκρεμεί»· banner στην αρχική «Νέες κρατήσεις από το site (N)». Επιβεβαίωση/ακύρωση από τις υπάρχουσες ενέργειες· αλλαγή οχήματος με τον υπάρχοντα έλεγχο σύγκρουσης, και **μέσα στην ίδια ομάδα δεν αλλάζει την τιμή**.
+
+**Tests:** `tests/public-booking.test.mjs` (19). Τοπικά (PostgreSQL 16, `01 → 23` + demo): 3 ταυτόχρονες υποβολές για S125 (2 οχήματα) → 2×201 σε διαφορετικά οχήματα + 1×409· `totalPrice` από τον client αγνοήθηκε· honeypot 400 χωρίς εγγραφή· ηλικία σε άλλη κλίμακα → 409 με ageUpdate· ροή στο κινητό ως τη σελίδα επιβεβαίωσης και το dashboard (banner + ενδείξεις).
+
+**Γνωστά / για αργότερα:** (1) Οι ειδοποιήσεις γράφονται αλλά δεν έχουν ακόμη UI (το banner μετρά από τις κρατήσεις). (2) Καμία ειδοποίηση στον πελάτη μέχρι τα email (μετά το domain). (3) Το `/login` βγάζει React hydration warnings (#418/#425) — υπήρχαν πριν, δεν σχετίζονται.
+
 ### Δημόσιο site — design (PR 2)
 
 Αναφορά: **prentals.gr**. Να κρατήσουμε:
@@ -502,7 +518,8 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
-- **22-unified-pricing: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/unified-pricing`). Σε transaction: `bookings."priceQuote"` JSONB, `bookings."priceMode"` TEXT + CHECK `bookings_priceMode_check` (`AUTO`/`MANUAL`/NULL). Μόνο προσθήκες, nullable — η παλιά έκδοση δουλεύει κανονικά με αυτό. Αναμενόμενο verification `2 | 1 | 0`. **Τρέχει πριν τη δοκιμή στο preview** (ο νέος κώδικας γράφει τις στήλες).
+- **23-public-booking: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/public-site-booking-flow`). Σε transaction: `bookings."publicCode"` (UNIQUE), `bookings."rentalGroupId"` (FK → rental_groups, ON DELETE SET NULL), `bookings."flightNumber"`, πίνακας `rate_limits`. Μόνο προσθήκες. Αναμενόμενο verification `3 | 1 | 1 | 1`. Επόμενος ελεύθερος αριθμός: `24`.
+- **22-unified-pricing: έτρεξε** (PR #24, merged). Σε transaction: `bookings."priceQuote"` JSONB, `bookings."priceMode"` TEXT + CHECK `bookings_priceMode_check` (`AUTO`/`MANUAL`/NULL). Μόνο προσθήκες, nullable — η παλιά έκδοση δουλεύει κανονικά με αυτό. Αναμενόμενο verification `2 | 1 | 0`. **Τρέχει πριν τη δοκιμή στο preview** (ο νέος κώδικας γράφει τις στήλες).
 - **Δημόσιο site 2/4 (branch `claude/public-site-home-search`): κανένα νέο SQL.** Τα κείμενα hero ζουν στο υπάρχον `storefrontSettings.theme`, η διαθεσιμότητα διαβάζει υπάρχοντες πίνακες. Επόμενος ελεύθερος αριθμός: `22`.
 - **21 / 21b / 21c: έχουν τρέξει** (PR #22 merged, 13/10/2026). Οι σημειώσεις «ΔΕΝ έχει τρέξει» παρακάτω είναι ιστορικό.
 - **21-public-site-settings: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/public-site-settings`). Σε transaction. Νέοι πίνακες `rental_groups`, `pickup_locations`, `seasons`, `rates` (UNIQUE `(tenantId, seasonId, rentalGroupId, vehicleId) NULLS NOT DISTINCT` — θέλει PostgreSQL ≥ 15, το Supabase είναι), `driver_age_bands`· `vehicles."rentalGroupId"` (FK SET NULL) + `"vehicleType"` (MOTORCYCLE → 'moto')· `extras` + 6 στήλες (backfill `nameI18n = {"el": name}`)· σβήνει το `storefrontSettings.bookingMode`. 18 constraints (FK + CHECK) σε `DO $$`. `extras."isDefault"` (false για όλα τα υπάρχοντα) + CHECK. 19 constraints. Αναμενόμενο verification `5 | 2 | 7 | 19 | 3 | 0 | 0 | 0` (το τελευταίο = συγκρούσεις προεπιλεγμένων ασφαλειών). **Τρέχει πριν το merge.**
@@ -564,13 +581,15 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 5. **Τιμολόγια: PDF** — ✅ (§5.1). Απομένει μετατροπή λογοτύπων WebP σε PNG για το PDF.
 6. ~~**Φωτογραφίες ζημιών**~~ — ✅ με Supabase Storage (§5). ~~**Φωτογραφίες οχημάτων**~~ — ✅ με Cloudinary (§5, branch `claude/vehicle-photos`). Το `documents[]` μένει αχρησιμοποίητο.
 7. **Billing / Stripe** — συνδρομές εταιριών. Οι εκπτώσεις συνδρομών (`PlatformDiscount`) υπάρχουν ήδη· το billing θα εφαρμόζει την ενεργή με `platformDiscountStatus` + `discountedPrice`.
-8. **Δημόσιο site κρατήσεων** — τα θεμέλια (πακέτα + `/s/<slug>`) υπάρχουν (§5.2). PR 1/4 (ρυθμίσεις + μηχανή τιμής, §5.3) ✅ merged (PR #22). PR 2/4 αρχική/αναζήτηση/κάρτες/διαθεσιμότητα (§5.4) στο branch `claude/public-site-home-search`. Επόμενα: PR 3 ροή κράτησης (τρόπος από `rentalMode`), PR 4 SEO/νομικά/FAQ/κριτικές· μετά online πληρωμή (Stripe) και custom domain (στο `resolveStorefrontCompany`). Το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
+8. **Δημόσιο site κρατήσεων** — τα θεμέλια (πακέτα + `/s/<slug>`) υπάρχουν (§5.2). PR 1/4 (ρυθμίσεις + μηχανή τιμής, §5.3) ✅ merged (PR #22). PR 2/4 (§5.4) ✅ merged (PR #23). PR 3/4 ροή κράτησης (§5.6) στο branch `claude/public-site-booking-flow`. Επόμενα: PR 4 SEO/νομικά/FAQ/κριτικές· μετά custom domain, **online πληρωμές (Stripe Connect)** και **email προς πελάτες** (στο `resolveStorefrontCompany`). Το `/api/discounts/validate` είναι ήδη ανοιχτό γι' αυτό.
 
 ## 9. Changelog
 
 | Commit | Τι |
 |---|---|
-| _(branch `claude/unified-pricing`)_ | Ενιαία τιμολόγηση: `engine.ts` (`quoteFromContext`, `requestFromCriteria`/`requestFromBooking`), `computeQuoteForTenant`, κράτηση/walk-in/πρόσθετα/Δοκιμαστικός/site από την ίδια μηχανή, στρογγυλοποίηση σε ακέραιο € με γραμμή «Στρογγυλοποίηση», `bookings.priceQuote`/`priceMode`, προεπισκοπήσεις μόνο από τον server. Migration `22` |
+| _(branch `claude/public-site-booking-flow`)_ | Δημόσιο site 3/4: φόρμα κράτησης, `POST /api/public/booking` με advisory lock + αυτόματη ανάθεση οχήματος, `POST /api/public/quote`, σελίδα επιβεβαίωσης με κωδικό, όρια στη βάση, «Από το site» + banner στο dashboard. Migration `23` |
+| `9311d33` | Merge του PR #24 (ενιαία τιμολόγηση). SQL 22 |
+| _(PR #24)_ | Ενιαία τιμολόγηση: `engine.ts` (`quoteFromContext`, `requestFromCriteria`/`requestFromBooking`), `computeQuoteForTenant`, κράτηση/walk-in/πρόσθετα/Δοκιμαστικός/site από την ίδια μηχανή, στρογγυλοποίηση σε ακέραιο € με γραμμή «Στρογγυλοποίηση», `bookings.priceQuote`/`priceMode`, προεπισκοπήσεις μόνο από τον server. Migration `22` |
 | `1c6cfbe` | Merge του PR #23 (δημόσιο site 2/4). Χωρίς SQL |
 | _(PR #23, 6ο commit)_ | Αποσύνδεση στο κινητό για τον Super Admin (η πλαϊνή στήλη κρυβόταν κάτω από 600px) + `GET /api/auth/logout` (αποσύνδεση με link → /login). Χωρίς SQL |
 | _(PR #23, 5ο commit)_ | Η ρίζα `/` οδηγεί σε dashboard/super-admin/login (ήταν 404 στο link του preview), φιλικά 404 (εφαρμογή + δημόσιο site). Χωρίς SQL |

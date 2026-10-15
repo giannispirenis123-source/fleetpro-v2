@@ -467,6 +467,13 @@ model Booking {
   // Source (web, phone, walk-in, partner)
   source String @default("manual")
 
+  // Ολόκληρη η ανάλυση της quote() τη στιγμή της δημιουργίας/αλλαγής (SQL 22):
+  // { version, at, quote: { days, lines, … }, manualDiscount, totalCents, autoPrice }.
+  // NULL = παλιά κράτηση (πριν την ενιαία τιμολόγηση) — δεν αγγίζεται.
+  priceQuote Json?
+  // 'AUTO' (τιμή από τις ρυθμίσεις) | 'MANUAL' (χειροκίνητο ενοίκιο συμβολαίου). NULL = παλιά.
+  priceMode  String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

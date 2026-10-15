@@ -21,8 +21,8 @@ import {
   type PublicCard,
   type ResultCard,
 } from "./catalog";
-import { defaultInsuranceFor } from "./insuranceDefaults";
-import { fromPrice, quote, type QuoteResult } from "./pricing";
+import { fromPrice, type QuoteResult } from "./pricing";
+import { hasUnpricedDay, quoteFromContext, requestFromCriteria, subjectOf } from "./engine";
 import { nowLocal, type SearchCriteria, type SearchRules } from "./search";
 import { loadQuoteContext, type QuoteContext } from "./server";
 import { readLocalized, textFor, type LocalizedText } from "./text";
@@ -178,50 +178,27 @@ export const loadSiteCatalog = cache(loadCatalog);
    Τιμή μιας κάρτας — ΜΟΝΟ μέσω quote()
    ───────────────────────────────────────────── */
 
+/** Ομάδα/όχημα μιας κάρτας — ίδια αντιστοίχιση με την quote (engine.subjectOf). */
 function subjectFor(cat: SiteCatalog, key: string) {
-  if (key.startsWith("g.")) {
-    const g = cat.groups.find((x) => `g.${x.code}` === key);
-    return g ? cat.ctx.groups.get(g.id) ?? null : null;
-  }
-  if (key.startsWith("v.")) {
-    const id = key.slice(2);
-    // Μόνο όχημα του site ΧΩΡΙΣ ομάδα έχει δική του κάρτα.
-    if (!cat.vehicles.some((v) => v.id === id && !v.rentalGroupId)) return null;
-    return cat.ctx.vehicles.get(id) ?? null;
-  }
-  return null;
+  if (key.startsWith("v.") && !cat.vehicles.some((v) => v.id === key.slice(2) && !v.rentalGroupId)) return null;
+  const req = requestFromCriteria(cat.ctx, cat.groups, key, { pl: null, dl: null, from: "", to: "", age: null });
+  return req ? subjectOf(cat.ctx, req.target) : null;
 }
 
-/** Η quote() για μια κάρτα — ίδια είσοδος για κάρτα αποτελεσμάτων και περίληψη κράτησης. */
+/**
+ * Η τιμή μιας κάρτας — ΙΔΙΑ μηχανή με το dashboard (engine.ts):
+ * κριτήρια URL → request → quoteFromContext → quote().
+ */
 export function quoteCard(cat: SiteCatalog, key: string, c: SearchCriteria, now = new Date()): QuoteResult | null {
-  const subject = subjectFor(cat, key);
-  if (!subject) return null;
-  const loc = (slug: string | null) => (slug ? cat.ctx.locations.find((l) => l.slug === slug && l.isActive) ?? null : null);
-  const pickup = loc(c.pl);
-  const insurance = defaultInsuranceFor(
-    cat.ctx.extras.map((e) => ({ ...e, type: e.kind })),
-    subject.target.vehicleType
-  );
-  return quote({
-    pickupAt: c.from,
-    dropoffAt: c.to,
-    target: subject.target,
-    rates: subject.rates,
-    seasons: cat.ctx.seasons,
-    pickupLocation: pickup,
-    dropoffLocation: loc(c.dl) ?? pickup,
-    driverAge: c.age,
-    ageBands: cat.ctx.ageBands,
-    insurance,
-    promotions: cat.ctx.promotions,
-    settings: cat.ctx.settings,
-    now,
-  });
+  // Όχημα με ομάδα δεν έχει δική του κάρτα στο site.
+  if (key.startsWith("v.") && !cat.vehicles.some((v) => v.id === key.slice(2) && !v.rentalGroupId)) return null;
+  const req = requestFromCriteria(cat.ctx, cat.groups, key, c, now);
+  if (!req) return null;
+  const out = quoteFromContext(cat.ctx, req);
+  return out.ok ? out.result : null;
 }
 
-/** Λείπει τιμή για κάποια ημέρα (σεζόν χωρίς rate και ομάδα χωρίς βασική τιμή); */
-export const hasUnpricedDay = (q: QuoteResult): boolean =>
-  q.errors.some((e) => e.code === "NO_PRICE") || q.lines.some((l) => l.kind === "rental" && l.unitCents <= 0);
+export { hasUnpricedDay };
 
 /* ─────────────────────────────────────────────
    Κάρτες: αρχική (fromPrice) και αναζήτηση (quote + διαθεσιμότητα)

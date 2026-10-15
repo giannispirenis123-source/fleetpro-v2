@@ -44,7 +44,6 @@ import {
   type CommissionSettings,
 } from "@/lib/commission";
 import {
-  computePrice,
   round2,
   toDisplayBreakdown,
   type DiscountMode,
@@ -893,32 +892,137 @@ function BookingModal({
   const offeredExtras = extras.filter((e) => e.type === "EXTRA");
   const offeredInsurance = extras.filter((e) => e.type === "INSURANCE");
 
-  // Το ποσό του κωδικού το δίνει ο server· εδώ το κρατάμε μόνο για την
-  // προεπισκόπηση. Ο server το ξαναϋπολογίζει στην αποθήκευση.
-  const [codeAmount, setCodeAmount] = useState(0);
-  const [codeMessage, setCodeMessage] = useState("");
+  // Ο κωδικός μπαίνει στην προεπισκόπηση μόνο αφού πατηθεί «Εφαρμογή»· τον
+  // ελέγχει (και τον ξαναελέγχει στην αποθήκευση) ο server.
+  const [appliedCode, setAppliedCode] = useState(
+    booking && form.discountMode === "CODE" ? form.discountCode.trim() : ""
+  );
   const [codeError, setCodeError] = useState("");
-  const [checkingCode, setCheckingCode] = useState(false);
 
   const selectedVehicle = vehicles.find((v) => v.id === form.vehicleId);
 
-  const chosenExtras = [
-    ...offeredExtras.filter((e) => form.extraIds.includes(e.id)),
-    ...offeredInsurance.filter((e) => e.id === form.insuranceId),
-  ];
+  /* ── Η τιμή ΜΟΝΟ από τον server (ίδια μηχανή με την αποθήκευση και το
+     δημόσιο site). Καμία τιμή δεν υπολογίζεται στον browser. ── */
+  const pricingKey = JSON.stringify([
+    form.vehicleId,
+    form.pickupDate,
+    form.pickupTime,
+    form.returnDate,
+    form.returnTime,
+    [...form.extraIds].sort(),
+    form.insuranceId,
+    form.discountMode,
+    form.discountValue,
+    appliedCode,
+    form.customerId,
+  ]);
+  const [initialPricingKey] = useState(pricingKey);
+  // Επεξεργασία χωρίς αλλαγή στα στοιχεία τιμής: η ΑΠΟΘΗΚΕΥΜΕΝΗ τιμή (ο server
+  // δεν την ξαναϋπολογίζει σε τέτοια αλλαγή — π.χ. μόνο κατάσταση/σημειώσεις).
+  const showStored = mode === "edit" && !!booking && pricingKey === initialPricingKey;
+  const [serverPreview, setServerPreview] = useState<{
+    breakdown: PriceBreakdown;
+    autoPrice: boolean;
+    warnings: string[];
+  } | null>(null);
+  const [previewError, setPreviewError] = useState("");
+  const [checkingCode, setCheckingCode] = useState(false);
 
-  const preview: PriceBreakdown = computePrice({
+  useEffect(() => {
+    const ready =
+      !!form.vehicleId && !!form.pickupDate && !!form.returnDate && !!form.pickupTime && !!form.returnTime &&
+      `${form.returnDate}T${form.returnTime}` > `${form.pickupDate}T${form.pickupTime}`;
+    if (showStored || !ready) {
+      setServerPreview(null);
+      setPreviewError("");
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(async () => {
+      if (appliedCode) setCheckingCode(true);
+      try {
+        const res = await fetch("/api/bookings/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(form.customerId ? { customerId: form.customerId } : {}),
+            vehicleId: form.vehicleId,
+            pickupDate: form.pickupDate,
+            pickupTime: form.pickupTime,
+            returnDate: form.returnDate,
+            returnTime: form.returnTime,
+            extraIds: [...form.extraIds, ...(form.insuranceId ? [form.insuranceId] : [])],
+            discountMode: form.discountMode === "CODE" ? (appliedCode ? "CODE" : "NONE") : form.discountMode,
+            ...(form.discountMode === "AMOUNT" || form.discountMode === "PERCENT"
+              ? { discountValue: Number(form.discountValue) || 0 }
+              : {}),
+            discountCode: form.discountMode === "CODE" && appliedCode ? appliedCode : null,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!alive) return;
+        if (!res.ok) {
+          setServerPreview(null);
+          if (appliedCode) {
+            setCodeError(data.message || tr("bookings.discountInvalid"));
+            setAppliedCode("");
+          } else {
+            setPreviewError(data.message || tr("bookings.errorSave"));
+          }
+          return;
+        }
+        setPreviewError("");
+        setServerPreview(data.data);
+      } catch {
+        if (alive) setPreviewError(tr("bookings.errorConnection"));
+      } finally {
+        if (alive) setCheckingCode(false);
+      }
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pricingKey, showStored]);
+
+  const storedBreakdown: PriceBreakdown | null =
+    showStored && booking
+      ? {
+          totalDays: booking.totalDays,
+          dailyRate: booking.dailyRate,
+          subtotal: booking.subtotal,
+          extrasTotal: booking.extrasTotal,
+          insuranceCost: booking.insuranceCost,
+          beforeDiscount: round2(booking.subtotal + booking.extrasTotal + booking.insuranceCost),
+          discountAmount: booking.discountAmount,
+          exactTotal: booking.total,
+          roundingAdjustment: 0,
+          total: booking.total,
+          lines: booking.extras,
+        }
+      : null;
+  const EMPTY: PriceBreakdown = {
     totalDays: days ?? 1,
-    dailyRate: selectedVehicle?.dailyRate ?? 0,
-    extras: chosenExtras,
-    discountMode: form.discountMode,
-    discountValue: Number(form.discountValue) || 0,
-    codeDiscountAmount: codeAmount,
-    roundUpTotal,
-  });
+    dailyRate: 0,
+    subtotal: 0,
+    extrasTotal: 0,
+    insuranceCost: 0,
+    beforeDiscount: 0,
+    discountAmount: 0,
+    exactTotal: 0,
+    roundingAdjustment: 0,
+    total: 0,
+    lines: [],
+  };
+  const preview: PriceBreakdown = storedBreakdown ?? serverPreview?.breakdown ?? EMPTY;
+  const codeAmount = appliedCode && serverPreview ? preview.discountAmount : 0;
+  const codeMessage = appliedCode && serverPreview ? `${tr("bookings.discountApply")} ✓ ${appliedCode}` : "";
+  void selectedVehicle;
+  void roundUpTotal;
+  void tenantId;
 
-  // Η στρογγυλοποίηση δεν εμφανίζεται ως ξεχωριστή γραμμή: απορροφάται
-  // πρώτα από την έκπτωση και, ό,τι περισσεύει, από το ενοίκιο.
+  // Οι γραμμές αθροίζουν ήδη ακριβώς στο σύνολο (ακέραιο €).
   const view = toDisplayBreakdown(preview);
 
   const toggleExtra = (id: string) => {
@@ -935,54 +1039,15 @@ function BookingModal({
   // Κάθε αλλαγή που μετακινεί τη βάση ακυρώνει τον ήδη εφαρμοσμένο κωδικό:
   // το ποσό του εξαρτάται από αυτήν.
   const resetCode = () => {
-    setCodeAmount(0);
-    setCodeMessage("");
+    setAppliedCode("");
     setCodeError("");
   };
 
-  const applyCode = async () => {
+  const applyCode = () => {
     const code = form.discountCode.trim();
     if (!code || checkingCode) return;
-
-    setCheckingCode(true);
     setCodeError("");
-    setCodeMessage("");
-
-    try {
-      const withoutDiscount = computePrice({
-        totalDays: days ?? 1,
-        dailyRate: selectedVehicle?.dailyRate ?? 0,
-        extras: chosenExtras,
-        discountMode: "NONE",
-      });
-
-      const res = await fetch("/api/discounts/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code,
-          tenantId,
-          totalAmount: withoutDiscount.beforeDiscount,
-          totalDays: days ?? 1,
-          vehicleId: form.vehicleId || undefined,
-          customerId: form.customerId || undefined,
-        }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setCodeAmount(0);
-        setCodeError(data.message || tr("bookings.discountInvalid"));
-        return;
-      }
-
-      setCodeAmount(data.data.discountAmount);
-      setCodeMessage(data.data.message);
-    } catch {
-      setCodeError(tr("bookings.errorConnection"));
-    } finally {
-      setCheckingCode(false);
-    }
+    setAppliedCode(code);
   };
 
   /**
@@ -1433,6 +1498,11 @@ function BookingModal({
               value={eur(view.total, locale)}
             />
           </div>
+
+          {previewError && <div className="dash-form-error">{previewError}</div>}
+          {serverPreview && serverPreview.warnings.length > 0 && (
+            <div className="dash-form-error">{serverPreview.warnings.join(" · ")}</div>
+          )}
 
           {conflicts && conflicts.length > 0 && (
             <div className="dash-conflict">

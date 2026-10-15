@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 14/10/2026 · **main:** `d9742fe` (merge του PR #22 — δημόσιο site 1/4, SQL `21`, `21b`, `21c` έχουν τρέξει). **Ανοιχτό:** PR #23, branch `claude/public-site-home-search` — **Δημόσιο site 2/4: αρχική με hero και αναζήτηση, κάρτες ομάδων, διαθεσιμότητα** (§5.4) + διόρθωση 404 και κουτί «Η δημόσια σελίδα σου» (§5.4.1). **Χωρίς νέο SQL.** Επόμενος ελεύθερος αριθμός SQL: `22`.
+**Ημερομηνία:** 15/10/2026 · **main:** `1c6cfbe` (merge του PR #23 — δημόσιο site 2/4). **Ανοιχτό:** branch `claude/unified-pricing` — **Ενιαία τιμολόγηση: μία μηχανή τιμής για dashboard και site, τιμές σε ακέραια €** (§5.5). **Θέλει SQL `22` ΠΡΙΝ τη δοκιμή στο preview.** Επόμενος ελεύθερος αριθμός SQL: `23`.
 
-> **Επόμενο βήμα:** δοκιμή του PR 2 στο preview και merge· μετά PR 3 (φόρμα κράτησης). Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
+> **Επόμενο βήμα:** SQL 22 → δοκιμή της ενιαίας τιμολόγησης στο preview → merge· μετά PR 3 (φόρμα κράτησης του site). Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται πλέον **«Fleet-Pro Car Rental»** (μετονομασία από το panel του Super Admin, §5)· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
 ---
 
@@ -452,6 +452,34 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 - **Συνέχεια (screenshot του Giannis):** το 404 είχε τίτλο «404: This page could not be found.». Αυτός ο τίτλος βγαίνει **μόνο** σε διεύθυνση που δεν υπάρχει καθόλου, για χρήστη ήδη συνδεδεμένο — δηλαδή στη **ρίζα `/` του preview** (το link του PR/Vercel ανοίγει τη ρίζα, που δεν είχε σελίδα). Το 404 του δημόσιου site έχει άλλο τίτλο («FleetPro — …»), άρα δεν ήταν το `/s/…`. **Διόρθωση:** `src/app/page.tsx` — η ρίζα πάει σε `/dashboard` (ή `/super-admin`, ή `/login` χωρίς συνεδρία). Φιλικό 404 στα ελληνικά (`src/app/not-found.tsx`) και ξεχωριστό, ουδέτερο 404 για το δημόσιο site (`src/app/(storefront)/s/[slug]/not-found.tsx`, χωρίς link προς το FleetPro).
 
+### 5.5 Ενιαία τιμολόγηση — μία μηχανή για dashboard και site (branch `claude/unified-pricing`, SQL `22`)
+
+**Κανόνας:** κάθε τιμή της εφαρμογής βγαίνει από την `quote()` (`src/lib/public/pricing.ts`) μέσω της `quoteFromContext(ctx, request)` (`src/lib/public/engine.ts`). Server: `computeQuoteForTenant(tenantId, request)` (`src/lib/public/quoteServer.ts`) = `loadQuoteContext` (οι ίδιοι πίνακες: σεζόν, rates, προσφορές, extras/ασφάλειες, τοποθεσίες, ηλικίες, ΦΠΑ, ωράριο) + `quoteFromContext`. Δύο «μεταφραστές» καταλήγουν στο ίδιο request: `requestFromCriteria` (site: κάρτα + URL) και `requestFromBooking` (dashboard: όχημα → η **ομάδα** του, σημεία κατά όνομα/slug με `matchLocation`, ηλικία από ημ. γέννησης του κύριου οδηγού/πελάτη με `ageAt`, ασφάλεια: η επιλεγμένη ή η προεπιλεγμένη του τύπου — όπως στο site). Καμία τιμή δεν υπολογίζεται πια στον browser.
+
+**Στρογγυλοποίηση (`money.ts` → `roundToEuro`, half up):** κάθε παράγωγη γραμμή (ποσοστό τοποθεσίας, έκπτωση/προσφορά, επιβάρυνση ηλικίας) σε ακέραιο €· η «μεγαλύτερη έκπτωση» κρίνεται στα στρογγυλοποιημένα. Σύνολο ΠΑΝΤΑ ακέραιο €· αν μένουν λεπτά από ρητές τιμές (π.χ. extra 4,50 €, κλίμακα 33,33 €) μπαίνει γραμμή `rounding` «Στρογγυλοποίηση» (< 1 €) και οι γραμμές αθροίζουν ακριβώς. `listTotalCents = total + discount` (ακέραιο). `avgDailyCents` = σύνολο ÷ ημέρες στο πλησιέστερο €· η κάρτα δείχνει «~» όταν δεν βγαίνει ακριβώς (`perDayOf`). `fromPrice()` ίδιος κανόνας. Η έκπτωση **κωδικού** του dashboard (πίνακας `discounts`) μπαίνει πάνω στο σύνολο της quote(), επίσης σε ακέραιο € (`manualDiscountCents`).
+
+| Σημείο | Πριν | Τώρα |
+|---|---|---|
+| Νέα κράτηση (`POST /api/bookings` → `prepareBooking` → `priceBooking`) | `vehicles.dailyRate` × ημέρες ημερολογίου + extras (`computePrice`) | `priceBooking` → `computeQuoteForTenant` (ώρες + grace, σεζόν, προσφορές, ασφάλεια, ηλικία) |
+| Φόρμα κράτησης (προεπισκόπηση) | `computePrice` στον browser | `POST /api/bookings/preview` (ίδιο `prepareBooking`, χωρίς εγγραφή)· στην επεξεργασία χωρίς αλλαγή τιμής δείχνει την αποθηκευμένη |
+| Επεξεργασία κράτησης (`PATCH /api/bookings/[id]`) | ξαναϋπολόγιζε σε **κάθε** PATCH | μόνο όταν αλλάζει όχημα/ημερομηνία/ώρα/πρόσθετα/έκπτωση/πελάτης· αλλιώς η τιμή δεν αγγίζεται |
+| Νέο συμβόλαιο (walk-in) | `priceBooking` (dailyRate) | ίδια μηχανή + σημεία παραλαβής/επιστροφής και ηλικία κύριου οδηγού· ανάλυση της quote() στη φόρμα |
+| «Τιμή ενοικίου με ΦΠΑ» (χειροκίνητη) | `decidePriceOverride` | ίδιο· «Χειροκίνητη τιμή», «Επαναφορά στην αυτόματη», «Η αυτόματη τιμή (ενοίκιο) είναι X € — Χρήση» αντί για αντικατάσταση· `priceMode = MANUAL` |
+| Πρόσθετα σε υπάρχον συμβόλαιο | `priceBookingExtras` + `computePrice` στον browser | server (`POST /api/contracts/[id]/price-preview`)· **παλιές** κρατήσεις (`priceQuote` NULL) κρατούν ενοίκιο/έκπτωση, αλλάζουν μόνο τα πρόσθετα |
+| Τιμολόγια | διαβάζουν τα αποθηκευμένα ποσά της κράτησης | αμετάβλητο (δεν υπολογίζουν τιμή) |
+| «Δοκιμαστικός υπολογισμός» (`/api/public-site/quote`) | `quote()` με δικό του φόρτωμα | `computeQuoteForTenant` |
+| Δημόσια αναζήτηση, `/book`, αρχική «από» | `quote()`/`fromPrice()` στο `site.ts` | `quoteFromContext` (ίδιο request με το dashboard)· `fromPrice()` σε ακέραιο € |
+
+**Αποθήκευση (SQL 22):** `bookings."priceQuote"` JSONB = `{ version, at, quote: { days, lines, listTotalCents, discountCents, discountBadge, totalCents, vatCents, avgDailyCents, depositCents, excessCents, errors }, manualDiscount, totalCents, autoPrice }` και `bookings."priceMode"` (`AUTO` / `MANUAL`, CHECK). Γράφονται σε νέα κράτηση/συμβόλαιο και όταν η τιμή ξαναϋπολογίζεται· οι υπάρχουσες μένουν NULL (δεν αγγίζονται). Τα πεδία `subtotal/extrasTotal/insuranceCost/discountAmount/total` συνεχίζουν να γεμίζουν (από τη quote(): subtotal = ενοίκιο + χρεώσεις τοποθεσίας/δρομολογίου/εκτός ωραρίου/ηλικίας + στρογγυλοποίηση) — τιμολόγια, PDF, προμήθειες δουλεύουν όπως πριν.
+
+**Χωρίς τιμή στις ρυθμίσεις** (σεζόν χωρίς rate και ομάδα/όχημα με βασική τιμή 0): το dashboard δείχνει «Δεν υπάρχει τιμή στις ρυθμίσεις για αυτές τις ημερομηνίες» και ζητά χειροκίνητη τιμή (walk-in: επιτρέπεται με `priceOverride`· απλή κράτηση: 400 με το ίδιο μήνυμα). Στο dashboard τα όρια του site (ελάχιστη προθεσμία, minDays σεζόν, ηλικία) εμφανίζονται ως **προειδοποιήσεις**, δεν μπλοκάρουν (ο διαχειριστής αποφασίζει)· μπλοκάρουν μόνο extra που δεν επιτρέπεται για τον τύπο.
+
+**Συγχρονισμός:** dashboard και site διαβάζουν τις ρυθμίσεις μόνο από τους πίνακες, με ένα `loadQuoteContext` ανά αίτημα. Οι σελίδες `/s/…` είναι `force-dynamic`, απαντούν `Cache-Control: private, no-cache, no-store`, χωρίς `unstable_cache`/fetch cache → κάθε αποθήκευση ρύθμισης φαίνεται στο επόμενο φόρτωμα, χωρίς `revalidatePath`.
+
+**Tests:** `tests/unified-pricing.test.mjs` (21: roundToEuro, έκπτωση % με λεπτά, ηλικία, extra 4,50 → «Στρογγυλοποίηση», σύγκριση προσφορών στα στρογγυλοποιημένα, «~€/ημέρα», fromPrice, **ισότητα dashboard ↔ site σε 6 σενάρια** — χωρίς/με προσφορά, εκτός ωραρίου, άλλη τοποθεσία επιστροφής, ηλικία εκτός κλίμακας, δύο σεζόν — Δοκιμαστικός = site, αλλαγή τιμής σεζόν αλλάζει και τα δύο, tenant isolation, γέφυρα προς κράτηση, χειροκίνητη τιμή). Ενημερώθηκαν οι αναμενόμενες τιμές του `public-pricing.test.mjs` (10,50 → 11 €, 15,75 → 16 €). Τοπικά (PostgreSQL 16, `01 → 22` + demo): site `/book`, φόρμα κράτησης και walk-in δίνουν ίδιο σύνολο (128 €· με την demo προσφορά −15% → 109 €· με κλίμακα 33,33 €/ημέρα → 113 € με γραμμή «Στρογγυλοποίηση» −0,32 €)· αποθήκευση walk-in → `priceMode AUTO` + 4 γραμμές, με χειροκίνητο ενοίκιο → `MANUAL`· παλιά κράτηση μένει 175 € μετά από αλλαγή κατάστασης/σημειώσεων. `prisma migrate diff` → «empty migration», το 22 ξανατρέχει χωρίς αλλαγές.
+
+**Γνωστά / για αργότερα:** (1) Δύο συστήματα έκπτωσης: προσφορές (site + dashboard, αυτόματες) και κωδικοί `discounts` (μόνο dashboard, πάνω στο σύνολο). Αξίζει ενοποίηση. (2) Η ρύθμιση `roundUpTotal` δεν έχει πια αποτέλεσμα (το σύνολο είναι ήδη ακέραιο). (3) Το χειροκίνητο ενοίκιο δέχεται λεπτά (ρητή επιλογή του χρήστη) → τότε το σύνολο μπορεί να έχει λεπτά. (4) Η λίστα σημείων του συμβολαίου έχει σταθερά ονόματα Χανίων (`DEFAULT_LOCATIONS`)· χρεώσεις δρομολογίου μπαίνουν μόνο όταν το όνομα ταιριάζει με τοποθεσία του site — καλύτερα η λίστα να βγαίνει από τα `pickup_locations`. (5) Όχημα σε ομάδα τιμολογείται πλέον με τις τιμές της ομάδας (όπως στο site), όχι με το `dailyRate` του — οι νέες κρατήσεις μπορεί να βγουν διαφορετικές από πριν.
+
 ### Δημόσιο site — design (PR 2)
 
 Αναφορά: **prentals.gr**. Να κρατήσουμε:
@@ -474,6 +502,7 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
+- **22-unified-pricing: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/unified-pricing`). Σε transaction: `bookings."priceQuote"` JSONB, `bookings."priceMode"` TEXT + CHECK `bookings_priceMode_check` (`AUTO`/`MANUAL`/NULL). Μόνο προσθήκες, nullable — η παλιά έκδοση δουλεύει κανονικά με αυτό. Αναμενόμενο verification `2 | 1 | 0`. **Τρέχει πριν τη δοκιμή στο preview** (ο νέος κώδικας γράφει τις στήλες).
 - **Δημόσιο site 2/4 (branch `claude/public-site-home-search`): κανένα νέο SQL.** Τα κείμενα hero ζουν στο υπάρχον `storefrontSettings.theme`, η διαθεσιμότητα διαβάζει υπάρχοντες πίνακες. Επόμενος ελεύθερος αριθμός: `22`.
 - **21 / 21b / 21c: έχουν τρέξει** (PR #22 merged, 13/10/2026). Οι σημειώσεις «ΔΕΝ έχει τρέξει» παρακάτω είναι ιστορικό.
 - **21-public-site-settings: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/public-site-settings`). Σε transaction. Νέοι πίνακες `rental_groups`, `pickup_locations`, `seasons`, `rates` (UNIQUE `(tenantId, seasonId, rentalGroupId, vehicleId) NULLS NOT DISTINCT` — θέλει PostgreSQL ≥ 15, το Supabase είναι), `driver_age_bands`· `vehicles."rentalGroupId"` (FK SET NULL) + `"vehicleType"` (MOTORCYCLE → 'moto')· `extras` + 6 στήλες (backfill `nameI18n = {"el": name}`)· σβήνει το `storefrontSettings.bookingMode`. 18 constraints (FK + CHECK) σε `DO $$`. `extras."isDefault"` (false για όλα τα υπάρχοντα) + CHECK. 19 constraints. Αναμενόμενο verification `5 | 2 | 7 | 19 | 3 | 0 | 0 | 0` (το τελευταίο = συγκρούσεις προεπιλεγμένων ασφαλειών). **Τρέχει πριν το merge.**
@@ -541,6 +570,8 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 | Commit | Τι |
 |---|---|
+| _(branch `claude/unified-pricing`)_ | Ενιαία τιμολόγηση: `engine.ts` (`quoteFromContext`, `requestFromCriteria`/`requestFromBooking`), `computeQuoteForTenant`, κράτηση/walk-in/πρόσθετα/Δοκιμαστικός/site από την ίδια μηχανή, στρογγυλοποίηση σε ακέραιο € με γραμμή «Στρογγυλοποίηση», `bookings.priceQuote`/`priceMode`, προεπισκοπήσεις μόνο από τον server. Migration `22` |
+| `1c6cfbe` | Merge του PR #23 (δημόσιο site 2/4). Χωρίς SQL |
 | _(PR #23, 6ο commit)_ | Αποσύνδεση στο κινητό για τον Super Admin (η πλαϊνή στήλη κρυβόταν κάτω από 600px) + `GET /api/auth/logout` (αποσύνδεση με link → /login). Χωρίς SQL |
 | _(PR #23, 5ο commit)_ | Η ρίζα `/` οδηγεί σε dashboard/super-admin/login (ήταν 404 στο link του preview), φιλικά 404 (εφαρμογή + δημόσιο site). Χωρίς SQL |
 | _(PR #23, 4ο commit)_ | 404 δημόσιου site: μία πηγή αλήθειας `visibility.ts`, slug ανεκτικό σε κεφαλαία/κενά/τόνους (308), μη έγκυρη γλώσσα → redirect, λόγος 404 στα logs, κουτί «Η δημόσια σελίδα σου» στην «Εμφάνιση». Χωρίς SQL |

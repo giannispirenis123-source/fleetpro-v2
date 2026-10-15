@@ -145,11 +145,11 @@ test("γραφείο −10%: μόνο στο ενοίκιο, listTotal χωρί�
   const r = quote(base({ pickupLocation: OFFICE }));
   assert.equal(r.ok, true);
   const disc = r.lines.find((l) => l.kind === "discount");
-  assert.equal(disc.totalCents, -1050);
+  assert.equal(disc.totalCents, -1100);
   assert.equal(disc.label.el, "Έκπτωση γραφείου 10%", "χωρίς διπλό «Έκπτωση:»");
   assert.equal(r.listTotalCents, 10500);
-  assert.equal(r.discountCents, 1050);
-  assert.equal(r.totalCents, 9450);
+  assert.equal(r.discountCents, 1100);
+  assert.equal(r.totalCents, 9400);
   assert.deepEqual(r.discountBadge, { el: "-10%", en: "-10%" });
   assert.equal(r.discounts.applied.source, "location");
 });
@@ -157,8 +157,8 @@ test("γραφείο −10%: μόνο στο ενοίκιο, listTotal χωρί�
 test("γραφείο −10% με extra: η έκπτωση ΔΕΝ πιάνει τα extras", () => {
   const gps = { id: "gps", name: { el: "GPS" }, priceType: "per_rental", priceCents: 1000, maxTotalCents: null, maxQuantity: 1, vehicleTypes: [] };
   const r = quote(base({ pickupLocation: OFFICE, extras: [{ charge: gps, qty: 1 }] }));
-  assert.equal(r.discountCents, 1050);
-  assert.equal(r.totalCents, 10500 + 1000 - 1050);
+  assert.equal(r.discountCents, 1100);
+  assert.equal(r.totalCents, 10500 + 1000 - 1100);
 });
 
 test("επιστροφή σε άλλο σημείο: παράδοση στο ένα, παραλαβή από το άλλο + oneWayFee", () => {
@@ -374,7 +374,7 @@ const pq = (over = {}) => quote(base({ target: GROUP_TARGET, ...over }));
 test("προσφορά -15%: μία αρνητική γραμμή, διαγραμμένη τιμή και σήμα", () => {
   const r = pq({ promotions: [promo()] });
   const d = r.lines.find((l) => l.kind === "discount");
-  assert.equal(d.totalCents, -Math.round(10500 * 0.15));
+  assert.equal(d.totalCents, -1600);
   assert.equal(d.label.el, "Έκπτωση: Προσφορά φθινοπώρου");
   assert.equal(r.listTotalCents, 10500);
   assert.deepEqual(r.discountBadge, { el: "-15%", en: "-15%" });
@@ -382,15 +382,15 @@ test("προσφορά -15%: μία αρνητική γραμμή, διαγρα�
 });
 
 test("προσφορά μόνο σε μία ομάδα: ισχύει για αυτήν, όχι για άλλη", () => {
-  assert.equal(pq({ promotions: [promo({ rentalGroupIds: ["grpA"] })] }).discountCents, 1575);
+  assert.equal(pq({ promotions: [promo({ rentalGroupIds: ["grpA"] })] }).discountCents, 1600);
   assert.equal(pq({ promotions: [promo({ rentalGroupIds: ["grpB"] })] }).discountCents, 0);
-  assert.equal(pq({ promotions: [promo({ rentalGroupIds: ["grpB"], vehicleTypes: ["car"] })] }).discountCents, 1575, "αρκεί ΕΝΑ από τα κριτήρια");
+  assert.equal(pq({ promotions: [promo({ rentalGroupIds: ["grpB"], vehicleTypes: ["car"] })] }).discountCents, 1600, "αρκεί ΕΝΑ από τα κριτήρια");
 });
 
 test("προσφορά που καλύπτει μόνο μερικές ημέρες: έκπτωση μόνο σε αυτές", () => {
   // 10–12/3 (3 ημέρες × 35€)· η προσφορά ισχύει 12/3–31/3 → μόνο η 3η ημέρα
   const r = pq({ promotions: [promo({ validFrom: "2026-03-12" })] });
-  assert.equal(r.discountCents, Math.round(3500 * 0.15));
+  assert.equal(r.discountCents, 500);
 });
 
 test("per_day: ποσό × ημέρες μέσα στο διάστημα, ποτέ κάτω από 0 ανά ημέρα", () => {
@@ -407,15 +407,15 @@ test("per_rental: μία φορά· το σήμα είναι το κείμενο
 
 test("minDays: κάτω από το όριο δεν ισχύει", () => {
   assert.equal(pq({ promotions: [promo({ minDays: 4 })] }).discountCents, 0);
-  assert.equal(pq({ promotions: [promo({ minDays: 3 })] }).discountCents, 1575);
+  assert.equal(pq({ promotions: [promo({ minDays: 3 })] }).discountCents, 1600);
 });
 
 test("τοποθεσία επιστροφής (locationMatch 'dropoff')", () => {
   const p = promo({ locationIds: ["port"], locationMatch: "dropoff" });
-  assert.equal(pq({ promotions: [p], pickupLocation: AIRPORT, dropoffLocation: PORT }).discountCents, 1575);
+  assert.equal(pq({ promotions: [p], pickupLocation: AIRPORT, dropoffLocation: PORT }).discountCents, 1600);
   assert.equal(pq({ promotions: [p], pickupLocation: PORT, dropoffLocation: AIRPORT }).discountCents, 0);
   const either = promo({ locationIds: ["port"], locationMatch: "either" });
-  assert.equal(pq({ promotions: [either], pickupLocation: PORT, dropoffLocation: AIRPORT }).discountCents, 1575);
+  assert.equal(pq({ promotions: [either], pickupLocation: PORT, dropoffLocation: AIRPORT }).discountCents, 1600);
   const pick = promo({ locationIds: ["port"], locationMatch: "pickup" });
   assert.equal(pq({ promotions: [pick], pickupLocation: AIRPORT, dropoffLocation: PORT }).discountCents, 0);
 });
@@ -423,12 +423,12 @@ test("τοποθεσία επιστροφής (locationMatch 'dropoff')", () => 
 test("χωρίς άθροισμα: γραφείο -10% vs προσφορά -15% → κερδίζει η μεγαλύτερη, η άλλη φαίνεται ως «έχασε»", () => {
   const r = pq({ pickupLocation: OFFICE, promotions: [promo()] });
   assert.equal(r.lines.filter((l) => l.kind === "discount").length, 1);
-  assert.equal(r.discountCents, 1575);
+  assert.equal(r.discountCents, 1600);
   assert.equal(r.discounts.applied.source, "promotion");
-  assert.deepEqual(r.discounts.others.map((o) => [o.source, o.amountCents]), [["location", 1050]]);
+  assert.deepEqual(r.discounts.others.map((o) => [o.source, o.amountCents]), [["location", 1100]]);
   const small = pq({ pickupLocation: OFFICE, promotions: [promo({ discountValue: 5 })] });
   assert.equal(small.discounts.applied.source, "location");
-  assert.equal(small.discountCents, 1050);
+  assert.equal(small.discountCents, 1100);
 });
 
 test("ισοπαλία: κερδίζει η μικρότερη sortOrder", () => {
@@ -453,9 +453,9 @@ test("extras, ασφάλεια, ηλικία και χρεώσεις δρομο�
     insurance: ins,
     driverAge: 21,
   });
-  assert.equal(r.discountCents, Math.round(10500 * 0.5), "μόνο το ενοίκιο");
+  assert.equal(r.discountCents, 5300, "μόνο το ενοίκιο");
   const notRental = r.lines.filter((l) => !["rental", "discount"].includes(l.kind)).reduce((s, l) => s + l.totalCents, 0);
-  assert.equal(r.totalCents, 10500 - 5250 + notRental);
+  assert.equal(r.totalCents, 10500 - 5300 + notRental);
   assert.equal(r.listTotalCents, r.totalCents + r.discountCents);
 });
 

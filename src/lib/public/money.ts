@@ -57,3 +57,25 @@ export function formatCents(cents: number, lang = "el"): string {
     return `${euros.toFixed(2)} €`;
   }
 }
+
+/**
+ * Στρογγυλοποίηση στο πλησιέστερο ΑΚΕΡΑΙΟ € (σε cents), half up: 12,50 → 13,
+ * 12,49 → 12. Για αρνητικά (εκπτώσεις) στρογγυλεύει το μέτρο: −12,50 → −13.
+ * Ο ΕΝΑΣ κανόνας για κάθε παράγωγη γραμμή και για το τελικό σύνολο.
+ */
+export function roundToEuro(cents: number): number {
+  if (!Number.isFinite(cents)) return 0;
+  const sign = cents < 0 ? -1 : 1;
+  // +1e-9: προστασία από 1249.9999… που προκύπτει από πράξεις με δεκαδικά.
+  return sign * Math.floor((Math.abs(cents) + 50 + 1e-9) / 100) * 100;
+}
+
+/**
+ * «€/ημέρα» από το ΣΥΝΟΛΟ: σύνολο ÷ ημέρες στο πλησιέστερο €. `approx` =
+ * δεν βγαίνει ακριβώς (η κάρτα δείχνει «~»). Η αλήθεια είναι το σύνολο.
+ */
+export function perDayOf(totalCents: number, days: number): { cents: number; approx: boolean } {
+  const d = Math.max(1, Math.floor(days));
+  const cents = roundToEuro(totalCents / d);
+  return { cents, approx: cents * d !== totalCents };
+}

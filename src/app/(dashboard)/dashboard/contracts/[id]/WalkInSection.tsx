@@ -65,7 +65,20 @@ export const windowValid = (w: RentalWindow | null): w is RentalWindow =>
  * Η κατάσταση του walk-in: διάστημα, όχημα, κωδικός, συνεργάτης και η
  * προεπισκόπηση τιμής από τον server. `active = false` → καμία κλήση.
  */
-export function useWalkInDraft(active: boolean, extraIds: string[], customerId: string | null) {
+/** Ό,τι χρειάζεται η τιμή από τις ρυθμίσεις (ίδια μηχανή με το site). */
+export interface WalkInPricing {
+  pickupLocation: string;
+  returnLocation: string;
+  /** "YYYY-MM-DD" του κύριου οδηγού (κλίμακα ηλικίας). */
+  driverBirthDate: string;
+}
+
+export function useWalkInDraft(
+  active: boolean,
+  extraIds: string[],
+  customerId: string | null,
+  pricing: WalkInPricing = { pickupLocation: "", returnLocation: "", driverBirthDate: "" }
+) {
   const tr = useT();
 
   // Η «τώρα» μπαίνει μετά το mount: ο server δεν ξέρει την ώρα του χρήστη.
@@ -136,6 +149,9 @@ export function useWalkInDraft(active: boolean, extraIds: string[], customerId: 
             extraIds: extrasKey ? extrasKey.split(",") : [],
             discountMode: appliedCode ? "CODE" : "NONE",
             discountCode: appliedCode || null,
+            pickupLocation: pricing.pickupLocation || null,
+            returnLocation: pricing.returnLocation || null,
+            driverBirthDate: /^\d{4}-\d{2}-\d{2}$/.test(pricing.driverBirthDate) ? pricing.driverBirthDate : null,
           }),
         });
         const body = await res.json().catch(() => ({}));
@@ -160,7 +176,8 @@ export function useWalkInDraft(active: boolean, extraIds: string[], customerId: 
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [active, win, vehicleId, extrasKey, appliedCode, customerId, tr, reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, win, vehicleId, extrasKey, appliedCode, customerId, tr, reload, pricing.pickupLocation, pricing.returnLocation, pricing.driverBirthDate]);
 
   const conflicts = (preview?.conflicts ?? []) as BookingConflict[];
 

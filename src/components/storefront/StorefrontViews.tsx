@@ -26,7 +26,7 @@ import BookingForm from "./BookingForm";
 import { CopyCode, PrintButton } from "./ConfirmActions";
 import { cancelReasonText } from "@/lib/bookingMessages";
 import { bookingTexts, type ConfirmationDTO } from "@/lib/public/bookingRequest";
-import type { PublicExtraOption, PublicQuote } from "@/lib/public/bookingView";
+import type { PublicExtraOption, PublicInsuranceOption, PublicQuote } from "@/lib/public/bookingView";
 import Results, { GroupCard } from "./Results";
 import "./storefront.css";
 
@@ -342,16 +342,20 @@ export function StorefrontSearch({
             )}
           </div>
         ) : (
-          <Results
-            cards={cards}
-            initialType={search.initial.type}
-            initialSort={initialSort}
-            mode="search"
-            rentalMode={company.rentalMode}
-            lang={lang}
-            d={d}
-            title={d.resultsTitle}
-          />
+          <>
+            <Results
+              cards={cards}
+              initialType={search.initial.type}
+              initialSort={initialSort}
+              mode="search"
+              rentalMode={company.rentalMode}
+              lang={lang}
+              d={d}
+              title={d.resultsTitle}
+            />
+            {/* Οι τιμές των καρτών είναι ΠΑΝΤΑ χωρίς ασφάλεια. */}
+            <p className="sf-muted sf-small sf-ins-note">{d.insuranceNextStep}</p>
+          </>
         )}
       </div>
     </Shell>
@@ -369,6 +373,8 @@ export interface BookFormData {
   bookPath: string;
   query: string;
   options: PublicExtraOption[];
+  /** Επίπεδα ασφάλειας για τον τύπο του οχήματος — κενό = χωρίς ενότητα. */
+  insurance: PublicInsuranceOption[];
   initialQuote: PublicQuote;
   needsFlight: boolean;
 }
@@ -552,6 +558,18 @@ export function StorefrontConfirmation({ company, lang, b }: { company: PublicCo
               </tfoot>
             </table>
             {b.vatCents !== null && <p className="sf-muted sf-small">{fill(d.vatIncludedAmount, { amount: formatCents(b.vatCents, lang) })}</p>}
+            <div className="sf-confirm-ins">
+              <strong>{d.insuranceChosen}:</strong> {b.insurance ? textFor(b.insurance.name, lang) : d.noInsuranceChosen}
+              {b.insurance && b.insurance.coverages.length > 0 && (
+                <ul className="sf-ins-covers">
+                  {b.insurance.coverages.map((c, i) => (
+                    <li key={i}>
+                      <span aria-hidden="true">✓</span> {textFor(c, lang)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <p className="sf-bk-pay">{d.payAtPickup}</p>
           </div>
         </div>

@@ -4,6 +4,8 @@
 //
 // · Πρόσθετα/ασφάλεια: κάθε αλλαγή ξαναζητά την τιμή από τον SERVER
 //   (/api/public/quote — ίδια μηχανή με όλη την εφαρμογή). Καμία τιμή εδώ.
+// · Ασφάλεια: ΠΡΟΑΙΡΕΤΙΚΗ. Αρχική επιλογή «Χωρίς πρόσθετη ασφάλεια»· χωρίς
+//   επίπεδα για τον τύπο οχήματος η ενότητα δεν εμφανίζεται καθόλου.
 // · Τα στοιχεία του πελάτη ΠΟΤΕ στο URL· στέλνονται μόνο με POST.
 // · Μηνύματα σφάλματος δίπλα στο πεδίο (aria-invalid/aria-describedby).
 // · Το κουμπί κλειδώνει στην υποβολή (καμία διπλή κράτηση).
@@ -13,7 +15,7 @@ import { fill, type StorefrontDictionary } from "@/lib/storefront/i18n";
 import { formatCents } from "@/lib/public/money";
 import { textFor } from "@/lib/public/text";
 import { PHONE_COUNTRIES, NOTES_MAX } from "@/lib/public/bookingRequest";
-import type { PublicExtraOption, PublicQuote } from "@/lib/public/bookingView";
+import type { PublicExtraOption, PublicInsuranceOption, PublicQuote } from "@/lib/public/bookingView";
 
 type Msg = { el?: string; en?: string };
 
@@ -28,6 +30,8 @@ interface Props {
   d: StorefrontDictionary;
   submitLabel: string;
   options: PublicExtraOption[];
+  /** Τα επίπεδα ασφάλειας για τον τύπο του οχήματος (κενό = χωρίς ενότητα). */
+  insurance: PublicInsuranceOption[];
   initialQuote: PublicQuote;
   needsFlight: boolean;
 }
@@ -58,14 +62,15 @@ const EMPTY: Contact = {
   acceptTerms: false,
 };
 
-export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, query, d, submitLabel, options, initialQuote, needsFlight }: Props) {
+export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, query, d, submitLabel, options, insurance, initialQuote, needsFlight }: Props) {
   const t = (m: Msg | undefined) => (m ? textFor(m as Record<string, string>, lang) : "");
-  const extrasOpts = options.filter((o) => o.kind === "EXTRA");
-  const insuranceOpts = options.filter((o) => o.kind === "INSURANCE");
-  const defaultInsurance = insuranceOpts.find((o) => o.isDefault)?.id ?? insuranceOpts[0]?.id ?? null;
+  const extrasOpts = options;
+  const insuranceOpts = insurance;
 
   const [extras, setExtras] = useState<Record<string, number>>({});
-  const [insuranceId, setInsuranceId] = useState<string | null>(defaultInsurance);
+  // Καμία προεπιλογή: ο πελάτης διαλέγει ασφάλεια ΜΟΝΟ αν θέλει.
+  const [insuranceId, setInsuranceId] = useState<string | null>(null);
+  const [quoteError, setQuoteError] = useState("");
   const [quote, setQuote] = useState<PublicQuote>(initialQuote);
   const [quoting, setQuoting] = useState(false);
   const [contact, setContact] = useState<Contact>(EMPTY);
@@ -86,7 +91,7 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
         if (saved.key === cardKey) {
           setContact({ ...EMPTY, ...saved.contact });
           setExtras(saved.extras ?? {});
-          setInsuranceId(saved.insuranceId ?? defaultInsurance);
+          setInsuranceId(saved.insuranceId && insuranceOpts.some((o) => o.id === saved.insuranceId) ? saved.insuranceId : null);
         }
         sessionStorage.removeItem(DRAFT_KEY);
       }
@@ -103,7 +108,7 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
-      if (Object.keys(extras).length === 0 && insuranceId === defaultInsurance) return;
+      if (Object.keys(extras).length === 0 && insuranceId === null) return;
     }
     let alive = true;
     setQuoting(true);
@@ -115,7 +120,15 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
           body: JSON.stringify({ slug, key: cardKey, criteria, extras: extrasPayload(), insuranceId }),
         });
         const body = await res.json().catch(() => ({}));
-        if (alive && res.ok) setQuote(body.data);
+        if (!alive) return;
+        if (res.ok) {
+          setQuote(body.data);
+          setQuoteError("");
+        } else if (body.message) {
+          // Π.χ. το επίπεδο απενεργοποιήθηκε στο μεταξύ: πίσω στο «χωρίς ασφάλεια».
+          setQuoteError(t(body.message));
+          setInsuranceId(null);
+        }
       } finally {
         if (alive) setQuoting(false);
       }
@@ -214,65 +227,99 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
 
   return (
     <form className="sf-bk" onSubmit={submit} noValidate>
-      {(extrasOpts.length > 0 || insuranceOpts.length > 0) && (
+      {extrasOpts.length > 0 && (
         <section className="sf-bk-box" aria-labelledby="bk-extras-title">
-          {insuranceOpts.length > 0 && (
-            <fieldset className="sf-bk-set">
-              <legend id="bk-extras-title">{d.insuranceTitle}</legend>
-              {insuranceOpts.map((o) => (
-                <label key={o.id} className="sf-bk-opt">
+          <fieldset className="sf-bk-set">
+            <legend id="bk-extras-title">{d.extrasTitle}</legend>
+            {extrasOpts.map((o) => {
+              const qty = extras[o.id] ?? 0;
+              return (
+                <div key={o.id} className="sf-bk-opt">
                   <input
-                    type="radio"
-                    name="insurance"
-                    checked={insuranceId === o.id}
-                    onChange={() => setInsuranceId(o.id)}
+                    type="checkbox"
+                    id={`bk-x-${o.id}`}
+                    checked={qty > 0}
+                    onChange={(e) => setExtras((x) => ({ ...x, [o.id]: e.target.checked ? 1 : 0 }))}
                   />
-                  <span className="sf-bk-opt-name">
+                  <label htmlFor={`bk-x-${o.id}`} className="sf-bk-opt-name">
                     {o.name}
-                    {o.excessCents !== null && (
-                      <small> · {fill(d.excessShort, { amount: formatCents(o.excessCents, lang) })}</small>
-                    )}
-                  </span>
+                  </label>
+                  {qty > 0 && o.maxQuantity > 1 && (
+                    <select
+                      aria-label={`${d.qtyLabel}: ${o.name}`}
+                      value={qty}
+                      onChange={(e) => setExtras((x) => ({ ...x, [o.id]: Number(e.target.value) }))}
+                    >
+                      {Array.from({ length: o.maxQuantity }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <span className="sf-bk-opt-price">{price(o)}</span>
-                </label>
-              ))}
-            </fieldset>
-          )}
-          {extrasOpts.length > 0 && (
-            <fieldset className="sf-bk-set">
-              <legend>{d.extrasTitle}</legend>
-              {extrasOpts.map((o) => {
-                const qty = extras[o.id] ?? 0;
+                </div>
+              );
+            })}
+          </fieldset>
+        </section>
+      )}
+
+      {/* Ασφάλεια: ΠΡΟΑΙΡΕΤΙΚΗ — χωρίς επίπεδα η ενότητα δεν υπάρχει καθόλου. */}
+      {insuranceOpts.length > 0 && (
+        <section className="sf-bk-box">
+          <fieldset className="sf-bk-set sf-ins">
+            <legend className="sf-h3">{d.insuranceTitle}</legend>
+            <p className="sf-muted sf-small">{d.insuranceIntro}</p>
+            <div className="sf-ins-list">
+              <label className={`sf-ins-card${insuranceId === null ? " is-on" : ""}`}>
+                <input type="radio" name="insurance" checked={insuranceId === null} onChange={() => setInsuranceId(null)} />
+                <span className="sf-ins-body">
+                  <span className="sf-ins-name">{d.noExtraInsurance}</span>
+                  <span className="sf-ins-desc">{d.noExtraInsuranceHint}</span>
+                </span>
+                <span className="sf-ins-price">{formatCents(0, lang)}</span>
+              </label>
+              {insuranceOpts.map((o) => {
+                const on = insuranceId === o.id;
+                const descId = `bk-ins-${o.id}-desc`;
                 return (
-                  <div key={o.id} className="sf-bk-opt">
-                    <input
-                      type="checkbox"
-                      id={`bk-x-${o.id}`}
-                      checked={qty > 0}
-                      onChange={(e) => setExtras((x) => ({ ...x, [o.id]: e.target.checked ? 1 : 0 }))}
-                    />
-                    <label htmlFor={`bk-x-${o.id}`} className="sf-bk-opt-name">
-                      {o.name}
-                    </label>
-                    {qty > 0 && o.maxQuantity > 1 && (
-                      <select
-                        aria-label={`${d.qtyLabel}: ${o.name}`}
-                        value={qty}
-                        onChange={(e) => setExtras((x) => ({ ...x, [o.id]: Number(e.target.value) }))}
-                      >
-                        {Array.from({ length: o.maxQuantity }, (_, i) => (
-                          <option key={i + 1} value={i + 1}>
-                            {i + 1}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <span className="sf-bk-opt-price">{price(o)}</span>
-                  </div>
+                  <label key={o.id} className={`sf-ins-card${on ? " is-on" : ""}`}>
+                    <input type="radio" name="insurance" checked={on} onChange={() => setInsuranceId(o.id)} aria-describedby={descId} />
+                    <span className="sf-ins-body" id={descId}>
+                      <span className="sf-ins-name">{o.name}</span>
+                      {o.description && <span className="sf-ins-desc">{o.description}</span>}
+                      {o.coverages.length > 0 && (
+                        <ul className="sf-ins-covers">
+                          {o.coverages.map((c, i) => (
+                            <li key={i}>
+                              <span aria-hidden="true">✓</span> {c}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {o.excessCents !== null && (
+                        <span className="sf-ins-desc">{fill(d.insuranceExcess, { amount: formatCents(o.excessCents, lang) })}</span>
+                      )}
+                    </span>
+                    <span className="sf-ins-price">
+                      <strong>
+                        +{formatCents(o.priceCents, lang)} {o.priceType === "per_day" ? d.perDayShort : d.perRental}
+                      </strong>
+                      {o.priceType === "per_day" && (
+                        <small>{fill(d.insuranceTotal, { amount: formatCents(o.totalCents, lang) })}</small>
+                      )}
+                    </span>
+                  </label>
                 );
               })}
-            </fieldset>
-          )}
+            </div>
+            {quoteError && (
+              <p className="sf-bk-err" role="alert">
+                {quoteError}
+              </p>
+            )}
+          </fieldset>
         </section>
       )}
 

@@ -15,7 +15,7 @@ import { db } from "./db";
 import { resolveDiscountCode } from "./discounts";
 import { buildExtrasSnapshot, type DiscountMode, type ExtrasSnapshot, type PriceBreakdown } from "./pricing";
 import { computeQuoteForTenant } from "./public/quoteServer";
-import { NO_PRICE_MESSAGE, hasUnpricedDay, requestFromBooking } from "./public/engine";
+import { INSURANCE_INVALID_MESSAGE, NO_PRICE_MESSAGE, hasUnpricedDay, requestFromBooking } from "./public/engine";
 import { fromCents } from "./public/money";
 import type { QuoteLine } from "./public/pricing";
 import { manualDiscountCents, storedManualDiscount, toPriceBreakdown, toStoredQuote, type StoredQuote } from "./pricingBridge";
@@ -33,9 +33,8 @@ export interface PricingRequest {
   returnLocation?: string | null;
   /** "YYYY-MM-DD" του κύριου οδηγού· αλλιώς του πελάτη από τη βάση. */
   driverBirthDate?: string | null;
+  /** Πρόσθετα ΚΑΙ (το πολύ ένα) επίπεδο ασφάλειας. Καμία ασφάλεια δεν μπαίνει μόνη της. */
   extraIds: string[];
-  /** false = χωρίς επιλεγμένη ασφάλεια ΔΕΝ μπαίνει η προεπιλεγμένη. */
-  defaultInsurance?: boolean;
   discountMode: DiscountMode;
   discountValue?: number;
   discountCode?: string | null;
@@ -113,6 +112,8 @@ export async function priceBooking(req: PricingRequest): Promise<PricingOutcome>
   if (!vehicle) return { ok: false, message: "Το όχημα δεν βρέθηκε" };
   // Πρόσθετο άλλης εταιρίας ή απενεργοποιημένο: δεν σιωπούμε, απορρίπτουμε.
   if (extras.length !== wanted.length) return { ok: false, message: "Κάποιο πρόσθετο δεν είναι διαθέσιμο πλέον" };
+  // Το πολύ ΕΝΑ επίπεδο ασφάλειας ανά κράτηση.
+  if (extras.filter((e) => e.type === "INSURANCE").length > 1) return { ok: false, message: "Διαλέξτε μία μόνο ασφάλεια" };
 
   const birth = req.driverBirthDate ?? customer?.dateOfBirth?.toISOString().slice(0, 10) ?? null;
   const engine = await computeQuoteForTenant(req.tenantId, (ctx) =>
@@ -126,10 +127,11 @@ export async function priceBooking(req: PricingRequest): Promise<PricingOutcome>
       returnLocation: req.returnLocation,
       driverBirthDate: birth,
       extraIds: wanted,
-      defaultInsurance: req.defaultInsurance,
     })
   );
-  if (!engine.ok) return { ok: false, message: "Το όχημα δεν βρέθηκε" };
+  if (!engine.ok) {
+    return { ok: false, message: engine.reason === "insurance" ? INSURANCE_INVALID_MESSAGE.el : "Το όχημα δεν βρέθηκε" };
+  }
   const q = engine.result;
 
   const blocking = q.errors.find((e) => BLOCKING.has(e.code));

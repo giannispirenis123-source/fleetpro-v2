@@ -125,8 +125,37 @@ export interface ChargeInput {
   maxQuantity: number;
   /** Κενό = για όλους τους τύπους. */
   vehicleTypes: string[];
-  /** Μόνο ασφάλειες: απαλλαγή. */
+  /** Μόνο ασφάλειες: απαλλαγή (ΜΟΝΟ ενημερωτική — δεν υπολογίζεται πουθενά). */
   excessCents?: number | null;
+  /** Μόνο ασφάλειες: οι καλύψεις, μία γραμμή η καθεμία (SQL 25). */
+  coverages?: LocalizedText[];
+}
+
+/**
+ * Το επίπεδο ασφάλειας ΟΠΩΣ ΗΤΑΝ τη στιγμή του υπολογισμού — αποθηκεύεται στο
+ * priceQuote της κράτησης, ώστε μια μεταγενέστερη αλλαγή του επιπέδου (όνομα,
+ * τιμή, καλύψεις) να μην αλλάζει ό,τι είδε και δέχτηκε ο πελάτης.
+ */
+export interface InsuranceSnapshot {
+  id: string;
+  name: LocalizedText;
+  priceType: "per_day" | "per_rental";
+  priceCents: number;
+  maxTotalCents: number | null;
+  excessCents: number | null;
+  coverages: LocalizedText[];
+  /** Η χρέωση στη συγκεκριμένη ενοικίαση (με το ταβάνι). */
+  totalCents: number;
+}
+
+/**
+ * Η χρέωση ΕΝΟΣ τεμαχίου για `days` ημέρες: ανά ημέρα × ημέρες ή ανά
+ * ενοικίαση, με το ταβάνι. Την ίδια συνάρτηση χρησιμοποιούν η quote() και οι
+ * κάρτες επιλογής του site («σύνολο» δίπλα στο «+X €/ημέρα»).
+ */
+export function chargeTotalCents(c: Pick<ChargeInput, "priceType" | "priceCents" | "maxTotalCents">, days: number): number {
+  const perUnit = c.priceType === "per_day" ? c.priceCents * Math.max(1, days) : c.priceCents;
+  return c.maxTotalCents !== null ? Math.min(perUnit, c.maxTotalCents) : perUnit;
 }
 
 export interface QuoteSettings {
@@ -218,6 +247,8 @@ export interface QuoteResult {
   avgDailyCents: number;
   depositCents: number | null;
   excessCents: number | null;
+  /** Το επίπεδο ασφάλειας που επιλέχθηκε — null = χωρίς πρόσθετη ασφάλεια. */
+  insurance: InsuranceSnapshot | null;
 }
 
 /* ─────────────────────────────────────────────
@@ -469,6 +500,7 @@ const emptyResult = (errors: QuoteError[]): QuoteResult => ({
   avgDailyCents: 0,
   depositCents: null,
   excessCents: null,
+  insurance: null,
 });
 
 export function quote(input: QuoteInput): QuoteResult {
@@ -731,19 +763,37 @@ export function quote(input: QuoteInput): QuoteResult {
       );
       return;
     }
-    const perUnit = c.priceType === "per_day" ? c.priceCents * days : c.priceCents;
-    const capped = c.maxTotalCents !== null ? Math.min(perUnit, c.maxTotalCents) : perUnit;
+    const capped = chargeTotalCents(c, days);
     lines.push({
       kind,
       refId: c.id,
-      label: both(n.el, n.en),
+      // Ασφάλεια: «Ασφάλεια · <επίπεδο>» — φαίνεται καθαρά τι επέλεξε ο πελάτης.
+      label: kind === "insurance" ? both(`Ασφάλεια · ${n.el}`, `Insurance · ${n.en}`) : both(n.el, n.en),
       qty: c.priceType === "per_day" ? days * qty : qty,
       unitCents: c.priceCents,
       totalCents: Math.round(capped * qty),
     });
+    return Math.round(capped * qty);
   };
   for (const e of input.extras ?? []) charge(e.charge, Math.floor(e.qty), "extra");
-  if (input.insurance) charge(input.insurance, 1, "insurance");
+  // Ασφάλεια ΜΟΝΟ αν επιλέχθηκε ρητά — καμία προεπιλογή (SQL 25).
+  let insurance: InsuranceSnapshot | null = null;
+  if (input.insurance) {
+    const total = charge(input.insurance, 1, "insurance");
+    if (total !== undefined) {
+      const c = input.insurance;
+      insurance = {
+        id: c.id,
+        name: c.name,
+        priceType: c.priceType,
+        priceCents: c.priceCents,
+        maxTotalCents: c.maxTotalCents,
+        excessCents: c.excessCents ?? null,
+        coverages: c.coverages ?? [],
+        totalCents: total,
+      };
+    }
+  }
 
   // ── Σύνολα: ΠΑΝΤΑ ακέραιο € ──
   const rawTotal = Math.max(0, lines.reduce((s, l) => s + l.totalCents, 0));
@@ -772,7 +822,8 @@ export function quote(input: QuoteInput): QuoteResult {
     // € ανά ημέρα από το σύνολο, στο πλησιέστερο € (η κάρτα δείχνει «~» αν δεν βγαίνει ακριβώς).
     avgDailyCents: perDayOf(totalCents, days).cents,
     depositCents: target.depositCents,
-    excessCents: input.insurance?.excessCents ?? target.excessCents,
+    excessCents: insurance?.excessCents ?? target.excessCents,
+    insurance,
   };
 }
 

@@ -11,7 +11,7 @@
 
 import { countAvailableByGroup, freeVehicleIds, type BlockingBooking, type FleetVehicle } from "./availability";
 import { vehicleCardKey, type CatalogGroup, type CatalogVehicle } from "./catalog";
-import { hasUnpricedDay, quoteFromContext, requestFromCriteria, NO_PRICE_MESSAGE } from "./engine";
+import { hasUnpricedDay, quoteFromContext, requestFromCriteria, INSURANCE_INVALID_MESSAGE, NO_PRICE_MESSAGE } from "./engine";
 import type { QuoteResult } from "./pricing";
 import { nowLocal, validateCriteria, type SearchCriteria, type SearchRules } from "./search";
 import type { QuoteContext } from "./server";
@@ -85,8 +85,13 @@ export function planSiteBooking(
   if (!base) return { ok: false, error: { code: "NOT_FOUND", message: NOT_FOUND } };
 
   // ── Τιμή: ΜΟΝΟ quote() (extras/ασφάλεια ως ids· κανένα ποσό από τον browser) ──
-  const out = quoteFromContext(cat.ctx, { ...base, extras: req.extras, insuranceId: req.insuranceId });
-  if (!out.ok) return { ok: false, error: { code: "NOT_FOUND", message: NOT_FOUND } };
+  const out = quoteFromContext(cat.ctx, { ...base, extras: req.extras, insuranceId: req.insuranceId ?? null });
+  if (!out.ok) {
+    // Επίπεδο ασφάλειας άλλης εταιρίας / ανενεργό / άλλου τύπου: η κράτηση ΔΕΝ προχωρά.
+    return out.reason === "insurance"
+      ? { ok: false, error: { code: "INVALID", message: INSURANCE_INVALID_MESSAGE } }
+      : { ok: false, error: { code: "NOT_FOUND", message: NOT_FOUND } };
+  }
   const q = out.result;
   if (hasUnpricedDay(q)) return { ok: false, error: { code: "NO_PRICE", message: NO_PRICE_MESSAGE } };
   if (!q.ok) return { ok: false, error: { code: "INVALID", message: q.errors[0].message } };

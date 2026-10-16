@@ -49,6 +49,11 @@ export interface MessageData {
   returnLocation: string | null;
   /** Από το αποθηκευμένο priceQuote (ή το αποθηκευμένο σύνολο σε παλιά κράτηση). */
   totalCents: number;
+  /**
+   * Το επίπεδο ασφάλειας (ήδη στη γλώσσα του μηνύματος) από το priceQuote:
+   * null = χωρίς πρόσθετη ασφάλεια· undefined = άγνωστο (παλιά κράτηση) → καμία γραμμή.
+   */
+  insuranceName?: string | null;
   company: { name: string; phone: string | null; email: string | null };
   /** Πλήρη URL — null όταν η κράτηση δεν είναι από το site. */
   bookingUrl: string | null;
@@ -115,6 +120,7 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
         fill(d.msgVehicle, { name: vehicle }),
         fill(d.msgPickup, { when: when(m.from, lang) + place(m.pickupLocation) }),
         fill(d.msgDropoff, { when: when(m.to, lang) + place(m.returnLocation ?? m.pickupLocation) }),
+        ...(m.insuranceName === undefined ? [] : [fill(d.msgInsurance, { name: m.insuranceName || d.noInsuranceChosen })]),
         fill(d.msgTotal, { amount: formatEuro(Math.round(m.totalCents) / 100, lang) }),
         d.msgPayAtPickup,
       ].join("\n")

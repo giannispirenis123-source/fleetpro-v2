@@ -15,7 +15,7 @@ import { storefrontPath } from "./slug";
 import { storefrontDictionary } from "./i18n";
 import { headers } from "next/headers";
 import { publicFormQuote, needsFlight } from "../public/bookingSubmit";
-import { extraOptions, toPublicQuote } from "../public/bookingView";
+import { extraOptions, insuranceOptions, toPublicQuote } from "../public/bookingView";
 import { loadConfirmation } from "../public/bookingLookup";
 import { hitLimit, LIMITS } from "../public/rateLimit";
 import { dbCounterStore } from "../public/rateLimitStore";
@@ -219,7 +219,9 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
   const cards = problems.length > 0 ? [] : await searchCards(cat, criteria, lang, () => "#", d.unavailable);
   const card = cards.find((c) => c.key === key) ?? null;
   const bookable = !!card?.bookHref;
-  const q = bookable ? publicFormQuote(cat, key, criteria, [], undefined) : null;
+  // Αρχική τιμή ΧΩΡΙΣ ασφάλεια (καμία προεπιλογή) — ίδια με την κάρτα.
+  const fq = bookable ? publicFormQuote(cat, key, criteria, [], null) : null;
+  const q = fq && fq.ok ? fq.quote : null;
   const locName = (slug: string | null) => {
     const l = slug ? cat.locations.find((x) => x.slug === slug) : null;
     return l ? textFor(l.name, lang) || l.slug : null;
@@ -248,6 +250,7 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
               bookPath: storefrontPath(company.slug, lang, "book"),
               query,
               options: extraOptions(cat.ctx, card.type, lang),
+              insurance: insuranceOptions(cat.ctx, card.type, lang, q.days),
               initialQuote: toPublicQuote(q),
               needsFlight: needsFlight(cat, criteria.pl, criteria.dl),
             }

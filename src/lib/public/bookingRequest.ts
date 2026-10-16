@@ -13,6 +13,8 @@
 import { z } from "zod";
 import { ageAt } from "./engine";
 import type { QuoteLine } from "./pricing";
+import type { LocalizedText } from "./text";
+import { storedInsurance } from "../pricingBridge";
 import type { SearchAgeBand } from "./search";
 
 /* ─────────────────────────────────────────────
@@ -314,6 +316,8 @@ export interface ConfirmationDTO {
   /** ΜΟΝΟ σε ακυρωμένη: ο λόγος (κωδικός λίστας) και το σημείωμα της εταιρίας. */
   cancelReasonCode: string | null;
   cancelNote: string | null;
+  /** Το επίπεδο ασφάλειας από το ΑΠΟΘΗΚΕΥΜΕΝΟ priceQuote — null = χωρίς πρόσθετη. */
+  insurance: { name: LocalizedText; coverages: LocalizedText[] } | null;
 }
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -328,6 +332,7 @@ export function toConfirmationDTO(b: ConfirmationSource): ConfirmationDTO {
     totalCents?: number;
   };
   const lines = Array.isArray(q.quote?.lines) ? q.quote!.lines : [];
+  const ins = storedInsurance(b.priceQuote);
   return {
     code: b.publicCode,
     status: b.status,
@@ -348,5 +353,6 @@ export function toConfirmationDTO(b: ConfirmationSource): ConfirmationDTO {
     excessCents: q.quote?.excessCents ?? null,
     cancelReasonCode: b.status === "CANCELLED" ? b.cancelReasonCode ?? null : null,
     cancelNote: b.status === "CANCELLED" ? b.cancelNote ?? null : null,
+    insurance: ins ? { name: ins.name, coverages: ins.coverages } : null,
   };
 }

@@ -797,14 +797,16 @@ model Extra {
   // κώδικα (src/lib/public/money.ts). "name" μένει το κύριο (ελληνικό) όνομα.
   nameI18n        Json       @default("{}")
   descriptionI18n Json       @default("{}")
+  /// Μόνο ασφάλειες (SQL 25): λίστα καλύψεων [{el,en}, …] — μία γραμμή ανά κάλυψη.
+  coveragesI18n   Json       @default("[]")
   /// Ταβάνι συνολικής χρέωσης σε € (null = χωρίς ταβάνι).
   maxTotal        Decimal?   @db.Decimal(10, 2)
   maxQuantity     Int        @default(1)
   /// 'car' | 'moto' | 'atv' — κενό = για όλα.
   vehicleTypes    String[]   @default([])
   sortOrder       Int        @default(0)
-  /// Προεπιλεγμένη ΑΣΦΑΛΕΙΑ: το πολύ μία ανά εταιρία και ανά τύπο οχήματος
-  /// (κανόνας στο API: src/lib/public/insuranceDefaults.ts· CHECK: μόνο INSURANCE).
+  /// ΚΑΤΑΡΓΗΘΗΚΕ για τις ασφάλειες (SQL 25): καμία ασφάλεια δεν μπαίνει
+  /// αυτόματα στην τιμή. Η στήλη μένει (δεδομένα ανέπαφα), ο κώδικας την αγνοεί.
   isDefault       Boolean    @default(false)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt

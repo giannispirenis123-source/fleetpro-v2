@@ -8,7 +8,7 @@
 import { db } from "../db";
 import { normalizeStorefrontSettings } from "../storefront/settings";
 import { toCents, toCentsOrNull } from "./money";
-import { readLocalized, type LocalizedText } from "./text";
+import { readLocalized, readLocalizedList, type LocalizedText } from "./text";
 import { migrateLegacyFixed } from "./pricing";
 import { isoDate } from "./resources";
 import type {
@@ -53,7 +53,8 @@ export interface QuoteContext {
   /** Με σειρά ηλικίας· explanation για την επιλογή στο site. */
   ageBands: (AgeBandInput & { explanation: LocalizedText })[];
   promotions: PromotionInput[];
-  extras: (ChargeInput & { kind: "EXTRA" | "INSURANCE"; isActive: boolean; isDefault: boolean })[];
+  /** Πρόσθετα ΚΑΙ επίπεδα ασφάλειας (kind INSURANCE) — καμία «προεπιλογή». */
+  extras: (ChargeInput & { kind: "EXTRA" | "INSURANCE"; isActive: boolean; description: LocalizedText; sortOrder: number })[];
   /** Ομάδες και οχήματα χωρίς ομάδα, με τα rates τους. */
   groups: Map<string, { target: TargetInput; rates: RateInput[] }>;
   vehicles: Map<string, { target: TargetInput; rates: RateInput[] }>;
@@ -65,7 +66,7 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
     db.season.findMany({ where: { tenantId: companyId } }),
     db.pickupLocation.findMany({ where: { tenantId: companyId }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     db.driverAgeBand.findMany({ where: { tenantId: companyId }, orderBy: [{ minAge: "asc" }] }),
-    db.extra.findMany({ where: { tenantId: companyId } }),
+    db.extra.findMany({ where: { tenantId: companyId }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     db.rentalGroup.findMany({ where: { tenantId: companyId } }),
     db.vehicle.findMany({
       where: { tenantId: companyId, isActive: true },
@@ -152,8 +153,10 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
         id: e.id,
         kind: e.type,
         isActive: e.isActive,
-        isDefault: e.isDefault,
         name: name.el ? name : { ...name, el: e.name },
+        description: readLocalized(e.descriptionI18n),
+        sortOrder: e.sortOrder,
+        coverages: e.type === "INSURANCE" ? readLocalizedList(e.coveragesI18n) : [],
         priceType: e.chargeType === "PER_DAY" ? "per_day" : "per_rental",
         priceCents: toCents(e.price),
         maxTotalCents: toCentsOrNull(e.maxTotal),

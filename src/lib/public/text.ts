@@ -29,3 +29,19 @@ export function readLocalized(value: unknown, max = 2000): LocalizedText {
   }
   return out;
 }
+
+/** Όριο γραμμών στη λίστα καλύψεων μιας ασφάλειας (και μήκος γραμμής). */
+export const COVERAGES_MAX = 20;
+export const COVERAGE_LEN = 120;
+
+/**
+ * Λίστα κειμένων ανά γλώσσα (π.χ. καλύψεις ασφάλειας) από JSON της βάσης:
+ * μόνο αντικείμενα με τουλάχιστον ένα κείμενο, έως `maxItems`.
+ */
+export function readLocalizedList(value: unknown, maxItems = COVERAGES_MAX, maxLen = COVERAGE_LEN): LocalizedText[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => readLocalized(v, maxLen))
+    .filter((t) => Object.keys(t).length > 0)
+    .slice(0, maxItems);
+}

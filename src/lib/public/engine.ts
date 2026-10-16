@@ -13,7 +13,6 @@
 // Server: computeQuoteForTenant (src/lib/public/quoteServer.ts).
 
 import type { QuoteContext } from "./server";
-import { defaultInsuranceFor } from "./insuranceDefaults";
 import { quote, type QuoteResult, type TargetInput, type RateInput } from "./pricing";
 import { textFor } from "./text";
 
@@ -29,7 +28,11 @@ export interface QuoteRequest {
   /** null = προεπιλεγμένη κλίμακα ηλικίας. */
   driverAge?: number | null;
   extras?: { id: string; qty: number }[];
-  /** undefined = η προεπιλεγμένη ασφάλεια του τύπου· null = καμία· id = αυτή. */
+  /**
+   * Επίπεδο ασφάλειας: ΜΟΝΟ ρητή επιλογή. undefined/null = χωρίς πρόσθετη
+   * ασφάλεια (καμία προεπιλογή). Άγνωστο/ανενεργό/άλλης εταιρίας/άλλου τύπου
+   * οχήματος → { ok: false, reason: "insurance" }.
+   */
   insuranceId?: string | null;
   /** Για τους ελέγχους προθεσμίας (μόνο το site). */
   now?: Date;
@@ -37,7 +40,26 @@ export interface QuoteRequest {
 
 export type EngineOutcome =
   | { ok: true; result: QuoteResult; subject: { target: TargetInput; rates: RateInput[] } }
-  | { ok: false; reason: "not_found" };
+  | { ok: false; reason: "not_found" | "insurance" };
+
+/** Το επίπεδο ασφάλειας δεν μπορεί να επιλεγεί (ανενεργό, άλλης εταιρίας, άλλου τύπου οχήματος). */
+export const INSURANCE_INVALID_MESSAGE = {
+  el: "Η ασφάλεια που επιλέξατε δεν είναι διαθέσιμη για αυτό το όχημα. Διαλέξτε άλλη ή καμία.",
+  en: "The selected insurance is not available for this vehicle. Choose another one or none.",
+} as const;
+
+/**
+ * Τα επίπεδα ασφάλειας που ΜΠΟΡΕΙ να διαλέξει ο πελάτης για έναν τύπο
+ * οχήματος: ενεργά, της εταιρίας (το ctx είναι ήδη μίας εταιρίας), με τη σειρά
+ * τους. Κενή λίστα → το site δεν δείχνει καθόλου την ενότητα «Ασφάλεια».
+ */
+export function insuranceLevelsFor(ctx: Pick<QuoteContext, "extras">, vehicleType: string) {
+  return ctx.extras
+    .filter(
+      (e) => e.kind === "INSURANCE" && e.isActive && (e.vehicleTypes.length === 0 || e.vehicleTypes.includes(vehicleType))
+    )
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
 
 /** Όχημα → η ομάδα του (αν υπάρχει)· έτσι dashboard και site τιμολογούν ίδια. */
 export function subjectOf(ctx: QuoteContext, target: QuoteRequest["target"]) {
@@ -54,12 +76,13 @@ export function quoteFromContext(ctx: QuoteContext, req: QuoteRequest): EngineOu
   const loc = (id: string | null | undefined) => (id ? ctx.locations.find((l) => l.id === id && l.isActive) ?? null : null);
   const pickup = loc(req.pickupLocationId);
   const active = ctx.extras.filter((e) => e.isActive);
-  const insurance =
-    req.insuranceId === undefined
-      ? defaultInsuranceFor(active.map((e) => ({ ...e, type: e.kind })), subject.target.vehicleType)
-      : req.insuranceId === null
-        ? null
-        : active.find((e) => e.id === req.insuranceId && e.kind === "INSURANCE") ?? null;
+  // Ασφάλεια ΜΟΝΟ ρητά επιλεγμένη — ποτέ προεπιλογή. Ό,τι δεν επιτρέπεται
+  // για αυτή την εταιρία/αυτόν τον τύπο οχήματος ΔΕΝ αγνοείται σιωπηλά.
+  let insurance: QuoteContext["extras"][number] | null = null;
+  if (req.insuranceId) {
+    insurance = insuranceLevelsFor(ctx, subject.target.vehicleType).find((e) => e.id === req.insuranceId) ?? null;
+    if (!insurance) return { ok: false, reason: "insurance" };
+  }
   const result = quote({
     pickupAt: req.pickupAt,
     dropoffAt: req.dropoffAt,
@@ -170,16 +193,14 @@ export interface BookingPriceInput {
   returnLocation?: string | null;
   /** "YYYY-MM-DD" του κύριου οδηγού (για την κλίμακα ηλικίας). */
   driverBirthDate?: string | null;
-  /** Τα επιλεγμένα πρόσθετα ΚΑΙ ασφάλειες (όπως τα στέλνει η φόρμα). */
+  /** Τα επιλεγμένα πρόσθετα ΚΑΙ (το πολύ ένα) επίπεδο ασφάλειας, όπως τα στέλνει η φόρμα. */
   extraIds: string[];
-  /** false = χωρίς επιλεγμένη ασφάλεια ΔΕΝ μπαίνει η προεπιλεγμένη (παλιές κρατήσεις). */
-  defaultInsurance?: boolean;
 }
 
 /**
- * Κράτηση/συμβόλαιο → request. Ασφάλεια: η επιλεγμένη· αν δεν επιλέχθηκε
- * καμία, η προεπιλεγμένη του τύπου (ΟΠΩΣ στο site). Παλιές κρατήσεις χωρίς
- * ώρα: 10:00 (όπως η προεπιλογή του site).
+ * Κράτηση/συμβόλαιο → request. Ασφάλεια: ΜΟΝΟ η επιλεγμένη (καμία
+ * προεπιλογή — ίδια σύμβαση με το site). Παλιές κρατήσεις χωρίς ώρα: 10:00
+ * (όπως η προεπιλογή του site).
  */
 export function requestFromBooking(ctx: QuoteContext, b: BookingPriceInput): QuoteRequest {
   const chosen = ctx.extras.filter((e) => b.extraIds.includes(e.id));
@@ -192,6 +213,6 @@ export function requestFromBooking(ctx: QuoteContext, b: BookingPriceInput): Quo
     dropoffLocationId: matchLocation(b.returnLocation, ctx.locations),
     driverAge: ageAt(b.driverBirthDate, b.pickupDate),
     extras: chosen.filter((e) => e.kind === "EXTRA").map((e) => ({ id: e.id, qty: 1 })),
-    insuranceId: insurance ? insurance.id : b.defaultInsurance === false ? null : undefined,
+    insuranceId: insurance ? insurance.id : null,
   };
 }

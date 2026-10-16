@@ -90,6 +90,7 @@ export default async function DashboardPage() {
     unpaidInvoices,
     activeBookings,
     recentBookings,
+    siteBookingsPending,
   ] = await Promise.all([
     db.vehicle.groupBy({
       by: ["status"],
@@ -140,6 +141,8 @@ export default async function DashboardPage() {
         customer: { select: { firstName: true, lastName: true } },
       },
     }),
+    // Νέες κρατήσεις από το δημόσιο site που περιμένουν επιβεβαίωση.
+    db.booking.count({ where: { ...scope, source: "site", status: "PENDING" } }),
   ]);
 
   // Ένα όχημα μετράει ΜΙΑ φορά, είτε το σημαίνει το δικό του πεδίο είτε
@@ -171,6 +174,15 @@ export default async function DashboardPage() {
         </h1>
         <p className="dash-page-sub">{tr("dashboard.subtitle")}</p>
       </div>
+
+      {siteBookingsPending > 0 && (
+        <a href="/dashboard/bookings?status=PENDING" className="dash-site-banner">
+          <span>
+            {tr("dashboard.siteBookings")} (<strong>{siteBookingsPending}</strong>)
+          </span>
+          <span>{tr("dashboard.siteBookingsOpen")} →</span>
+        </a>
+      )}
 
       {/* KPIs */}
       <div className="dash-kpis">

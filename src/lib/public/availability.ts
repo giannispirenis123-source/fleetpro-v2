@@ -87,12 +87,7 @@ export function bookingInterval(b: BlockingBooking, nowMs?: number): Interval {
   return { start, end };
 }
 
-/**
- * Πόσα οχήματα κάθε κάρτας είναι ελεύθερα στο [from, to].
- * Οχήματα/κρατήσεις ΑΛΛΗΣ εταιρίας αγνοούνται (δεύτερη δικλείδα πέρα από το
- * WHERE του ερωτήματος).
- */
-export function countAvailableByGroup(input: {
+export interface AvailabilityInput {
   companyId: string;
   vehicles: FleetVehicle[];
   bookings: BlockingBooking[];
@@ -102,13 +97,12 @@ export function countAvailableByGroup(input: {
   prepMinutes: number;
   /** "YYYY-MM-DDTHH:mm" — τώρα, στη ζώνη της εταιρίας (για τις καθυστερήσεις). */
   now?: string;
-}): Map<string, number> {
-  const counts = new Map<string, number>();
-  const window: Interval = { start: localMs(input.from), end: localMs(input.to) };
-  if (!Number.isFinite(window.start) || !Number.isFinite(window.end) || window.end <= window.start) return counts;
+}
+
+/** Τα οχήματα που ΚΛΕΙΝΟΥΝ στο διάστημα (κρατήσεις της ίδιας εταιρίας). */
+function blockedIds(input: AvailabilityInput, window: Interval): Set<string> {
   const nowMs = input.now ? localMs(input.now) : undefined;
   const prep = Math.max(0, input.prepMinutes) * 60_000;
-
   const blocked = new Set<string>();
   for (const b of input.bookings) {
     if (b.tenantId !== input.companyId) continue;
@@ -117,12 +111,43 @@ export function countAvailableByGroup(input: {
     blocked.add(b.vehicleId);
     for (const id of b.extraVehicleIds ?? []) blocked.add(id);
   }
+  return blocked;
+}
 
+const windowOf = (input: AvailabilityInput): Interval | null => {
+  const w = { start: localMs(input.from), end: localMs(input.to) };
+  return Number.isFinite(w.start) && Number.isFinite(w.end) && w.end > w.start ? w : null;
+};
+
+const usable = (input: AvailabilityInput, v: FleetVehicle) =>
+  v.tenantId === input.companyId && v.isActive && !(OUT_OF_SERVICE as readonly string[]).includes(v.status);
+
+/**
+ * Τα ΕΛΕΥΘΕΡΑ οχήματα μιας κάρτας στο [from, to] — για την αυτόματη ανάθεση
+ * οχήματος σε κράτηση του site. Ίδιοι κανόνες με το countAvailableByGroup.
+ */
+export function freeVehicleIds(input: AvailabilityInput, groupKey: string): string[] {
+  const window = windowOf(input);
+  if (!window) return [];
+  const blocked = blockedIds(input, window);
+  return input.vehicles.filter((v) => v.groupKey === groupKey && usable(input, v) && !blocked.has(v.id)).map((v) => v.id);
+}
+
+/**
+ * Πόσα οχήματα κάθε κάρτας είναι ελεύθερα στο [from, to].
+ * Οχήματα/κρατήσεις ΑΛΛΗΣ εταιρίας αγνοούνται (δεύτερη δικλείδα πέρα από το
+ * WHERE του ερωτήματος). Κάθε κράτηση του site έχει όχημα (ανατίθεται αυτόματα
+ * τη στιγμή της υποβολής), άρα μετρά κανονικά στην ομάδα της.
+ */
+export function countAvailableByGroup(input: AvailabilityInput): Map<string, number> {
+  const counts = new Map<string, number>();
+  const window = windowOf(input);
+  if (!window) return counts;
+  const blocked = blockedIds(input, window);
   for (const v of input.vehicles) {
     if (v.tenantId !== input.companyId || !v.groupKey) continue;
     if (!counts.has(v.groupKey)) counts.set(v.groupKey, 0);
-    if (!v.isActive || (OUT_OF_SERVICE as readonly string[]).includes(v.status)) continue;
-    if (blocked.has(v.id)) continue;
+    if (!usable(input, v) || blocked.has(v.id)) continue;
     counts.set(v.groupKey, counts.get(v.groupKey)! + 1);
   }
   return counts;

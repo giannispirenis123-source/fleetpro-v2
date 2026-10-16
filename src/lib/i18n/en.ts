@@ -66,6 +66,8 @@ export const en: Dictionary = {
   },
 
   dashboard: {
+    siteBookings: "New bookings from the website",
+    siteBookingsOpen: "View pending",
     greeting: "Good morning",
     subtitle: "Here's a quick snapshot of your business today.",
     availableVehicles: "Available vehicles",
@@ -419,6 +421,8 @@ export const en: Dictionary = {
     conflictApprove: "Approve and save",
     conflictBack: "Change the times",
     fromContract: "From contract",
+    fromSite: "From the website",
+    flight: "Flight",
   },
 
   discounts: {

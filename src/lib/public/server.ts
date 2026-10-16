@@ -48,7 +48,8 @@ export interface QuoteContext {
   settings: QuoteSettings;
   seasons: SeasonInput[];
   /** Με τη σειρά τους (sortOrder)· slug για τα URL του site. */
-  locations: (LocationInput & { isActive: boolean; slug: string })[];
+  /** needsFlight: το σημείο ζητά πτήση (askFlightNumber ή τύπος «αεροδρόμιο»). */
+  locations: (LocationInput & { isActive: boolean; slug: string; needsFlight: boolean })[];
   /** Με σειρά ηλικίας· explanation για την επιλογή στο site. */
   ageBands: (AgeBandInput & { explanation: LocalizedText })[];
   promotions: PromotionInput[];
@@ -102,6 +103,7 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
     locations: locations.map((l) => migrateLegacyFixed({
       id: l.id,
       slug: l.slug,
+      needsFlight: l.askFlightNumber || l.type === "airport",
       name: readLocalized(l.name),
       adjustmentType: l.adjustmentType === "percent" || l.adjustmentType === "fixed" ? l.adjustmentType : "none",
       adjustmentValue: l.adjustmentValue,
@@ -114,7 +116,7 @@ export async function loadQuoteContext(companyId: string): Promise<QuoteContext 
       collectionFeeCents: l.collectionFeeCents,
       feeFreeFromDays: l.feeFreeFromDays,
       feeLabel: readLocalized(l.feeLabel),
-    }) as LocationInput & { isActive: boolean; slug: string }),
+    }) as LocationInput & { isActive: boolean; slug: string; needsFlight: boolean }),
     promotions: promotions.map((p) => ({
       id: p.id,
       name: readLocalized(p.name),

@@ -82,8 +82,12 @@ export interface BookingDTO {
 
   notes: string | null;
   createdAt: string;
-  /** Από πού ήρθε: "manual", "walk-in" (γρήγορο συμβόλαιο) κ.λπ. */
+  /** Από πού ήρθε: "manual", "walk-in" (γρήγορο συμβόλαιο), "site" (δημόσιο site) κ.λπ. */
   source: string;
+  /** Κωδικός που έχει ο πελάτης (μόνο κρατήσεις από το site). */
+  publicCode: string | null;
+  /** Αριθμός πτήσης που έδωσε ο πελάτης στο site. */
+  flightNumber: string | null;
 
   /**
    * Ο κωδικός του τιμολογίου της κράτησης (invoiceCode, π.χ. K7M2-X9PQ· ο
@@ -175,6 +179,8 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
     notes: b.notes,
     createdAt: b.createdAt.toISOString(),
     source: b.source,
+    publicCode: b.publicCode ?? null,
+    flightNumber: b.flightNumber ?? null,
     invoiceNumber: b.invoice ? displayInvoiceCode(b.invoice) : null,
 
     partnerId: b.partnerId,

@@ -261,7 +261,7 @@ export async function prepareBooking(opts: {
 }
 
 /** BP-2025-001, αυξανόμενο ανά εταιρία και έτος. */
-async function nextBookingNumber(client: Client, tenantId: string): Promise<string> {
+export async function nextBookingNumber(client: Client, tenantId: string): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `BP-${year}-`;
 

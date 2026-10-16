@@ -59,6 +59,12 @@ export async function middleware(req: NextRequest) {
     if (/^\/s\/[^/]+\/[a-z]{2}\/(search|book)\/?$/.test(pathname)) {
       res.headers.set("X-Robots-Tag", "noindex, nofollow");
     }
+    // Επιβεβαίωση κράτησης: ποτέ ευρετήριο, ποτέ cache, χωρίς Referer προς τρίτους.
+    if (/^\/s\/[^/]+\/[a-z]{2}\/booking\/[^/]+\/?$/.test(pathname)) {
+      res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+      res.headers.set("Cache-Control", "no-store, max-age=0");
+      res.headers.set("Referrer-Policy", "no-referrer");
+    }
     return res;
   }
 

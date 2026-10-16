@@ -23,6 +23,9 @@ import {
   Handshake,
   UserRound,
   FileSignature,
+  Globe,
+  Plane,
+  MessageSquare,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -190,6 +193,7 @@ export default function BookingsClient({
   myCommission,
   canSeeCommission,
   focusBookingId,
+  initialStatus,
   canContract = false,
 }: {
   initialBookings: BookingDTO[];
@@ -210,6 +214,8 @@ export default function BookingsClient({
   canSeeCommission: boolean;
   /** Η κράτηση που ζήτησε το Ημερολόγιο με ?booking=… */
   focusBookingId?: string | null;
+  /** Από το banner «Νέες κρατήσεις από το site»: ανοίγει με φίλτρο «Εκκρεμεί». */
+  initialStatus?: "PENDING";
   /** Δικαίωμα contracts.view — εμφανίζει το κουμπί «Συμβόλαιο». */
   canContract?: boolean;
 }) {
@@ -233,7 +239,7 @@ export default function BookingsClient({
 
   const [bookings, setBookings] = useState<BookingDTO[]>(initialBookings);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<StatusFilter>("ALL");
+  const [filter, setFilter] = useState<StatusFilter>(initialStatus ?? "ALL");
   // Ο συνεργάτης είναι ήδη στεγανός, οπότε το φίλτρο αφορά προσωπικό και
   // διαχειριστή: «όσες έγραψα εγώ», χωριστά από τις γενικές.
   const [onlyMine, setOnlyMine] = useState(false);
@@ -646,6 +652,22 @@ function BookingCard({
         {b.source === "walk-in" && (
           <span className="dash-booking-source">
             <FileSignature size={13} /> {tr("bookings.fromContract")}
+          </span>
+        )}
+        {b.source === "site" && (
+          <span className="dash-booking-source dash-booking-site">
+            <Globe size={13} /> {tr("bookings.fromSite")}
+            {b.publicCode && <code>{b.publicCode}</code>}
+          </span>
+        )}
+        {b.flightNumber && (
+          <span>
+            <Plane size={13} /> {tr("bookings.flight")}: {b.flightNumber}
+          </span>
+        )}
+        {b.source === "site" && b.notes && (
+          <span className="dash-booking-note">
+            <MessageSquare size={13} /> {b.notes}
           </span>
         )}
         <span>

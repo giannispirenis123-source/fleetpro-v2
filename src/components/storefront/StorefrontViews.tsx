@@ -19,9 +19,13 @@ import { cloudinaryThumb } from "@/lib/vehiclePhotos";
 import { formatCents } from "@/lib/public/money";
 import { textFor } from "@/lib/public/text";
 import type { ResultCard, SortOrder } from "@/lib/public/catalog";
-import type { QuoteResult, VehicleType } from "@/lib/public/pricing";
+import type { VehicleType } from "@/lib/public/pricing";
 import type { SearchCriteria, SearchProblem, SearchRules } from "@/lib/public/search";
 import SearchBox, { type SearchAgeOption, type SearchLocationOption } from "./SearchBox";
+import BookingForm from "./BookingForm";
+import { CopyCode, PrintButton } from "./ConfirmActions";
+import { bookingTexts, type ConfirmationDTO } from "@/lib/public/bookingRequest";
+import type { PublicExtraOption, PublicQuote } from "@/lib/public/bookingView";
 import Results, { GroupCard } from "./Results";
 import "./storefront.css";
 
@@ -354,34 +358,49 @@ export function StorefrontSearch({
 }
 
 /* ─────────────────────────────────────────────
-   /s/<slug>/<lang>/book — περίληψη (μέχρι το PR 3)
+   /s/<slug>/<lang>/book — φόρμα κράτησης
    ───────────────────────────────────────────── */
+
+export interface BookFormData {
+  slug: string;
+  cardKey: string;
+  criteria: { pl: string | null; dl: string | null; from: string; to: string; age: number | null };
+  bookPath: string;
+  query: string;
+  options: PublicExtraOption[];
+  initialQuote: PublicQuote;
+  needsFlight: boolean;
+}
 
 export function StorefrontBook({
   company,
   lang,
   query,
   card,
-  quote,
+  form,
   criteria,
   pickupName,
   dropoffName,
+  ageLabel,
   backHref,
+  problem,
 }: {
   company: PublicCompany;
   lang: string;
   query: string;
   card: ResultCard | null;
-  quote: QuoteResult | null;
+  form: BookFormData | null;
   criteria: SearchCriteria;
   pickupName: string | null;
   dropoffName: string | null;
+  ageLabel: string | null;
   backHref: string;
+  /** Μήνυμα όταν η κράτηση δεν γίνεται (λάθος κριτήρια, δεν είναι πια διαθέσιμο). */
+  problem: string | null;
 }) {
   const d = storefrontDictionary(lang);
   const ctx: Ctx = { company, lang, d };
-  const request = company.rentalMode === "REQUEST";
-  const ok = !!card && !!quote && !!card.bookHref;
+  const texts = bookingTexts(company.rentalMode);
 
   return (
     <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, "book", query)}>
@@ -389,69 +408,143 @@ export function StorefrontBook({
         <a href={backHref} className="sf-back">
           ← {d.backToResults}
         </a>
-        <h1 className="sf-h1 sf-h1--dark">{request ? d.requestTitle : d.bookTitle}</h1>
+        <h1 className="sf-h1 sf-h1--dark">{company.rentalMode === "REQUEST" ? d.requestTitle : d.bookTitle}</h1>
 
-        {!ok || !card || !quote ? (
+        {!card || !form || problem ? (
           <div className="sf-empty" role="status">
-            <p>{d.notBookable}</p>
+            <p>{problem ?? d.notBookable}</p>
+            <a href={backHref} className="sf-btn sf-btn--primary">
+              {d.newSearch}
+            </a>
             <ContactButtons ctx={ctx} />
           </div>
         ) : (
           <div className="sf-book-grid">
             <div>
               <GroupCard card={card} summary mode="search" rentalMode={company.rentalMode} lang={lang} d={d} eager />
+              <div className="sf-book-panel sf-bk-trip">
+                <h2 className="sf-h3">{d.yourTrip}</h2>
+                <dl className="sf-dl sf-dl--left">
+                  <dt>{d.pickupAt}</dt>
+                  <dd>
+                    {formatDateTime(criteria.from, d)}
+                    {pickupName && <span className="sf-muted"> · {pickupName}</span>}
+                  </dd>
+                  <dt>{d.dropoffAt}</dt>
+                  <dd>
+                    {formatDateTime(criteria.to, d)}
+                    <span className="sf-muted"> · {dropoffName ?? (pickupName ? d.sameLocation : "")}</span>
+                  </dd>
+                  {ageLabel && (
+                    <>
+                      <dt>{d.driverAgeShort}</dt>
+                      <dd>{ageLabel}</dd>
+                    </>
+                  )}
+                </dl>
+              </div>
             </div>
-            <div className="sf-book-panel">
-              <dl className="sf-dl sf-dl--left">
-                <dt>{d.pickupAt}</dt>
-                <dd>
-                  {formatDateTime(criteria.from, d)}
-                  {pickupName && <span className="sf-muted"> · {pickupName}</span>}
-                </dd>
-                <dt>{d.dropoffAt}</dt>
-                <dd>
-                  {formatDateTime(criteria.to, d)}
-                  <span className="sf-muted"> · {dropoffName ?? (pickupName ? d.sameLocation : "")}</span>
-                </dd>
-              </dl>
-
-              <h2 className="sf-h3">{d.priceBreakdown}</h2>
-              <table className="sf-lines">
-                <tbody>
-                  {quote.lines.map((l, i) => (
-                    <tr key={i} className={l.totalCents < 0 ? "is-discount" : undefined}>
-                      <th scope="row">
-                        {textFor(l.label, lang)}
-                        {l.qty > 1 && <span className="sf-muted"> × {l.qty}</span>}
-                      </th>
-                      <td>{formatCents(l.totalCents, lang)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <th scope="row">{d.total}</th>
-                    <td>
-                      {quote.listTotalCents > quote.totalCents && <s className="sf-was">{formatCents(quote.listTotalCents, lang)}</s>}{" "}
-                      <strong>{formatCents(quote.totalCents, lang)}</strong>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-              <p className="sf-muted sf-small">{fill(d.vatIncludedAmount, { amount: formatCents(quote.vatCents, lang) })}</p>
-              {!!(quote.depositCents || quote.excessCents) && (
-                <p className="sf-muted sf-small">
-                  {quote.depositCents ? `${d.deposit}: ${formatCents(quote.depositCents, lang)}` : ""}
-                  {quote.depositCents && quote.excessCents ? " · " : ""}
-                  {quote.excessCents ? `${d.excess}: ${formatCents(quote.excessCents, lang)}` : ""}
-                </p>
-              )}
-
-              <p className="sf-book-next">{request ? d.requestSoon : d.bookingSoon}</p>
-              <ContactButtons ctx={ctx} />
+            <div>
+              <BookingForm
+                {...form}
+                lang={lang}
+                d={d}
+                submitLabel={lang === "el" ? texts.submit.el : texts.submit.en}
+              />
             </div>
           </div>
         )}
+      </div>
+    </Shell>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   /s/<slug>/<lang>/booking/<code> — επιβεβαίωση
+   ───────────────────────────────────────────── */
+
+export function StorefrontConfirmation({ company, lang, b }: { company: PublicCompany; lang: string; b: ConfirmationDTO }) {
+  const d = storefrontDictionary(lang);
+  const ctx: Ctx = { company, lang, d };
+  const texts = bookingTexts(company.rentalMode);
+  const pick = (m: { el: string; en: string }) => (lang === "el" ? m.el : m.en);
+  const status =
+    b.status === "PENDING" ? d.statusPending : b.status === "CONFIRMED" || b.status === "ACTIVE" ? d.statusConfirmed : b.status === "CANCELLED" ? d.statusCancelled : d.statusOther;
+
+  return (
+    <Shell ctx={ctx} langHref={(code) => `${storefrontPath(company.slug, code)}/booking/${b.code}`}>
+      <div className="sf-wrap sf-section sf-book sf-confirm">
+        <h1 className="sf-h1 sf-h1--dark">{b.status === "PENDING" ? pick(texts.done) : fill(d.confirmTitle, { code: b.code })}</h1>
+        <p className="sf-muted">
+          {fill(d.bookedFor, { name: b.firstName })}
+          {b.maskedEmail && <> · {fill(d.confirmationEmailNote, { email: b.maskedEmail })}</>}
+        </p>
+
+        <div className="sf-confirm-code">
+          <span className="sf-label">{d.bookingCodeLabel}</span>
+          <CopyCode code={b.code} copyLabel={d.copyCode} copiedLabel={d.copied} />
+          <span className={`sf-confirm-status is-${b.status.toLowerCase()}`}>{status}</span>
+          <p className="sf-small">{d.saveCode}</p>
+          {b.status === "PENDING" && <p className="sf-small">{pick(texts.next)}</p>}
+        </div>
+
+        <div className="sf-book-grid">
+          <div className="sf-book-panel">
+            {b.photoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="sf-confirm-img" src={cloudinaryThumb(b.photoUrl, 640)} alt={b.groupSimilar ? fill(d.orSimilar, { name: b.groupSimilar }) : b.groupName} />
+            )}
+            <h2 className="sf-h3">{b.groupName}</h2>
+            {b.groupSimilar && <p className="sf-muted">{fill(d.orSimilar, { name: b.groupSimilar })}</p>}
+            <dl className="sf-dl sf-dl--left">
+              <dt>{d.pickupAt}</dt>
+              <dd>
+                {formatDateTime(b.from, d)}
+                {b.pickupLocation && <span className="sf-muted"> · {b.pickupLocation}</span>}
+              </dd>
+              <dt>{d.dropoffAt}</dt>
+              <dd>
+                {formatDateTime(b.to, d)}
+                {b.returnLocation && <span className="sf-muted"> · {b.returnLocation}</span>}
+              </dd>
+            </dl>
+          </div>
+          <div className="sf-book-panel">
+            <h2 className="sf-h3">{d.priceBreakdown}</h2>
+            <table className="sf-lines">
+              <tbody>
+                {b.lines.map((l, i) => (
+                  <tr key={i} className={l.totalCents < 0 ? "is-discount" : undefined}>
+                    <th scope="row">
+                      {textFor(l.label as Record<string, string>, lang)}
+                      {l.qty > 1 && <span className="sf-muted"> × {l.qty}</span>}
+                    </th>
+                    <td>{formatCents(l.totalCents, lang)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th scope="row">{d.total}</th>
+                  <td>
+                    <strong>{formatCents(b.totalCents, lang)}</strong>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+            {b.vatCents !== null && <p className="sf-muted sf-small">{fill(d.vatIncludedAmount, { amount: formatCents(b.vatCents, lang) })}</p>}
+            <p className="sf-bk-pay">{d.payAtPickup}</p>
+          </div>
+        </div>
+
+        <div className="sf-book-panel sf-confirm-contact">
+          <h2 className="sf-h3">{d.contactUs}</h2>
+          <p>
+            <strong>{d.quoteCode}</strong> ({b.code})
+          </p>
+          <ContactButtons ctx={ctx} />
+          <PrintButton label={d.printSave} />
+        </div>
       </div>
     </Shell>
   );

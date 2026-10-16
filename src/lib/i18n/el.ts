@@ -65,6 +65,8 @@ export const el = {
   },
 
   dashboard: {
+    siteBookings: "Νέες κρατήσεις από το site",
+    siteBookingsOpen: "Προβολή εκκρεμών",
     greeting: "Καλημέρα",
     subtitle: "Ορίστε μια γρήγορη εικόνα της επιχείρησής σου σήμερα.",
     availableVehicles: "Διαθέσιμα οχήματα",
@@ -420,6 +422,8 @@ export const el = {
     conflictApprove: "Έγκριση και καταχώρηση",
     conflictBack: "Αλλαγή ωρών",
     fromContract: "Από συμβόλαιο",
+    fromSite: "Από το site",
+    flight: "Πτήση",
   },
 
   discounts: {

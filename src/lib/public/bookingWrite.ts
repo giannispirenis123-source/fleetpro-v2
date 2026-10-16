@@ -26,6 +26,8 @@ export interface SiteBookingWrite {
   contact: CleanContact;
   locations: { pickup: string | null; dropoff: string | null };
   window: { from: string; to: string };
+  /** Η γλώσσα του site στην υποβολή — για τα μηνύματα προς τον πελάτη. */
+  lang?: string;
 }
 
 const toDate = (v: string) => new Date(`${v.slice(0, 10)}T00:00:00.000Z`);
@@ -95,6 +97,7 @@ export async function writeSiteBooking<Tx extends SiteBookingTx>(
       priceMode: "AUTO",
       flightNumber: contact.flightNumber,
       notes: contact.notes,
+      siteLang: w.lang ?? null,
     },
     select: { id: true },
   });

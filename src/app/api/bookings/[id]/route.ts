@@ -32,6 +32,7 @@ import { applyDiscountUsage } from "@/lib/discounts";
 import { issueInvoiceOnCompletion, syncVehicleStatus } from "@/lib/bookingLifecycle";
 import { displayInvoiceCode } from "@/lib/invoices";
 import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
+import { logBookingStatus } from "@/lib/bookingDecisionServer";
 
 const isoDate = z
   .string()
@@ -290,6 +291,15 @@ export const PATCH = withPermission(
           booking.status === "CANCELLED" ? null : booking.discountCode,
       });
 
+      // Ιστορικό: ποιος άλλαξε κατάσταση/όχημα και πότε.
+      await logBookingStatus(db, {
+        tenantId: session.tenantId!,
+        userId: viewer!.userId,
+        bookingId: booking.id,
+        from: { status: current.status, vehicleId: current.vehicleId },
+        to: { status: booking.status, vehicleId: booking.vehicleId },
+      });
+
       // Ενημερώνουμε και το παλιό όχημα, αν άλλαξε.
       await syncVehicleStatus(booking.vehicleId, session.tenantId!);
       if (current.vehicleId !== booking.vehicleId) {
@@ -322,6 +332,8 @@ export const PATCH = withPermission(
 // ελευθερώνεται αν δεν το κρατά κάποια άλλη.
 export const DELETE = withPermission(
   async (_req, session, params, viewer) => {
+    // Ο συνεργάτης ΜΟΝΟ βλέπει, όποια δικαιώματα κι αν του δοθούν.
+    if (viewer!.role === "PARTNER") return forbidden("Δεν έχετε δικαίωμα για αυτή την ενέργεια");
     try {
       const current = await db.booking.findFirst({
         where: { id: params!.id, ...bookingScope(viewer!) },
@@ -349,6 +361,14 @@ export const DELETE = withPermission(
       });
 
       await syncVehicleStatus(booking.vehicleId, session.tenantId!);
+
+      await logBookingStatus(db, {
+        tenantId: session.tenantId!,
+        userId: viewer!.userId,
+        bookingId: booking.id,
+        from: { status: current.status, vehicleId: current.vehicleId },
+        to: { status: booking.status, vehicleId: booking.vehicleId },
+      });
 
       return ok({ booking: toBookingDTO(booking) });
     } catch (error) {

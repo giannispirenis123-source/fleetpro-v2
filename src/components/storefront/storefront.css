@@ -335,6 +335,9 @@
 .sf-confirm-status { justify-self: start; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; background: #fef3c7; color: #92400e; }
 .sf-confirm-status.is-confirmed, .sf-confirm-status.is-active { background: #dcfce7; color: #166534; }
 .sf-confirm-status.is-cancelled { background: #fee2e2; color: #991b1b; }
+.sf-confirm-cancelled { border-color: #fecaca; background: #fef2f2; }
+.sf-confirm-cancelled p { margin: 0 0 10px; }
+.sf-confirm-cancelled .sf-btn { margin-top: 4px; }
 .sf-confirm-img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; margin-bottom: 8px; }
 .sf-confirm-contact { margin-top: 20px; }
 .sf-confirm-print { margin-top: 12px; }

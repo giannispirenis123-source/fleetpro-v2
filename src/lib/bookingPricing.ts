@@ -18,7 +18,7 @@ import { computeQuoteForTenant } from "./public/quoteServer";
 import { NO_PRICE_MESSAGE, hasUnpricedDay, requestFromBooking } from "./public/engine";
 import { fromCents } from "./public/money";
 import type { QuoteLine } from "./public/pricing";
-import { manualDiscountCents, toPriceBreakdown, toStoredQuote, type StoredQuote } from "./pricingBridge";
+import { manualDiscountCents, storedManualDiscount, toPriceBreakdown, toStoredQuote, type StoredQuote } from "./pricingBridge";
 
 export interface PricingRequest {
   tenantId: string;
@@ -61,13 +61,26 @@ export type PricingOutcome =
   | { ok: false; message: string };
 
 /**
- * Η έκπτωση μιας ΥΠΑΡΧΟΥΣΑΣ κράτησης, όπως τη διαβάζει ο ξαναϋπολογισμός:
- * με κωδικό → ο κωδικός ξαναελέγχεται· με ποσό → το ίδιο ποσό· αλλιώς καμία.
+ * Η ΧΕΙΡΟΚΙΝΗΤΗ έκπτωση μιας ΥΠΑΡΧΟΥΣΑΣ κράτησης, όπως τη διαβάζει ο
+ * ξαναϋπολογισμός: με κωδικό → ο κωδικός ξαναελέγχεται· με ποσό → το ίδιο
+ * ποσό· αλλιώς καμία.
+ *
+ * Από την ενιαία τιμολόγηση (SQL 22) το discountAmount περιέχει ΚΑΙ την
+ * αυτόματη προσφορά. Όταν υπάρχει priceQuote, η χειροκίνητη έκπτωση
+ * διαβάζεται ΜΟΝΟ από το priceQuote.manualDiscount — αλλιώς η προσφορά θα
+ * μετρούσε δύο φορές (μία από τη quote() και μία ως «ποσό»).
  */
 export function discountOfBooking(b: {
   discountCode: string | null;
   discountAmount: unknown;
+  priceQuote?: unknown;
 }): { discountMode: DiscountMode; discountValue?: number; discountCode: string | null } {
+  const stored = storedManualDiscount(b.priceQuote);
+  if (stored !== undefined) {
+    if (!stored) return { discountMode: "NONE", discountCode: null };
+    if (stored.code) return { discountMode: "CODE", discountCode: stored.code };
+    return { discountMode: "AMOUNT", discountValue: stored.cents / 100, discountCode: null };
+  }
   const discountMode: DiscountMode = b.discountCode
     ? "CODE"
     : Number(b.discountAmount) > 0

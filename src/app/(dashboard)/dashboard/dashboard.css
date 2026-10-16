@@ -2792,3 +2792,26 @@ input.dash-invalid,
 .dash-booking-note { white-space: pre-line; color: var(--text-3); }
 .dash-site-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--primary-bg); background: var(--primary-bg); color: var(--text); text-decoration: none; font-weight: 600; }
 .dash-site-banner strong { font-size: 18px; color: var(--primary-soft); }
+
+/* ── Επιβεβαίωση / ακύρωση / μήνυμα στον πελάτη ── */
+.dash-decision { display: grid; gap: 12px; }
+.dash-decision > p { margin: 0; }
+.dash-vehicle-actions { flex-wrap: wrap; justify-content: flex-end; }
+.dash-code { font-size: 12px; padding: 1px 6px; border-radius: 6px; background: var(--primary-bg); color: var(--primary-soft); }
+.dash-msg-state { font-weight: 600; }
+.dash-msg-state.is-sent { color: var(--ok-fg); }
+.dash-msg-state.is-failed { color: var(--bad-fg); }
+.dash-msg-state.is-none { color: var(--text-3); }
+.dash-msg-preview { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.dash-msg-preview-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; font-size: 13px; font-weight: 600; background: var(--surface-2); }
+.dash-msg-preview pre { margin: 0; padding: 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 13px; line-height: 1.5; }
+.dash-msg-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dash-msg-actions .dash-btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.dash-msg-log { margin-top: 14px; }
+.dash-msg-log h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
+.dash-msg-log ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.dash-msg-log .is-ok { color: var(--ok-fg); }
+.dash-msg-log .is-bad { color: var(--bad-fg); }
+@media (max-width: 600px) {
+  .dash-msg-actions .dash-btn { flex: 1 1 100%; justify-content: center; }
+}

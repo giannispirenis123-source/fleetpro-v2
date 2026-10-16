@@ -289,6 +289,8 @@ export interface ConfirmationSource {
   groupName: string;
   groupSimilar: string | null;
   photoUrl: string | null;
+  cancelReasonCode?: string | null;
+  cancelNote?: string | null;
 }
 
 export interface ConfirmationDTO {
@@ -309,6 +311,9 @@ export interface ConfirmationDTO {
   vatCents: number | null;
   depositCents: number | null;
   excessCents: number | null;
+  /** ΜΟΝΟ σε ακυρωμένη: ο λόγος (κωδικός λίστας) και το σημείωμα της εταιρίας. */
+  cancelReasonCode: string | null;
+  cancelNote: string | null;
 }
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -341,5 +346,7 @@ export function toConfirmationDTO(b: ConfirmationSource): ConfirmationDTO {
     vatCents: q.quote?.vatCents ?? null,
     depositCents: q.quote?.depositCents ?? null,
     excessCents: q.quote?.excessCents ?? null,
+    cancelReasonCode: b.status === "CANCELLED" ? b.cancelReasonCode ?? null : null,
+    cancelNote: b.status === "CANCELLED" ? b.cancelNote ?? null : null,
   };
 }

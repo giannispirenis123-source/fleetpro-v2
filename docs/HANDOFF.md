@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 15/10/2026 · **main:** `9311d33` (merge του PR #24 — ενιαία τιμολόγηση, SQL 22). **Ανοιχτό:** branch `claude/public-site-booking-flow` — **Δημόσιο site 3/4: ροή κράτησης (φόρμα, υποβολή, σελίδα επιβεβαίωσης, dashboard)** (§5.6). **Θέλει SQL `23` ΠΡΙΝ τη δοκιμή στο preview.** Επόμενος ελεύθερος αριθμός SQL: `24`.
+**Ημερομηνία:** 16/10/2026 · **main:** `9311d33` (merge του PR #24 — ενιαία τιμολόγηση, SQL 22). **Ανοιχτά:** PR #25 `claude/public-site-booking-flow` — ροή κράτησης του site (§5.6, **SQL `23`**) και, πάνω του, `claude/booking-confirm-cancel` — **επιβεβαίωση/ακύρωση κράτησης + μήνυμα στον πελάτη** (§5.7, **SQL `24`**). Τα SQL τρέχουν με τη σειρά 23 → 24 ΠΡΙΝ τη δοκιμή στο preview. Επόμενος ελεύθερος αριθμός SQL: `25`.
 
-> **Επόμενο βήμα:** SQL 23 → δοκιμή της ροής κράτησης στο preview → merge· μετά PR 4 (SEO/νομικά/FAQ). Μετά το domain: **online πληρωμές (Stripe Connect)** και **email προς πελάτες** (επιβεβαίωση κράτησης). Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται **«Fleet-Pro Car Rental»**· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
+> **Επόμενο βήμα:** SQL 23 + 24 → δοκιμή στο preview → merge του #25 και μετά του confirm/cancel. Μετά PR 4 (SEO/νομικά/FAQ). Μετά το domain: **επαλήθευση domain στο Resend** (τότε φεύγουν πραγματικά τα email επιβεβαίωσης/ακύρωσης), **online πληρωμές (Stripe Connect)**. Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται **«Fleet-Pro Car Rental»**· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
 ---
 
@@ -496,6 +496,24 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 **Γνωστά / για αργότερα:** (1) Οι ειδοποιήσεις γράφονται αλλά δεν έχουν ακόμη UI (το banner μετρά από τις κρατήσεις). (2) Καμία ειδοποίηση στον πελάτη μέχρι τα email (μετά το domain). (3) Το `/login` βγάζει React hydration warnings (#418/#425) — υπήρχαν πριν, δεν σχετίζονται.
 
+### 5.7 Επιβεβαίωση / ακύρωση κράτησης + μήνυμα στον πελάτη (branch `claude/booking-confirm-cancel`, SQL `24`)
+
+**Αιτία του προβλήματος («δεν μπορώ να επιβεβαιώσω/ακυρώσω»):** στην κάρτα της κράτησης ΔΕΝ υπήρχε κουμπί «Επιβεβαίωση»· η αλλαγή σε CONFIRMED γινόταν μόνο από το dropdown «Κατάσταση» μέσα στην «Επεξεργασία» (στο τέλος μιας μεγάλης φόρμας). Η ακύρωση υπήρχε μόνο ως εικονίδιο ⊘ χωρίς κείμενο. Το API (PATCH/DELETE) δούλευε σωστά (τοπικά 200 και στα δύο). Επιπλέον βρέθηκε **πραγματικό bug** του PR #24: η «Επεξεργασία» → Αποθήκευση σε κράτηση με αυτόματη προσφορά διάβαζε το `discountAmount` (που περιέχει και την προσφορά) ως χειροκίνητη έκπτωση → η προσφορά μετρούσε **δύο φορές** (113 € → 93 €). Διόρθωση: η χειροκίνητη έκπτωση διαβάζεται ΜΟΝΟ από το `priceQuote.manualDiscount` (`storedManualDiscount` στο `pricingBridge.ts`, `discountOfBooking`, `manualDiscountForm` στη φόρμα). Το `bookings.vehicleId` είναι NOT NULL, οπότε κράτηση «χωρίς όχημα» δεν υπάρχει στη βάση (η κράτηση του site παίρνει όχημα αυτόματα)· η λογική όμως το χειρίζεται (ζητά επιλογή).
+
+**Dashboard:** στην κάρτα PENDING κουμπί «Επιβεβαίωση» → παράθυρο με τα ΕΛΕΥΘΕΡΑ οχήματα της ομάδας (`freeVehiclesFor` = κανόνες `availability.ts`: PENDING/CONFIRMED/ACTIVE κλείνουν, χρόνος προετοιμασίας, service/ανενεργό εκτός· η ίδια η κράτηση εξαιρείται)· προεπιλογή το τρέχον αν είναι ελεύθερο. Κανένα ελεύθερο → μήνυμα, δεν επιβεβαιώνει. Ο έλεγχος + η εγγραφή γίνονται ΜΕΣΑ στο ίδιο `pg_advisory_xact_lock('site-booking:<companyId>')` με τις υποβολές του site. «Ακύρωση» (⊘) → παράθυρο με λόγο από λίστα (`no_vehicle`, `customer_request`, `invalid_details`, `driver_age`, `other`) + ελεύθερο σημείωμα (≤300, χωρίς HTML). Και τα δύο: τικ «Αποστολή μηνύματος στον πελάτη» (προεπιλογή ναι) + προεπισκόπηση του κειμένου. Κουμπί «Μήνυμα» (CONFIRMED/ACTIVE/CANCELLED): «Αποστολή με WhatsApp» (`wa.me/<ψηφία>?text=`) και «Αποστολή με email» (mailto), ιστορικό αποστολών και ιστορικό αλλαγών (ποιος/πότε). Στην κάρτα «Μήνυμα πελάτη: Στάλθηκε / Δεν στάλθηκε / Δεν έχει σταλεί». Το παλιό `CancelBookingModal` αφαιρέθηκε (το DELETE μένει, πλέον μπλοκάρει ρητά τον Partner).
+
+**API:** `GET/POST /api/bookings/[id]/decision` (λογική στο `src/lib/bookingDecision.ts`, σύνδεση στο `bookingDecisionServer.ts`), `POST /api/bookings/[id]/messages` (καταγραφή WhatsApp/mailto ως `opened`). Δικαιώματα: επιβεβαίωση = `bookings.status`, ακύρωση = `bookings.cancel`· **Partner ΠΟΤΕ** (403), ό,τι δικαιώματα κι αν έχει. Εταιρία ΜΟΝΟ από τη συνεδρία. Κάθε αλλαγή κατάστασης (και από PATCH/DELETE) γράφεται στο `activity_logs` (`booking.confirmed` κ.λπ., χρήστης, ώρα).
+
+**Μήνυμα (`src/lib/bookingMessages.ts`, καθαρό — ίδιο κείμενο σε προεπισκόπηση, email, WhatsApp, mailto):** γλώσσα = `bookings.siteLang` (γράφεται στην υποβολή) → προεπιλογή εταιρίας (`storefrontSettings.defaultLanguage`) → el. Κείμενα στα λεξικά του site (`storefront/i18n.ts`, `msg*`, `cancelReasons`). Επιβεβαίωση: ευχαριστία, κωδικός, ομάδα «… ή παρόμοιο», ημερομηνίες/ώρες, σημεία (στη γλώσσα του πελάτη), σύνολο από το ΑΠΟΘΗΚΕΥΜΕΝΟ `priceQuote`, «Πληρωμή στην παραλαβή», link `/s/<slug>/<lang>/booking/<code>`, επικοινωνία. Ακύρωση: κωδικός, εξήγηση + λόγος, link νέας αναζήτησης, επικοινωνία. Ποτέ τηλέφωνο/πτήση/σχόλια.
+
+**Email:** Resend (`RESEND_API_KEY`, `EMAIL_FROM`), reply-to το email της εταιρίας. Αποτυχία (π.χ. `domain_unverified`, `testing_only`, χωρίς κλειδί → `not_configured`) **δεν** αναιρεί την αλλαγή κατάστασης· το παράθυρο γράφει «Το email δεν στάλθηκε» και προτείνει WhatsApp/email. Διπλό email ίδιου είδους δεν ξαναφεύγει αυτόματα. Πίνακας `booking_notifications` (tenantId, bookingId, kind confirm/cancel, channel email/whatsapp/mailto, result sent/failed/opened, κωδικός σφάλματος, lang, userId, ώρα) — κανένα email/τηλέφωνο. Logs: μόνο κωδικοί.
+
+**Σελίδα πελάτη:** «Σε αναμονή επιβεβαίωσης / Επιβεβαιώθηκε / Ακυρώθηκε»· σε ακύρωση πλαίσιο με εξήγηση, λόγο και «Νέα αναζήτηση». Το DTO απέκτησε μόνο `cancelReasonCode`/`cancelNote` (μόνο όταν CANCELLED).
+
+**Tests:** `tests/booking-decision.test.mjs` (21). Τοπικά (PostgreSQL, `01 → 24`): 2 κρατήσεις από το site (en, el) → Επιβεβαίωση από κινητό με αλλαγή οχήματος (Yaris → Polo) → σελίδα πελάτη «Confirmed»· Ακύρωση με λόγο + σημείωμα → σελίδα πελάτη «Ακυρώθηκε» με λόγο· WhatsApp `wa.me/447700900123`, mailto· email `not_configured` (χωρίς κλειδί τοπικά) → η κατάσταση άλλαξε κανονικά· Partner 403 (GET/POST), Staff 200 + ιστορικό· «Επεξεργασία» → CONFIRMED κρατά πλέον 113 €.
+
+**Γνωστά / για αργότερα:** (1) Τα email προς πελάτες ΔΕΝ φτάνουν μέχρι να επαληθευτεί domain στο Resend (με `onboarding@resend.dev` μόνο προς το email του λογαριασμού)· μέχρι τότε αξιόπιστη ενημέρωση = η σελίδα του πελάτη + WhatsApp. (2) Το WhatsApp/mailto καταγράφεται ως «άνοιξε» — δεν ξέρουμε αν πατήθηκε τελικά «Αποστολή». (3) Το dropdown «Κατάσταση» στην «Επεξεργασία» μένει (χωρίς μήνυμα στον πελάτη). (4) Η επιβεβαίωση αλλάζει όχημα μόνο μέσα στην ίδια ομάδα (χωρίς νέα τιμή).
+
 ### Δημόσιο site — design (PR 2)
 
 Αναφορά: **prentals.gr**. Να κρατήσουμε:
@@ -518,6 +536,7 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
+- **24-booking-confirm-cancel: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/booking-confirm-cancel`, ΜΕΤΑ το 23). Σε transaction: `bookings."siteLang"`, `"cancelReasonCode"`, `"cancelNote"` (TEXT, nullable), πίνακας `booking_notifications` + index + 2 FK (CASCADE) + 3 CHECK. Μόνο προσθήκες. Αναμενόμενο verification `3 | 1 | 2 | 3`. Επόμενος ελεύθερος αριθμός: `25`.
 - **23-public-booking: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/public-site-booking-flow`). Σε transaction: `bookings."publicCode"` (UNIQUE), `bookings."rentalGroupId"` (FK → rental_groups, ON DELETE SET NULL), `bookings."flightNumber"`, πίνακας `rate_limits`. Μόνο προσθήκες. Αναμενόμενο verification `3 | 1 | 1 | 1`. Επόμενος ελεύθερος αριθμός: `24`.
 - **22-unified-pricing: έτρεξε** (PR #24, merged). Σε transaction: `bookings."priceQuote"` JSONB, `bookings."priceMode"` TEXT + CHECK `bookings_priceMode_check` (`AUTO`/`MANUAL`/NULL). Μόνο προσθήκες, nullable — η παλιά έκδοση δουλεύει κανονικά με αυτό. Αναμενόμενο verification `2 | 1 | 0`. **Τρέχει πριν τη δοκιμή στο preview** (ο νέος κώδικας γράφει τις στήλες).
 - **Δημόσιο site 2/4 (branch `claude/public-site-home-search`): κανένα νέο SQL.** Τα κείμενα hero ζουν στο υπάρχον `storefrontSettings.theme`, η διαθεσιμότητα διαβάζει υπάρχοντες πίνακες. Επόμενος ελεύθερος αριθμός: `22`.
@@ -587,7 +606,8 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 | Commit | Τι |
 |---|---|
-| _(branch `claude/public-site-booking-flow`)_ | Δημόσιο site 3/4: φόρμα κράτησης, `POST /api/public/booking` με advisory lock + αυτόματη ανάθεση οχήματος, `POST /api/public/quote`, σελίδα επιβεβαίωσης με κωδικό, όρια στη βάση, «Από το site» + banner στο dashboard. Migration `23` |
+| _(branch `claude/booking-confirm-cancel`)_ | Επιβεβαίωση/ακύρωση κράτησης από το dashboard (ελεύθερο όχημα της ομάδας μέσα στο κλείδωμα, λόγος ακύρωσης), μήνυμα στον πελάτη (el/en, Resend χωρίς να μπλοκάρει, WhatsApp/mailto), `booking_notifications`, ιστορικό στο `activity_logs`, σελίδα πελάτη με Επιβεβαιώθηκε/Ακυρώθηκε. Fix: διπλή μέτρηση προσφοράς στην «Επεξεργασία». Migration `24` |
+| _(PR #25, branch `claude/public-site-booking-flow`)_ | Δημόσιο site 3/4: φόρμα κράτησης, `POST /api/public/booking` με advisory lock + αυτόματη ανάθεση οχήματος, `POST /api/public/quote`, σελίδα επιβεβαίωσης με κωδικό, όρια στη βάση, «Από το site» + banner στο dashboard. Migration `23` |
 | `9311d33` | Merge του PR #24 (ενιαία τιμολόγηση). SQL 22 |
 | _(PR #24)_ | Ενιαία τιμολόγηση: `engine.ts` (`quoteFromContext`, `requestFromCriteria`/`requestFromBooking`), `computeQuoteForTenant`, κράτηση/walk-in/πρόσθετα/Δοκιμαστικός/site από την ίδια μηχανή, στρογγυλοποίηση σε ακέραιο € με γραμμή «Στρογγυλοποίηση», `bookings.priceQuote`/`priceMode`, προεπισκοπήσεις μόνο από τον server. Migration `22` |
 | `1c6cfbe` | Merge του PR #23 (δημόσιο site 2/4). Χωρίς SQL |

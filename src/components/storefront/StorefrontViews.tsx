@@ -24,6 +24,7 @@ import type { SearchCriteria, SearchProblem, SearchRules } from "@/lib/public/se
 import SearchBox, { type SearchAgeOption, type SearchLocationOption } from "./SearchBox";
 import BookingForm from "./BookingForm";
 import { CopyCode, PrintButton } from "./ConfirmActions";
+import { cancelReasonText } from "@/lib/bookingMessages";
 import { bookingTexts, type ConfirmationDTO } from "@/lib/public/bookingRequest";
 import type { PublicExtraOption, PublicQuote } from "@/lib/public/bookingView";
 import Results, { GroupCard } from "./Results";
@@ -470,6 +471,7 @@ export function StorefrontConfirmation({ company, lang, b }: { company: PublicCo
   const pick = (m: { el: string; en: string }) => (lang === "el" ? m.el : m.en);
   const status =
     b.status === "PENDING" ? d.statusPending : b.status === "CONFIRMED" || b.status === "ACTIVE" ? d.statusConfirmed : b.status === "CANCELLED" ? d.statusCancelled : d.statusOther;
+  const cancelReason = b.status === "CANCELLED" ? cancelReasonText(lang, b.cancelReasonCode, b.cancelNote) : null;
 
   return (
     <Shell ctx={ctx} langHref={(code) => `${storefrontPath(company.slug, code)}/booking/${b.code}`}>
@@ -486,7 +488,24 @@ export function StorefrontConfirmation({ company, lang, b }: { company: PublicCo
           <span className={`sf-confirm-status is-${b.status.toLowerCase()}`}>{status}</span>
           <p className="sf-small">{d.saveCode}</p>
           {b.status === "PENDING" && <p className="sf-small">{pick(texts.next)}</p>}
+          {(b.status === "CONFIRMED" || b.status === "ACTIVE") && <p className="sf-small">{d.confirmedNext}</p>}
         </div>
+
+        {b.status === "CANCELLED" && (
+          <div className="sf-book-panel sf-confirm-cancelled" role="status">
+            <h2 className="sf-h3">{d.cancelledTitle}</h2>
+            <p>{d.cancelledText}</p>
+            {cancelReason && (
+              <p>
+                <strong>{d.cancelReasonLabel}:</strong> {cancelReason}
+              </p>
+            )}
+            <p>{d.searchAgainText}</p>
+            <a className="sf-btn sf-btn--primary" href={storefrontPath(company.slug, lang)}>
+              {d.newSearch}
+            </a>
+          </div>
+        )}
 
         <div className="sf-book-grid">
           <div className="sf-book-panel">

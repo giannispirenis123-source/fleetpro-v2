@@ -25,6 +25,8 @@ export async function loadConfirmation(companyId: string, rawCode: string, lang:
       returnLocation: true,
       priceQuote: true,
       total: true,
+      cancelReasonCode: true,
+      cancelNote: true,
       // ΜΟΝΟ μικρό όνομα και email (μασκάρεται) — ποτέ τηλέφωνο, ηλικία, σχόλια, πτήση.
       customer: { select: { firstName: true, email: true } },
       rentalGroup: { select: { name: true, similarModels: true, photos: true } },

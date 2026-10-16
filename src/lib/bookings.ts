@@ -5,6 +5,8 @@ import type { Booking, Customer, Vehicle } from "@prisma/client";
 import { readExtrasSnapshot, type PricedExtraLine } from "./pricing";
 import { commissionFor } from "./commission";
 import { displayInvoiceCode } from "./invoices";
+import { storedManualDiscount } from "./pricingBridge";
+import { messageState, type MessageState } from "./bookingMessages";
 
 export const BOOKING_STATUSES = [
   "PENDING",
@@ -88,6 +90,16 @@ export interface BookingDTO {
   publicCode: string | null;
   /** Αριθμός πτήσης που έδωσε ο πελάτης στο site. */
   flightNumber: string | null;
+  /**
+   * Η ΧΕΙΡΟΚΙΝΗΤΗ έκπτωση από το priceQuote (χωρίς την αυτόματη προσφορά).
+   * undefined = παλιά κράτηση χωρίς priceQuote (τότε ισχύει το discountAmount).
+   */
+  manualDiscount?: { cents: number; code: string | null } | null;
+  /** Λόγος/σημείωμα ακύρωσης (για τον πελάτη). */
+  cancelReasonCode: string | null;
+  cancelNote: string | null;
+  /** Μήνυμα στον πελάτη ανά είδος: Στάλθηκε / Δεν στάλθηκε / Δεν έχει σταλεί. */
+  messages: { confirm: MessageState; cancel: MessageState };
 
   /**
    * Ο κωδικός του τιμολογίου της κράτησης (invoiceCode, π.χ. K7M2-X9PQ· ο
@@ -129,6 +141,8 @@ type BookingWithRelations = Booking & {
     commissionOnInsurance: boolean;
   } | null;
   createdBy?: { id: string; name: string } | null;
+  /** Προαιρετικό: οι αποστολές μηνυμάτων (μόνο είδος/κανάλι/αποτέλεσμα). */
+  messages?: { kind: string; channel: string; result: string }[];
 };
 
 const toDateInput = (d: Date): string => d.toISOString().slice(0, 10);
@@ -181,6 +195,13 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
     source: b.source,
     publicCode: b.publicCode ?? null,
     flightNumber: b.flightNumber ?? null,
+    manualDiscount: storedManualDiscount(b.priceQuote),
+    cancelReasonCode: b.cancelReasonCode ?? null,
+    cancelNote: b.cancelNote ?? null,
+    messages: {
+      confirm: messageState(b.messages ?? [], "confirm"),
+      cancel: messageState(b.messages ?? [], "cancel"),
+    },
     invoiceNumber: b.invoice ? displayInvoiceCode(b.invoice) : null,
 
     partnerId: b.partnerId,

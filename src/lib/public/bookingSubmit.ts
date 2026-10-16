@@ -49,7 +49,8 @@ function prismaStore(
   cat: SiteCatalog,
   contact: CleanContact,
   locNames: { pickup: string | null; dropoff: string | null },
-  window: { from: string; to: string }
+  window: { from: string; to: string },
+  lang: string
 ): BookingStore<Tx> {
   return {
     withLock: (key, fn) =>
@@ -63,7 +64,7 @@ function prismaStore(
       ),
     loadBookings: (tx, window) => loadBlockingBookings(tx, cat.companyId, window),
     write: (tx, plan: SitePlan) =>
-      writeSiteBooking(tx, { tenantId: cat.companyId, plan, contact, locations: locNames, window }, {
+      writeSiteBooking(tx, { tenantId: cat.companyId, plan, contact, locations: locNames, window, lang }, {
         nextNumber: (t) => nextBookingNumber(t, cat.companyId),
         generateCode: generateInvoiceCode,
       }),
@@ -119,7 +120,7 @@ export async function submitPublicBooking(body: unknown, now = new Date()): Prom
     return l ? textFor(l.name, "el") || l.slug : null;
   };
   const result = await runSiteBooking(
-    prismaStore(cat, contact.contact, { pickup: loc(c.pl), dropoff: loc(c.dl) }, { from: c.from, to: c.to }),
+    prismaStore(cat, contact.contact, { pickup: loc(c.pl), dropoff: loc(c.dl) }, { from: c.from, to: c.to }, input.lang),
     cat,
     { key: input.key, criteria: c, extras: input.extras, insuranceId: input.insuranceId, driverAge: band.age },
     now

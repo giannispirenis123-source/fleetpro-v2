@@ -42,6 +42,7 @@ export default async function BookingsPage({
             },
           },
           createdBy: { select: { id: true, name: true } },
+          messages: { select: { kind: true, channel: true, result: true } },
       },
     }),
     db.customer.findMany({

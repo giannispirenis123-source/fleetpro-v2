@@ -307,7 +307,7 @@ test("DTO επιβεβαίωσης: μικρό όνομα + μασκαρισμέ
     groupName: "Μικρό", groupSimilar: "Fiat Panda", photoUrl: null,
   });
   assert.deepEqual(Object.keys(dto).sort(), [
-    "code", "depositCents", "excessCents", "firstName", "from", "groupName", "groupSimilar", "lines", "listTotalCents",
+    "cancelNote", "cancelReasonCode", "code", "depositCents", "excessCents", "firstName", "from", "groupName", "groupSimilar", "lines", "listTotalCents",
     "maskedEmail", "photoUrl", "pickupLocation", "returnLocation", "status", "to", "totalCents", "vatCents",
   ]);
   assert.equal(dto.maskedEmail, "g******@gmail.com");

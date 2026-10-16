@@ -105,3 +105,19 @@ export function toStoredQuote(
     autoPrice,
   };
 }
+
+/**
+ * Η χειροκίνητη έκπτωση από το αποθηκευμένο priceQuote: undefined = παλιά
+ * κράτηση χωρίς priceQuote· null = καμία· αλλιώς { cents, code }.
+ */
+export function storedManualDiscount(priceQuote: unknown): { cents: number; code: string | null } | null | undefined {
+  if (!priceQuote || typeof priceQuote !== "object" || Array.isArray(priceQuote)) return undefined;
+  const q = priceQuote as { version?: unknown; manualDiscount?: unknown };
+  if (q.version !== 1) return undefined;
+  const m = q.manualDiscount;
+  if (!m || typeof m !== "object") return null;
+  const { cents, code } = m as { cents?: unknown; code?: unknown };
+  const c = typeof cents === "number" && cents > 0 ? cents : 0;
+  const k = typeof code === "string" && code.trim() ? code : null;
+  return c > 0 || k ? { cents: c, code: k } : null;
+}

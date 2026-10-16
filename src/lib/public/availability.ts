@@ -38,6 +38,8 @@ export interface FleetVehicle {
 }
 
 export interface BlockingBooking {
+  /** Για να εξαιρεθεί η ίδια η κράτηση (π.χ. στην επιβεβαίωση από το dashboard). */
+  id?: string;
   tenantId: string;
   vehicleId: string;
   status: string;
@@ -190,6 +192,7 @@ export async function loadBlockingBookings(
       OR: [{ returnDate: { gte: from } }, { status: "ACTIVE" }],
     },
     select: {
+      id: true,
       tenantId: true,
       vehicleId: true,
       status: true,
@@ -202,6 +205,7 @@ export async function loadBlockingBookings(
   });
 
   return rows.map((r) => ({
+    id: r.id,
     tenantId: r.tenantId,
     vehicleId: r.vehicleId,
     status: r.status,

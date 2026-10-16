@@ -174,6 +174,7 @@ test("ΕΝΑ ερώτημα ανά αναζήτηση, φιλτραρισμέν�
         calls.push(args);
         return [
           {
+            id: "b1",
             tenantId: "T1",
             vehicleId: "a1",
             status: "ACTIVE",
@@ -193,6 +194,7 @@ test("ΕΝΑ ερώτημα ανά αναζήτηση, φιλτραρισμέν�
   assert.deepEqual(calls[0].where.status.in, ["PENDING", "CONFIRMED", "ACTIVE"]);
   assert.ok(!("plate" in calls[0].select) && !("customerId" in calls[0].select), "μόνο τα απαραίτητα πεδία");
   assert.deepEqual(rows[0], {
+    id: "b1",
     tenantId: "T1",
     vehicleId: "a1",
     status: "ACTIVE",

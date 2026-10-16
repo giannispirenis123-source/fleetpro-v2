@@ -26,8 +26,12 @@ import {
   Globe,
   Plane,
   MessageSquare,
+  CheckCircle2,
+  MessageCircle,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
+import { kindForStatus } from "@/lib/bookingMessages";
+import { DecisionModal, MessageModal } from "./BookingDecision";
 import {
   BOOKING_STATUSES,
   BOOKING_STATUS_CLASS,
@@ -169,14 +173,24 @@ const formFromBooking = (b: BookingDTO): FormState => ({
   // Τα πρόσθετα έρχονται από το snapshot της κράτησης.
   extraIds: b.extras.filter((e) => e.type === "EXTRA").map((e) => e.id),
   insuranceId: b.extras.find((e) => e.type === "INSURANCE")?.id ?? "",
-  discountMode: b.discountCode
-    ? "CODE"
-    : b.discountAmount > 0
-      ? "AMOUNT"
-      : "NONE",
-  discountValue: b.discountAmount > 0 ? String(b.discountAmount) : "",
-  discountCode: b.discountCode ?? "",
+  // Η ΧΕΙΡΟΚΙΝΗΤΗ έκπτωση: από το priceQuote όταν υπάρχει (το discountAmount
+  // περιέχει και την αυτόματη προσφορά — αλλιώς θα μετρούσε δύο φορές).
+  ...manualDiscountForm(b),
 });
+
+function manualDiscountForm(b: BookingDTO): Pick<FormState, "discountMode" | "discountValue" | "discountCode"> {
+  if (b.manualDiscount !== undefined) {
+    const m = b.manualDiscount;
+    if (!m) return { discountMode: "NONE", discountValue: "", discountCode: "" };
+    if (m.code) return { discountMode: "CODE", discountValue: "", discountCode: m.code };
+    return { discountMode: "AMOUNT", discountValue: String(m.cents / 100), discountCode: "" };
+  }
+  return {
+    discountMode: b.discountCode ? "CODE" : b.discountAmount > 0 ? "AMOUNT" : "NONE",
+    discountValue: b.discountAmount > 0 ? String(b.discountAmount) : "",
+    discountCode: b.discountCode ?? "",
+  };
+}
 
 export default function BookingsClient({
   initialBookings,
@@ -246,6 +260,8 @@ export default function BookingsClient({
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<BookingDTO | null>(null);
   const [cancelling, setCancelling] = useState<BookingDTO | null>(null);
+  const [confirming, setConfirming] = useState<BookingDTO | null>(null);
+  const [messaging, setMessaging] = useState<BookingDTO | null>(null);
 
   // Ερχόμενοι από το Ημερολόγιο: ανοίγουμε την ίδια φόρμα που χρησιμοποιεί
   // η σελίδα — καμία δεύτερη υλοποίηση. Ο συνεργάτης δεν επεξεργάζεται,
@@ -418,6 +434,8 @@ export default function BookingsClient({
               canManage={canManage}
               onEdit={() => setEditing(b)}
               onCancel={() => setCancelling(b)}
+              onConfirm={() => setConfirming(b)}
+              onMessage={() => setMessaging(b)}
               issuing={issuingId === b.id}
               onIssueInvoice={() => issueInvoice(b)}
             />
@@ -476,14 +494,34 @@ export default function BookingsClient({
       )}
 
       {cancelling && (
-        <CancelBookingModal
+        <DecisionModal
           booking={cancelling}
+          action="cancel"
           tr={tr}
           onClose={() => setCancelling(null)}
-          onCancelled={(booking) => {
-            upsert(booking);
-            setCancelling(null);
-          }}
+          onDone={upsert}
+        />
+      )}
+
+      {confirming && (
+        <DecisionModal
+          booking={confirming}
+          action="confirm"
+          tr={tr}
+          onClose={() => setConfirming(null)}
+          onDone={upsert}
+        />
+      )}
+
+      {messaging && (
+        <MessageModal
+          booking={messaging}
+          tr={tr}
+          locale={locale}
+          onClose={() => setMessaging(null)}
+          onLogged={(kind) =>
+            upsert({ ...messaging, messages: { ...messaging.messages, [kind]: "sent" } })
+          }
         />
       )}
     </>
@@ -594,6 +632,8 @@ function BookingCard({
   canManage,
   onEdit,
   onCancel,
+  onConfirm,
+  onMessage,
   issuing,
   onIssueInvoice,
 }: {
@@ -605,10 +645,15 @@ function BookingCard({
   canManage: boolean;
   onEdit: () => void;
   onCancel: () => void;
+  onConfirm: () => void;
+  onMessage: () => void;
   issuing: boolean;
   onIssueInvoice: () => void;
 }) {
   const closed = b.status === "CANCELLED" || b.status === "COMPLETED";
+  // Μήνυμα προς τον πελάτη: μόνο για επιβεβαιωμένη/ακυρωμένη κράτηση.
+  const msgKind = kindForStatus(b.status);
+  const msgState = msgKind ? b.messages[msgKind] : null;
 
   // Η στρογγυλοποίηση απορροφάται στις υπάρχουσες γραμμές — ίδιος κανόνας
   // με τη φόρμα, ώστε η κάρτα να δείχνει ακριβώς το ίδιο σπάσιμο.
@@ -668,6 +713,12 @@ function BookingCard({
         {b.source === "site" && b.notes && (
           <span className="dash-booking-note">
             <MessageSquare size={13} /> {b.notes}
+          </span>
+        )}
+        {msgState && (b.source === "site" || msgState !== "none") && (
+          <span className={`dash-msg-state is-${msgState}`}>
+            <MessageCircle size={13} /> {tr("decision.msgStateLabel")}:{" "}
+            {tr(msgState === "sent" ? "decision.msgStateSent" : msgState === "failed" ? "decision.msgStateFailed" : "decision.msgStateNone")}
           </span>
         )}
         <span>
@@ -771,6 +822,21 @@ function BookingCard({
                   <Receipt size={16} />
                 </button>
               )
+            )}
+            {b.status === "PENDING" && (
+              <button className="dash-btn dash-btn--primary dash-btn--sm" onClick={onConfirm}>
+                <CheckCircle2 size={15} /> {tr("decision.decisionConfirm")}
+              </button>
+            )}
+            {msgKind && (
+              <button
+                className="dash-icon-btn"
+                onClick={onMessage}
+                title={tr("decision.messageTitle")}
+                aria-label={tr("decision.messageTitle")}
+              >
+                <MessageCircle size={16} />
+              </button>
             )}
             <button
               className="dash-icon-btn"
@@ -1604,89 +1670,6 @@ function BookingModal({
                   : tr("bookings.saveBooking")}
             </button>
           )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   Επιβεβαίωση ακύρωσης
-   ───────────────────────────────────────────── */
-
-function CancelBookingModal({
-  booking,
-  tr,
-  onClose,
-  onCancelled,
-}: {
-  booking: BookingDTO;
-  tr: (key: string) => string;
-  onClose: () => void;
-  onCancelled: (booking: BookingDTO) => void;
-}) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleCancel = async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch(`/api/bookings/${booking.id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        setError(data.message || tr("bookings.errorSave"));
-        return;
-      }
-
-      onCancelled(data.data.booking);
-    } catch {
-      setError(tr("bookings.errorConnection"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="dash-modal-overlay" onClick={onClose}>
-      <div
-        className="dash-modal dash-modal--sm"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="dash-modal-header">
-          <h2>{tr("bookings.confirmCancelTitle")}</h2>
-          <button
-            className="dash-modal-close"
-            onClick={onClose}
-            aria-label={tr("common.close")}
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="dash-modal-body">
-          <p className="dash-confirm-vehicle">
-            {booking.bookingNumber} · {booking.customerName}
-          </p>
-          <p className="dash-form-note">{tr("bookings.confirmCancelBody")}</p>
-          {error && <div className="dash-form-error">{error}</div>}
-        </div>
-
-        <div className="dash-modal-footer">
-          <button className="dash-btn" onClick={onClose} disabled={loading}>
-            {tr("bookings.back")}
-          </button>
-          <button
-            className="dash-btn dash-btn--danger"
-            onClick={handleCancel}
-            disabled={loading}
-          >
-            {loading ? tr("bookings.cancelling") : tr("bookings.confirmCancel")}
-          </button>
         </div>
       </div>
     </div>

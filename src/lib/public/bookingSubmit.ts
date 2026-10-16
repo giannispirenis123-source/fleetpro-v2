@@ -21,7 +21,8 @@ import {
 } from "./bookingRequest";
 import { runSiteBooking, type BookingStore, type SitePlan } from "./bookingPlan";
 import { writeSiteBooking } from "./bookingWrite";
-import { quoteFromContext, requestFromCriteria, hasUnpricedDay } from "./engine";
+import { INSURANCE_INVALID_MESSAGE, quoteFromContext, requestFromCriteria, hasUnpricedDay } from "./engine";
+import type { QuoteResult } from "./pricing";
 import { hitLimit, LIMITS } from "./rateLimit";
 import { dbCounterStore } from "./rateLimitStore";
 import { loadSiteCatalog, type SiteCatalog } from "./site";
@@ -140,6 +141,8 @@ export async function submitPublicBooking(body: unknown, now = new Date()): Prom
    Τιμή της φόρμας (extras/ασφάλεια) — ίδια μηχανή, χωρίς εγγραφή
    ───────────────────────────────────────────── */
 
+export type FormQuote = { ok: true; quote: QuoteResult } | { ok: false; status: 400 | 404; message: { el: string; en: string } | null };
+
 export function publicFormQuote(
   cat: SiteCatalog,
   key: string,
@@ -147,11 +150,13 @@ export function publicFormQuote(
   extras: { id: string; qty: number }[],
   insuranceId: string | null | undefined,
   now = new Date()
-) {
-  if (key.startsWith("v.") && !cat.vehicles.some((v) => v.id === key.slice(2) && !v.rentalGroupId)) return null;
+): FormQuote {
+  const notFound: FormQuote = { ok: false, status: 404, message: null };
+  if (key.startsWith("v.") && !cat.vehicles.some((v) => v.id === key.slice(2) && !v.rentalGroupId)) return notFound;
   const base = requestFromCriteria(cat.ctx, cat.groups, key, criteria, now);
-  if (!base) return null;
+  if (!base) return notFound;
   const out = quoteFromContext(cat.ctx, { ...base, extras, insuranceId });
-  if (!out.ok || hasUnpricedDay(out.result)) return null;
-  return out.result;
+  if (!out.ok) return out.reason === "insurance" ? { ok: false, status: 400, message: INSURANCE_INVALID_MESSAGE } : notFound;
+  if (hasUnpricedDay(out.result)) return notFound;
+  return { ok: true, quote: out.result };
 }

@@ -218,11 +218,17 @@ test("ΙΣΟΤΗΤΑ: συγκεκριμένα αποτελέσματα των �
   assert.ok(seasons.some((x) => /High/.test(x)) && seasons.some((x) => /Low/.test(x)), "δύο σεζόν");
 });
 
-test("Δοκιμαστικός υπολογισμός = site: ίδια μηχανή με προεπιλεγμένη ασφάλεια", () => {
+test("Δοκιμαστικός υπολογισμός = site: ίδια μηχανή, καμία ασφάλεια χωρίς επιλογή (SQL 25)", () => {
   const ctx = makeCtx();
-  const viaTest = quoteFromContext(ctx, { target: { kind: "group", id: "grpA" }, pickupAt: "2026-11-02T10:00", dropoffAt: "2026-11-05T10:00", pickupLocationId: "L1", driverAge: 30, insuranceId: "basic" }).result;
+  const viaTest = quoteFromContext(ctx, { target: { kind: "group", id: "grpA" }, pickupAt: "2026-11-02T10:00", dropoffAt: "2026-11-05T10:00", pickupLocationId: "L1", driverAge: 30, insuranceId: null }).result;
   const viaSite = quoteFromContext(ctx, requestFromCriteria(ctx, GROUPS, "g.A", { pl: "chania-airport", dl: null, from: "2026-11-02T10:00", to: "2026-11-05T10:00", age: 30 })).result;
   assert.deepEqual(viaTest, viaSite);
+  assert.equal(viaSite.lines.some((l) => l.kind === "insurance"), false, "η (πρώην) προεπιλεγμένη ΔΕΝ μπαίνει μόνη της");
+  const withLevel = (req) => quoteFromContext(ctx, { ...req, insuranceId: "basic" }).result;
+  assert.deepEqual(
+    withLevel({ target: { kind: "group", id: "grpA" }, pickupAt: "2026-11-02T10:00", dropoffAt: "2026-11-05T10:00", pickupLocationId: "L1", driverAge: 30 }),
+    withLevel(requestFromCriteria(ctx, GROUPS, "g.A", { pl: "chania-airport", dl: null, from: "2026-11-02T10:00", to: "2026-11-05T10:00", age: 30 }))
+  );
 });
 
 test("αλλαγή ρύθμισης (τιμή σεζόν) αλλάζει ΚΑΙ τα δύο αποτελέσματα", () => {

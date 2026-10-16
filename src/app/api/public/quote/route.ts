@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
     const cat = await loadSiteCatalog(resolved.companyId);
     const q = cat ? publicFormQuote(cat, d.key, d.criteria, d.extras, d.insuranceId) : null;
     if (!q) return NextResponse.json({ success: false }, { status: 404, headers: NO_STORE });
-    return NextResponse.json({ success: true, data: toPublicQuote(q) }, { headers: NO_STORE });
+    if (!q.ok) return NextResponse.json({ success: false, message: q.message }, { status: q.status, headers: NO_STORE });
+    return NextResponse.json({ success: true, data: toPublicQuote(q.quote) }, { headers: NO_STORE });
   } catch (error) {
     console.error("[FleetPro] public quote:", error instanceof Error ? error.name : "");
     return NextResponse.json({ success: false }, { status: 500, headers: NO_STORE });

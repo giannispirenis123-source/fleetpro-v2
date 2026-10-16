@@ -345,3 +345,29 @@
   .sf-header, .sf-footer, .sf-contact, .sf-confirm-print, .sf-skip { display: none !important; }
   .sf-book-panel, .sf-confirm-code { break-inside: avoid; }
 }
+
+/* ── Ασφάλεια (προαιρετική) ── */
+.sf-ins { border: 0; padding: 0; margin: 0; min-width: 0; }
+.sf-ins legend { padding: 0; margin-bottom: 4px; }
+.sf-ins-list { display: grid; gap: 10px; margin-top: 10px; }
+.sf-ins-card {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start;
+  padding: 14px; border: 1.5px solid var(--sf-border); border-radius: 12px; background: #fff; cursor: pointer;
+}
+.sf-ins-card:hover { border-color: color-mix(in srgb, var(--sf-brand) 45%, var(--sf-border)); }
+.sf-ins-card.is-on { border-color: var(--sf-brand); background: color-mix(in srgb, var(--sf-brand) 6%, #fff); }
+.sf-ins-card:focus-within { outline: 3px solid color-mix(in srgb, var(--sf-brand) 70%, #000); outline-offset: 2px; }
+.sf-ins-card input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--sf-brand); }
+.sf-ins-body { display: grid; gap: 4px; min-width: 0; }
+.sf-ins-name { font-weight: 700; }
+.sf-ins-desc { color: var(--sf-text-2); font-size: 14px; }
+.sf-ins-covers { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; font-size: 14px; }
+.sf-ins-covers span { color: #15803d; font-weight: 700; }
+.sf-ins-price { display: grid; justify-items: end; gap: 2px; text-align: right; white-space: nowrap; }
+.sf-ins-price small { color: var(--sf-text-2); font-size: 13px; }
+.sf-ins-note { margin-top: 12px; }
+@media (max-width: 480px) {
+  .sf-ins-card { grid-template-columns: auto 1fr; }
+  .sf-ins-price { grid-column: 2; justify-items: start; text-align: left; }
+}
+.sf-confirm-ins { margin: 10px 0; font-size: 15px; }

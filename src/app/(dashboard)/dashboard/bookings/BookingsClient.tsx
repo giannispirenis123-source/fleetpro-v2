@@ -768,7 +768,9 @@ function BookingCard({
         )}
         {view.insuranceCost > 0 && (
           <PriceRow
-            label={tr("bookings.priceInsurance")}
+            label={`${tr("bookings.priceInsurance")}${
+              b.extras.find((e) => e.type === "INSURANCE") ? ` · ${b.extras.find((e) => e.type === "INSURANCE")!.name}` : ""
+            }`}
             value={eur(view.insuranceCost, locale)}
           />
         )}
@@ -1569,7 +1571,11 @@ function BookingModal({
             )}
             {view.insuranceCost > 0 && (
               <PriceRow
-                label={tr("bookings.priceInsurance")}
+                label={`${tr("bookings.priceInsurance")}${
+                  offeredInsurance.find((e) => e.id === form.insuranceId)
+                    ? ` · ${offeredInsurance.find((e) => e.id === form.insuranceId)!.name}`
+                    : ""
+                }`}
                 value={eur(view.insuranceCost, locale)}
               />
             )}

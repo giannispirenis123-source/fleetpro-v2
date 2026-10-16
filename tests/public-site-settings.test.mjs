@@ -110,37 +110,5 @@ test("κλίμακες: έγκυρες / επικάλυψη / κενό «έως�
   assert.match(tiersProblem([{ minDays: 0, maxDays: null, dailyPriceCents: 10 }]), /από 1/);
 });
 
-/* ── Προεπιλεγμένη ασφάλεια: το πολύ μία ανά τύπο οχήματος ── */
-
-const { typesOverlap, defaultsToClear, defaultInsuranceFor } = await import("../src/lib/public/insuranceDefaults.ts");
-
-const ins = (id, vehicleTypes, isDefault = true, extra = {}) => ({ id, type: "INSURANCE", isDefault, vehicleTypes, ...extra });
-
-test("typesOverlap: κενό = όλοι οι τύποι", () => {
-  assert.equal(typesOverlap([], ["moto"]), true);
-  assert.equal(typesOverlap(["car"], []), true);
-  assert.equal(typesOverlap(["car"], ["moto", "atv"]), false);
-  assert.equal(typesOverlap(["car", "moto"], ["moto"]), true);
-});
-
-test("νέα προεπιλογή για αυτοκίνητα: σβήνει την προηγούμενη για αυτοκίνητα, όχι των μηχανών", () => {
-  const others = [ins("carOld", ["car"]), ins("moto", ["moto"]), ins("notDefault", ["car"], false), { id: "gps", type: "EXTRA", isDefault: true, vehicleTypes: [] }];
-  assert.deepEqual(defaultsToClear(ins("carNew", ["car"]), others), ["carOld"]);
-});
-
-test("προεπιλογή για όλους τους τύπους (κενό): σβήνει κάθε άλλη προεπιλογή", () => {
-  const others = [ins("car", ["car"]), ins("moto", ["moto"])];
-  assert.deepEqual(defaultsToClear(ins("all", []), others).sort(), ["car", "moto"]);
-});
-
-test("μη προεπιλογή ή πρόσθετο (όχι ασφάλεια): δεν σβήνει τίποτα", () => {
-  assert.deepEqual(defaultsToClear(ins("x", ["car"], false), [ins("car", ["car"])]), []);
-  assert.deepEqual(defaultsToClear({ id: "gps", type: "EXTRA", isDefault: true, vehicleTypes: [] }, [ins("car", ["car"])]), []);
-});
-
-test("defaultInsuranceFor: η ενεργή προεπιλογή του τύπου", () => {
-  const list = [ins("moto", ["moto"]), ins("car", ["car"], true, { isActive: false }), ins("all", [], false)];
-  assert.equal(defaultInsuranceFor(list, "moto").id, "moto");
-  assert.equal(defaultInsuranceFor(list, "car"), null, "ανενεργή δεν μετρά");
-  assert.equal(defaultInsuranceFor([ins("all", [])], "atv").id, "all");
-});
+/* Η «προεπιλεγμένη ασφάλεια» καταργήθηκε (SQL 25): καμία ασφάλεια δεν μπαίνει
+   αυτόματα — βλ. tests/optional-insurance.test.mjs. */

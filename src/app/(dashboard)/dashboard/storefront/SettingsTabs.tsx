@@ -18,6 +18,7 @@ import type { BookingSettings, ContactSettings, ThemeSettings, TrustBlock } from
 import { MAX_TRUST_BLOCKS, TIMEZONES, TRUST_ICONS } from "@/lib/public/siteSettings";
 import type { LocalizedText } from "@/lib/public/text";
 import { Check, ConfirmModal, I18nInput, IntInput, MoneyInput, Select, Status, api } from "./ui";
+import InsuranceLevels from "./InsuranceLevels";
 
 const el = (t: LocalizedText) => t.el || t.en || "";
 
@@ -90,8 +91,6 @@ interface ExtraItem {
   vehicleTypes: string[];
   sortOrder: number;
   isActive: boolean;
-  /** Μόνο ασφάλειες: η προεπιλεγμένη για τους τύπους οχημάτων της. */
-  isDefault: boolean;
 }
 
 export function ExtrasTab() {
@@ -104,8 +103,9 @@ export function ExtrasTab() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    // ΜΟΝΟ τα πρόσθετα — οι ασφάλειες είναι στα «Επίπεδα ασφάλειας» (παρακάτω).
     api<{ items: ExtraItem[] }>("/api/public-site/extras").then((r) => {
-      if (r.ok && r.data) setItems(r.data.items);
+      if (r.ok && r.data) setItems(r.data.items.filter((x) => x.type === "EXTRA"));
       else setError(r.message || t("errorLoad"));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,17 +121,19 @@ export function ExtrasTab() {
       setError(r.message || t("errorSave"));
       return;
     }
-    // Όλη η λίστα: μια νέα προεπιλογή μπορεί να «έσβησε» την προηγούμενη.
-    setItems(r.data.items);
+    setItems(r.data.items.filter((x) => x.type === "EXTRA"));
     setEditing(null);
   };
 
   const price = (x: ExtraItem) => `${formatCents(x.priceCents)} ${t(x.chargeType === "PER_DAY" ? "perDayShort" : "perRentalShort")}`;
 
   return (
+    <>
     <div className="dash-panel dash-settings-panel">
       <div className="dash-ps-head">
-        <p className="dash-form-note dash-settings-lead">{t("extrasIntro")}</p>
+        <p className="dash-form-note dash-settings-lead">
+          {t("extrasIntro")} {t("extrasOnlyNote")}
+        </p>
         <Link href="/dashboard/extras" className="dash-btn dash-btn--sm">
           {t("extrasPage")}
         </Link>
@@ -184,12 +186,6 @@ export function ExtrasTab() {
               <span className="dash-form-note">{t("vehicleTypesHint")}</span>
             </div>
             <Check label={t("isActive")} checked={editing.isActive} onChange={(v) => setEditing({ ...editing, isActive: v })} />
-            {editing.type === "INSURANCE" && (
-              <div className="dash-field dash-field--wide dash-ps-left">
-                <Check label={t("isDefault")} checked={editing.isDefault} onChange={(v) => setEditing({ ...editing, isDefault: v })} />
-                <span className="dash-form-note">{t("insuranceDefaultHint")}</span>
-              </div>
-            )}
           </div>
           <div className="dash-ps-actions">
             <button className="dash-btn" onClick={() => setEditing(null)} disabled={busy}>
@@ -212,7 +208,6 @@ export function ExtrasTab() {
                     {t(`kind_${x.type}`)} · {price(x)}
                     {x.maxTotalCents !== null && ` · ${t("maxTotal")}: ${formatCents(x.maxTotalCents)}`}
                     {x.vehicleTypes.length > 0 && ` · ${x.vehicleTypes.map((vt) => t(`vt_${vt}`)).join(", ")}`}
-                    {x.type === "INSURANCE" && x.isDefault && <span className="dash-ps-badge dash-ps-badge--ok">{t("isDefault")}</span>}
                     {!x.isActive && <span className="dash-ps-badge">{t("inactive")}</span>}
                   </div>
                 </div>
@@ -227,6 +222,8 @@ export function ExtrasTab() {
         )
       )}
     </div>
+    <InsuranceLevels />
+    </>
   );
 }
 

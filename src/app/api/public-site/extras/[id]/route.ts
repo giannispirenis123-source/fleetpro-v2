@@ -10,7 +10,6 @@ import { badRequest, notFound, ok, serverError } from "@/lib/api";
 import { withPublicSite } from "@/lib/public/guard";
 import { publicExtraSchema, toPublicExtraDTO } from "@/lib/public/extras";
 import { fromCents } from "@/lib/public/money";
-import { defaultsToClear } from "@/lib/public/insuranceDefaults";
 
 // PATCH /api/public-site/extras/[id]
 export const PATCH = withPublicSite(async (req, companyId, params) => {
@@ -24,9 +23,7 @@ export const PATCH = withPublicSite(async (req, companyId, params) => {
       return badRequest(parsed.error.errors[0]?.message ?? "Μη έγκυρα δεδομένα", parsed.error.errors);
     }
     const d = parsed.data;
-    // Προεπιλογή υπάρχει ΜΟΝΟ για ασφάλειες.
-    const isDefault = current.type === "INSURANCE" && d.isDefault;
-
+    // Καμία «προεπιλογή» πια (SQL 25): η ασφάλεια είναι ΠΑΝΤΑ επιλογή του πελάτη.
     const row = await db.$transaction(async (tx) => {
       const saved = await tx.extra.update({
       where: { id: current.id },
@@ -39,21 +36,9 @@ export const PATCH = withPublicSite(async (req, companyId, params) => {
         vehicleTypes: d.vehicleTypes,
         sortOrder: d.sortOrder,
         isActive: d.isActive,
-        isDefault,
+        isDefault: false,
       },
       });
-      // Το πολύ ΜΙΑ προεπιλεγμένη ασφάλεια ανά τύπο οχήματος: όσες άλλες
-      // καλύπτουν κοινό τύπο παύουν να είναι προεπιλογή (η τελευταία κερδίζει).
-      if (isDefault) {
-        const others = await tx.extra.findMany({
-          where: { tenantId: companyId, type: "INSURANCE", isDefault: true, NOT: { id: saved.id } },
-          select: { id: true, type: true, isDefault: true, vehicleTypes: true },
-        });
-        const clear = defaultsToClear(saved, others);
-        if (clear.length > 0) {
-          await tx.extra.updateMany({ where: { tenantId: companyId, id: { in: clear } }, data: { isDefault: false } });
-        }
-      }
       return saved;
     });
     const changed = await db.extra.findMany({

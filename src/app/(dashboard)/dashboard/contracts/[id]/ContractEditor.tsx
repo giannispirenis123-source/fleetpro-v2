@@ -610,6 +610,10 @@ export default function ContractEditor({
     (paymentUsesCard(form.paymentMethod) && !cardValid(form.paymentCard)) ||
     (depositUsesCard(form.depositMethod) && !cardValid(form.depositCard));
 
+  // Τα επίπεδα ασφάλειας: το πολύ ΕΝΑ στην κράτηση (radio), καμία προεπιλογή.
+  const insuranceIds = new Set(extras.filter((e) => e.type === "INSURANCE").map((e) => e.id));
+  const insuranceIdOf = (ids: string[]) => ids.find((x) => insuranceIds.has(x)) ?? null;
+
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
     setNotice("");
@@ -1622,10 +1626,11 @@ export default function ContractEditor({
         {extras.length === 0 ? (
           <p className="dash-form-note">{tr("contracts.noExtras")}</p>
         ) : (
+          <>
           <div className="dash-extras-pick">
             {extras
-              // Ανενεργά μόνο όσα έχει ήδη η κράτηση.
-              .filter((e) => e.isActive || form.extraIds.includes(e.id))
+              // Ανενεργά μόνο όσα έχει ήδη η κράτηση. Οι ασφάλειες χωριστά (παρακάτω).
+              .filter((e) => e.type !== "INSURANCE" && (e.isActive || form.extraIds.includes(e.id)))
               .map((e) => {
                 const checked = form.extraIds.includes(e.id);
                 return (
@@ -1644,10 +1649,7 @@ export default function ContractEditor({
                         )
                       }
                     />
-                    <span className="dash-extra-pick-name">
-                      {e.name}
-                      {e.type === "INSURANCE" && <small> · {tr("contracts.insuranceTag")}</small>}
-                    </span>
+                    <span className="dash-extra-pick-name">{e.name}</span>
                     <span className="dash-extra-pick-price">
                       {eur(e.price, locale)}
                       <small> {e.chargeType === "PER_DAY" ? tr("contracts.perDay") : tr("contracts.oneOff")}</small>
@@ -1656,6 +1658,47 @@ export default function ContractEditor({
                 );
               })}
           </div>
+          {/* Ασφάλεια: ΕΝΑ επίπεδο ή κανένα — καμία προεπιλογή (ίδια μηχανή με το site). */}
+          {extras.some((e) => e.type === "INSURANCE" && (e.isActive || form.extraIds.includes(e.id))) && (
+            <fieldset className="dash-extras-pick dash-ins-pick">
+              <legend className="dash-field-label">{tr("contracts.insuranceTag")}</legend>
+              <label className={`dash-extra-pick ${!insuranceIdOf(form.extraIds) ? "on" : ""}`}>
+                <input
+                  type="radio"
+                  name="contract-insurance"
+                  checked={!insuranceIdOf(form.extraIds)}
+                  disabled={!extrasEditable}
+                  onChange={() => set("extraIds", form.extraIds.filter((x) => !insuranceIds.has(x)).sort())}
+                />
+                <span className="dash-extra-pick-name">{tr("contracts.noExtraInsurance")}</span>
+                <span className="dash-extra-pick-price">{eur(0, locale)}</span>
+              </label>
+              {extras
+                .filter((e) => e.type === "INSURANCE" && (e.isActive || form.extraIds.includes(e.id)))
+                .map((e) => {
+                  const checked = form.extraIds.includes(e.id);
+                  return (
+                    <label key={e.id} className={`dash-extra-pick ${checked ? "on" : ""}`}>
+                      <input
+                        type="radio"
+                        name="contract-insurance"
+                        checked={checked}
+                        disabled={!extrasEditable}
+                        onChange={() =>
+                          set("extraIds", [...form.extraIds.filter((x) => !insuranceIds.has(x)), e.id].sort())
+                        }
+                      />
+                      <span className="dash-extra-pick-name">{e.name}</span>
+                      <span className="dash-extra-pick-price">
+                        {eur(e.price, locale)}
+                        <small> {e.chargeType === "PER_DAY" ? tr("contracts.perDay") : tr("contracts.oneOff")}</small>
+                      </span>
+                    </label>
+                  );
+                })}
+            </fieldset>
+          )}
+          </>
         )}
         {extrasEditable && !isNew && <p className="dash-form-note">{tr("contracts.extrasHelp")}</p>}
 

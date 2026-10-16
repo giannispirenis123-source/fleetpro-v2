@@ -10,7 +10,6 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import { centsToInput, formatCents, parseEuroInput } from "@/lib/public/money";
 import type { QuoteResult, Tier } from "@/lib/public/pricing";
 import { tiersProblem } from "@/lib/public/rates";
-import { defaultInsuranceFor } from "@/lib/public/insuranceDefaults";
 import type { LocalizedText } from "@/lib/public/text";
 import { SeasonsList } from "./ListTabs";
 import { Status, api } from "./ui";
@@ -178,7 +177,6 @@ interface ExtraOpt {
   nameI18n: LocalizedText;
   maxQuantity: number;
   isActive: boolean;
-  isDefault: boolean;
   vehicleTypes: string[];
 }
 
@@ -234,12 +232,16 @@ function QuoteTester({ targets }: { targets: Target[] }) {
     if (!form.target && targets[0]) setForm((f) => ({ ...f, target: targetKey(targets[0]) }));
   }, [targets, form.target]);
 
-  // Η προεπιλεγμένη ασφάλεια για τον τύπο του οχήματος — όπως θα κάνει το site.
+  // Ασφάλεια: ΟΠΩΣ στο site — προαιρετική, αρχικά «Χωρίς πρόσθετη ασφάλεια»,
+  // μόνο τα επίπεδα που επιτρέπονται για τον τύπο του οχήματος.
   const vehicleType = targets.find((x) => targetKey(x) === form.target)?.vehicleType ?? "car";
+  const levels = extras.filter(
+    (x) => x.type === "INSURANCE" && (x.vehicleTypes.length === 0 || x.vehicleTypes.includes(vehicleType))
+  );
   useEffect(() => {
-    const def = defaultInsuranceFor(extras, vehicleType);
-    setForm((f) => ({ ...f, insuranceId: def?.id ?? "" }));
-  }, [extras, vehicleType]);
+    setForm((f) => (f.insuranceId && !levels.some((x) => x.id === f.insuranceId) ? { ...f, insuranceId: "" } : f));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleType, extras]);
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -332,7 +334,7 @@ function QuoteTester({ targets }: { targets: Target[] }) {
           {t("insurance")}
           <select value={form.insuranceId} onChange={(e) => set("insuranceId", e.target.value)}>
             <option value="">{t("noInsurance")}</option>
-            {extras.filter((x) => x.type === "INSURANCE").map((x) => (
+            {levels.map((x) => (
               <option key={x.id} value={x.id}>
                 {el(x.nameI18n)}
               </option>

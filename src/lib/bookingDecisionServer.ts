@@ -14,6 +14,7 @@ import { nowLocal } from "./public/search";
 import { similarModelName } from "./public/catalog";
 import { readLocalized, textFor } from "./public/text";
 import { normalizeStorefrontSettings } from "./storefront/settings";
+import { storedInsurance } from "./pricingBridge";
 import { storefrontPath } from "./storefront/slug";
 import {
   buildBookingMessage,
@@ -201,8 +202,11 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
     return hit ? textFor(readLocalized(hit.name), lang) || stored : stored;
   };
 
-  const q = (b.priceQuote && typeof b.priceQuote === "object" ? b.priceQuote : {}) as { totalCents?: unknown };
+  const q = (b.priceQuote && typeof b.priceQuote === "object" ? b.priceQuote : {}) as { totalCents?: unknown; version?: unknown };
   const totalCents = typeof q.totalCents === "number" ? q.totalCents : Math.round(Number(b.total) * 100);
+  // Ασφάλεια από το ΑΠΟΘΗΚΕΥΜΕΝΟ priceQuote· παλιά κράτηση χωρίς ανάλυση → καμία γραμμή.
+  const ins = storedInsurance(b.priceQuote);
+  const insuranceName = q.version === 1 ? (ins ? textFor(ins.name, lang) || null : null) : undefined;
 
   const slug = b.tenant.storefrontSlug;
   const base = origin.replace(/\/+$/, "");
@@ -218,6 +222,7 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
       pickupLocation: localize(b.pickupLocation),
       returnLocation: localize(b.returnLocation),
       totalCents,
+      insuranceName,
       company: { name: b.tenant.name, phone: b.tenant.phone || null, email: b.tenant.email || null },
       bookingUrl: slug && b.publicCode ? `${base}${storefrontPath(slug, lang)}/booking/${b.publicCode}` : null,
       searchUrl: slug ? `${base}${storefrontPath(slug, lang)}` : null,

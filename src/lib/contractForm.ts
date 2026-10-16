@@ -1201,7 +1201,6 @@ export async function priceBookingExtras(
     pickupLocation: booking.pickupLocation,
     returnLocation: booking.returnLocation,
     extraIds,
-    defaultInsurance: !legacy,
     ...discountOfBooking(booking),
   });
   if (!priced.ok) return priced;

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { badRequest, notFound, ok, serverError } from "@/lib/api";
 import { withPublicSite } from "@/lib/public/guard";
 import { computeQuoteForTenant } from "@/lib/public/quoteServer";
+import { INSURANCE_INVALID_MESSAGE } from "@/lib/public/engine";
 
 const id = z.string().min(1).max(64);
 const schema = z.object({
@@ -39,12 +40,14 @@ export const POST = withPublicSite(async (req, companyId) => {
         dropoffLocationId: input.dropoffLocationId ?? null,
         driverAge: input.driverAge ?? null,
         extras: input.extras.filter((e) => kind(e.id) === "EXTRA"),
-        // Ίδια σύμβαση με το site: χωρίς επιλογή → η προεπιλεγμένη ασφάλεια.
-        insuranceId: input.insuranceId === undefined ? undefined : input.insuranceId,
+        // Ίδια σύμβαση με το site: χωρίς επιλογή → ΧΩΡΙΣ ασφάλεια (καμία προεπιλογή).
+        insuranceId: input.insuranceId ?? null,
         now: new Date(),
       };
     });
-    if (!out.ok) return notFound("Η ομάδα ή το όχημα δεν βρέθηκε");
+    if (!out.ok) {
+      return out.reason === "insurance" ? badRequest(INSURANCE_INVALID_MESSAGE.el) : notFound("Η ομάδα ή το όχημα δεν βρέθηκε");
+    }
     const result = out.result;
     return ok(result);
   } catch (error) {

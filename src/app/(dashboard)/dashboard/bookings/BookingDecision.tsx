@@ -86,7 +86,7 @@ function Shell({ title, onClose, tr, children, footer }: { title: string; onClos
             <X size={18} />
           </button>
         </div>
-        <div className="dash-modal-body">{children}</div>
+        <div className="dash-modal-body dash-decision">{children}</div>
         <div className="dash-modal-footer">{footer}</div>
       </div>
     </div>

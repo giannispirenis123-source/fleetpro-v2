@@ -2794,6 +2794,8 @@ input.dash-invalid,
 .dash-site-banner strong { font-size: 18px; color: var(--primary-soft); }
 
 /* ── Επιβεβαίωση / ακύρωση / μήνυμα στον πελάτη ── */
+.dash-decision { display: grid; gap: 12px; }
+.dash-decision > p { margin: 0; }
 .dash-vehicle-actions { flex-wrap: wrap; justify-content: flex-end; }
 .dash-code { font-size: 12px; padding: 1px 6px; border-radius: 6px; background: var(--primary-bg); color: var(--primary-soft); }
 .dash-msg-state { font-weight: 600; }

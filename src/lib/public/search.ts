@@ -4,7 +4,8 @@
 // πριν από κάθε υπολογισμό) — ίδιοι έλεγχοι, ίδια μηνύματα ΕΛ/EN.
 //
 // URL: /s/<slug>/<lang>/search?pl=&dl=&from=YYYY-MM-DDTHH:mm&to=…&age=&type=
-//   · pl / dl: slug τοποθεσίας (pickup_locations.slug)· dl κενό = ίδια επιστροφή
+//   · pl / dl: slug τοποθεσίας (pickup_locations.slug)· dl ΥΠΟΧΡΕΩΤΙΚΟ όταν η
+//     εταιρία έχει τοποθεσίες επιστροφής — στέλνεται ΠΑΝΤΑ, και όταν dl = pl
 //   · from / to: «ώρα τοίχου» στη ζώνη της εταιρίας (Europe/Athens), ΠΟΤΕ ώρα
 //     του browser — ο browser δεν μετατρέπει τίποτα, απλώς στέλνει το κείμενο
 //   · age: ηλικία οδηγού (η αρχή της κλίμακας που διάλεξε)
@@ -198,7 +199,7 @@ export function parseCriteria(src: ParamSource): SearchCriteria {
   const type = param(src, "type");
   return {
     pl: SLUG_RE.test(pl) ? pl : null,
-    dl: SLUG_RE.test(dl) && dl !== pl ? dl : null,
+    dl: SLUG_RE.test(dl) ? dl : null,
     from: param(src, "from"),
     to: param(src, "to"),
     age: Number.isInteger(age) && age >= 16 && age <= 120 ? age : null,
@@ -213,7 +214,7 @@ export const hasSearch = (src: ParamSource): boolean => !!param(src, "from") && 
 export function criteriaToQuery(c: SearchCriteria, extra: Record<string, string> = {}): string {
   const q = new URLSearchParams();
   if (c.pl) q.set("pl", c.pl);
-  if (c.dl && c.dl !== c.pl) q.set("dl", c.dl);
+  if (c.dl) q.set("dl", c.dl);
   q.set("from", c.from);
   q.set("to", c.to);
   if (c.age !== null) q.set("age", String(c.age));
@@ -250,10 +251,13 @@ export function validateCriteria(c: SearchCriteria, rules: SearchRules, now: Dat
   const pickups = rules.locations.filter((l) => l.allowPickup);
   if (pickups.length > 0) {
     if (!c.pl || !pickups.some((l) => l.slug === c.pl)) {
-      out.push(problem("LOCATION", "pl", "Διαλέξτε σημείο παραλαβής.", "Choose a pick-up location."));
+      out.push(problem("LOCATION", "pl", "Διαλέξτε τοποθεσία παραλαβής.", "Choose a pick-up location."));
     }
-    if (c.dl && !rules.locations.some((l) => l.slug === c.dl && l.allowDropoff)) {
-      out.push(problem("LOCATION", "dl", "Διαλέξτε σημείο επιστροφής.", "Choose a drop-off location."));
+    // Επιστροφή: ΠΑΝΤΑ ρητή επιλογή (και όταν είναι ίδια με την παραλαβή) —
+    // εκτός αν η εταιρία δεν έχει καμία τοποθεσία επιστροφής.
+    const dropoffs = rules.locations.filter((l) => l.allowDropoff);
+    if (dropoffs.length > 0 && (!c.dl || !dropoffs.some((l) => l.slug === c.dl))) {
+      out.push(problem("LOCATION", "dl", "Διαλέξτε τοποθεσία επιστροφής.", "Choose a drop-off location."));
     }
   }
 

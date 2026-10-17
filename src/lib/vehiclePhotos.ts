@@ -45,6 +45,12 @@ export function groupPhotoFolder(companyId: string, groupId: string): string | n
   return `fleetpro/${companyId}/groups/${groupId}`;
 }
 
+/** fleetpro/{companyId}/places/{placeId} — φωτογραφίες «Μέρη για επίσκεψη» (SQL 26). */
+export function placePhotoFolder(companyId: string, placeId: string): string | null {
+  if (!SAFE_SEGMENT_RE.test(companyId) || !SAFE_SEGMENT_RE.test(placeId)) return null;
+  return `fleetpro/${companyId}/places/${placeId}`;
+}
+
 /**
  * fleetpro/{companyId}/site/hero — η φωτογραφία hero του δημόσιου site.
  * (Παλιότερα ανεβάσματα ζουν στο fleetpro/{companyId}/site· σβήνονται κανονικά

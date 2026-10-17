@@ -5,6 +5,7 @@
 import { register } from "node:module";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 // Τα .ts του src εισάγουν σχετικά αρχεία χωρίς κατάληξη ("./pricing").
 register(
@@ -237,7 +238,7 @@ const RULES = {
 
 // 14/10/2026 09:00 ώρα Ελλάδας (UTC+3) = 06:00 UTC.
 const NOW = new Date("2026-10-14T06:00:00.000Z");
-const crit = (from, to, extra = {}) => ({ pl: "chania-airport", dl: null, from, to, age: 25, type: null, ...extra });
+const crit = (from, to, extra = {}) => ({ pl: "chania-airport", dl: "chania-airport", from, to, age: 25, type: null, ...extra });
 const codes = (c, now = NOW) => validateCriteria(c, RULES, now).map((p) => p.code);
 
 test("ζώνη ώρας: «τώρα» και «σήμερα» σε ώρα Ελλάδας, όχι του browser/UTC", () => {
@@ -260,7 +261,9 @@ test("προεπιλογές: αύριο 10:00 → +3 ημέρες 10:00, ηλι
   assert.equal(c.to, "2026-10-18T10:00");
   assert.equal(c.age, 25);
   assert.equal(c.pl, "chania-airport");
-  assert.deepEqual(validateCriteria(c, RULES, NOW), [], "οι προεπιλογές περνούν τους ελέγχους");
+  assert.equal(c.dl, null, "η επιστροφή ΔΕΝ προεπιλέγεται");
+  assert.deepEqual(validateCriteria(c, RULES, NOW).map((p) => p.field), ["dl"], "μόνο η επιστροφή λείπει");
+  assert.deepEqual(validateCriteria({ ...c, dl: c.pl }, RULES, NOW), [], "με επιστροφή οι προεπιλογές περνούν");
 });
 
 test("προεπιλογές: minDays μεγαλύτερο από 3 → επιστροφή μετά από minDays", () => {
@@ -315,9 +318,10 @@ test("έλεγχοι: τοποθεσίες και άκυρες ημερομην�
   assert.deepEqual(codes(crit("2026-10-20T10:00", "2026-10-23T10:00", { pl: null })), ["LOCATION"]);
   assert.deepEqual(codes(crit("2026-10-20T10:00", "2026-10-23T10:00", { pl: "return-only" })), ["LOCATION"]);
   assert.deepEqual(codes(crit("2026-10-20T10:00", "2026-10-23T10:00", { dl: "kissamos" })), []);
+  assert.deepEqual(codes(crit("2026-10-20T10:00", "2026-10-23T10:00", { dl: "return-only" })), [], "μόνο-επιστροφή");
   assert.deepEqual(codes(crit("2026-02-30T10:00", "2026-10-23T10:00")), ["INVALID_DATES"]);
   assert.deepEqual(codes(crit("2026-10-20T10:15", "2026-10-23T10:00")), [], "οποιαδήποτε έγκυρη ώρα γίνεται δεκτή");
-  assert.deepEqual(validateCriteria(crit("2026-10-20T10:00", "2026-10-23T10:00", { pl: null }), { ...RULES, locations: [] }, NOW), [], "χωρίς τοποθεσίες");
+  assert.deepEqual(validateCriteria(crit("2026-10-20T10:00", "2026-10-23T10:00", { pl: null, dl: null }), { ...RULES, locations: [] }, NOW), [], "χωρίς τοποθεσίες");
 });
 
 test("URL: κριτήρια ⇄ query string, άκυρα πεδία πετιούνται", () => {
@@ -328,7 +332,12 @@ test("URL: κριτήρια ⇄ query string, άκυρα πεδία πετιού
   assert.deepEqual(parseCriteria({ pl: "../x", dl: "chania-airport", age: "abc", type: "truck", from: "x", to: "y" }), {
     pl: null, dl: "chania-airport", from: "x", to: "y", age: null, type: null,
   });
-  assert.equal(parseCriteria({ pl: "a", dl: "a" }).dl, null, "ίδιο σημείο επιστροφής = κενό");
+  assert.equal(parseCriteria({ pl: "a", dl: "a" }).dl, "a", "ίδια επιστροφή ΜΕΝΕΙ (ρητή επιλογή)");
+  assert.equal(
+    criteriaToQuery({ ...c, dl: "chania-airport", type: null }),
+    "pl=chania-airport&dl=chania-airport&from=2026-10-20T10%3A00&to=2026-10-23T10%3A00&age=25",
+    "dl στέλνεται ΠΑΝΤΑ, και όταν = pl"
+  );
   assert.equal(hasSearch({ from: "2026-10-20T10:00" }), false);
   assert.equal(TIME_SLOTS.length, 48);
   assert.equal(TIME_SLOTS[21], "10:30");
@@ -452,4 +461,33 @@ test("ημερομηνίες χωρίς Intl (ίδιες σε server/browser), �
   assert.equal(formatDay("2026-10-16", storefrontDictionary("el")), "Παρ 16 Οκτ");
   assert.equal(formatDay("2026-10-16", storefrontDictionary("en")), "Fri 16 Oct");
   assert.equal(formatDay("2026-10-16", storefrontDictionary("fr")), "Fri 16 Oct", "χωρίς λεξικό → en");
+});
+
+test("επιστροφή ΥΠΟΧΡΕΩΤΙΚΗ: χωρίς dl, άγνωστο dl ή dl μόνο-παραλαβής → σφάλμα στο πεδίο dl", () => {
+  const RULES2 = { ...RULES, locations: [...RULES.locations, { slug: "pickup-only", allowPickup: true, allowDropoff: false }] };
+  const fields = (extra) => validateCriteria(crit("2026-10-20T10:00", "2026-10-23T10:00", extra), RULES2, NOW).map((p) => `${p.code}:${p.field}`);
+  assert.deepEqual(fields({ dl: null }), ["LOCATION:dl"], "παλιό URL χωρίς dl");
+  assert.deepEqual(fields({ dl: "other-company-loc" }), ["LOCATION:dl"], "τοποθεσία άλλης εταιρίας");
+  assert.deepEqual(fields({ dl: "pickup-only" }), ["LOCATION:dl"]);
+  assert.deepEqual(fields({ dl: "chania-airport" }), [], "dl = pl δεκτό");
+  const msg = validateCriteria(crit("2026-10-20T10:00", "2026-10-23T10:00", { dl: null }), RULES2, NOW)[0].message;
+  assert.equal(msg.el, "Διαλέξτε τοποθεσία επιστροφής.");
+  assert.equal(msg.en, "Choose a drop-off location.");
+  // Μία μόνο τοποθεσία: πάλι υποχρεωτική ρητή επιλογή.
+  const one = { ...RULES, locations: [{ slug: "chania-airport", allowPickup: true, allowDropoff: true }] };
+  assert.deepEqual(validateCriteria(crit("2026-10-20T10:00", "2026-10-23T10:00", { dl: null }), one, NOW).map((p) => p.field), ["dl"]);
+  // Παλιό URL χωρίς dl: parseCriteria δεν σκάει, δίνει κενό → σφάλμα επικύρωσης (όχι 500).
+  const old = parseCriteria({ pl: "chania-airport", from: "2026-10-20T10:00", to: "2026-10-23T10:00" });
+  assert.equal(old.dl, null);
+  assert.deepEqual(validateCriteria(old, RULES, NOW).map((p) => p.field), ["dl"]);
+});
+
+test("browser (SearchBox): επιστροφή πάντα ορατή, χωρίς προεπιλογή, στέλνεται ΠΑΝΤΑ, ίδιος έλεγχος", () => {
+  const src = readFileSync(new URL("../src/components/storefront/SearchBox.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /otherDropoff/, "κανένας διακόπτης «άλλη τοποθεσία»");
+  assert.match(src, /<option value="">\{d\.chooseOption\}<\/option>/, "«Επιλέξτε…» χωρίς προεπιλογή");
+  assert.match(src, /dl: dl \|\| null,/, "dl στέλνεται και όταν = pl");
+  assert.match(src, /validateCriteria\(c, rules/, "ίδιος έλεγχος με τον server");
+  assert.match(src, /scrollIntoView/, "πάει στο πεδίο με το σφάλμα");
+  assert.doesNotMatch(src, /disabled=\{[^}]*!dl/, "το κουμπί δεν κλειδώνει από κενά πεδία");
 });

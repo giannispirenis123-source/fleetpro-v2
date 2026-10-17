@@ -117,6 +117,7 @@
 }
 .sf-field:focus-within { border-color: var(--sf-brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sf-brand) 22%, transparent); }
 .sf-field.is-invalid { border-color: var(--sf-danger); background: #fef2f2; }
+.sf-field-error { font-size: 12.5px; font-weight: 600; color: var(--sf-danger); }
 .sf-label { font-size: 12px; font-weight: 650; color: var(--sf-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sf-value { font-size: 15.5px; font-weight: 650; color: var(--sf-text); white-space: nowrap; }
 .sf-field select {
@@ -371,3 +372,58 @@
   .sf-ins-price { grid-column: 2; justify-items: start; text-align: left; }
 }
 .sf-confirm-ins { margin: 10px 0; font-size: 15px; }
+
+/* ── Carousel (scroll-snap, χωρίς βιβλιοθήκη) ── */
+.sf-carousel { position: relative; margin-top: 14px; }
+.sf-carousel-track {
+  list-style: none; margin: 0; padding: 4px 2px 14px; display: grid; grid-auto-flow: column;
+  grid-auto-columns: min(78vw, 300px); gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory;
+  scroll-padding-inline: 2px; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+}
+.sf-carousel-track:focus-visible { outline: 3px solid color-mix(in srgb, var(--sf-brand) 70%, #000); outline-offset: 2px; border-radius: 12px; }
+.sf-carousel-item { scroll-snap-align: start; min-width: 0; }
+.sf-carousel-btn {
+  display: none; position: absolute; top: 38%; z-index: 2; width: 42px; height: 42px; border-radius: 50%;
+  border: 1px solid var(--sf-border); background: #fff; color: var(--sf-text); font-size: 26px; line-height: 1;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15); cursor: pointer;
+}
+.sf-carousel-btn.is-prev { left: -14px; }
+.sf-carousel-btn.is-next { right: -14px; }
+.sf-carousel-btn:disabled { opacity: 0; pointer-events: none; }
+@media (hover: hover) and (min-width: 720px) {
+  .sf-carousel-btn { display: grid; place-items: center; }
+}
+
+/* ── Μέρη για επίσκεψη ── */
+.sf-place-card { display: grid; gap: 6px; color: inherit; text-decoration: none; }
+.sf-place-img { display: block; aspect-ratio: 4 / 3; border-radius: 16px; overflow: hidden; background: var(--sf-bg-2); }
+.sf-place-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s ease; }
+.sf-place-card:hover .sf-place-img img { transform: scale(1.03); }
+.sf-place-img .sf-noimg { display: block; width: 100%; height: 100%; }
+.sf-place-name { font-weight: 700; font-size: 16px; }
+.sf-place-short { color: var(--sf-text-2); font-size: 14px; }
+.sf-place-card:focus-visible { outline: 3px solid color-mix(in srgb, var(--sf-brand) 70%, #000); outline-offset: 3px; border-radius: 16px; }
+.sf-place-tagline { color: var(--sf-text-2); margin-top: 4px; }
+.sf-place-text p { margin: 0 0 12px; line-height: 1.6; }
+.sf-place-details { display: grid; gap: 8px; margin: 8px 0 16px; }
+.sf-place-detail { display: grid; grid-template-columns: minmax(90px, 35%) 1fr; gap: 10px; }
+.sf-place-detail dt { color: var(--sf-text-2); }
+.sf-place-detail dd { margin: 0; font-weight: 600; }
+.sf-place-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+
+/* ── Κριτικές ── */
+.sf-reviews-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.sf-reviews-score { font-size: 32px; font-weight: 800; line-height: 1; }
+.sf-stars { color: #f59e0b; letter-spacing: 1px; font-size: 16px; white-space: nowrap; }
+.sf-stars-off { color: #d1d5db; }
+.sf-reviews-carousel .sf-carousel-track { grid-auto-columns: min(78vw, 340px); }
+.sf-review {
+  height: 100%; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; padding: 16px;
+  border: 1px solid var(--sf-border); border-radius: 16px; background: #fff;
+}
+.sf-review-head { display: grid; gap: 4px; }
+.sf-review-author a { color: inherit; }
+.sf-review-text { margin: 0; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+.sf-review-foot { display: flex; justify-content: space-between; gap: 8px; color: var(--sf-text-2); font-size: 13px; }
+.sf-review-src.is-google { font-weight: 700; }
+.sf-place-tagline { margin: 4px 0 14px; }

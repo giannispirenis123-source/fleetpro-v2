@@ -68,7 +68,7 @@ function makeCat(over = {}) {
   };
 }
 
-const CRIT = { pl: "chania-airport", dl: null, from: "2026-11-02T10:00", to: "2026-11-05T10:00", age: 30 };
+const CRIT = { pl: "chania-airport", dl: "chania-airport", from: "2026-11-02T10:00", to: "2026-11-05T10:00", age: 30 };
 const REQ = { key: "g.A", criteria: CRIT, extras: [], insuranceId: undefined, driverAge: 30 };
 const bk = (vehicleId, status = "PENDING", extra = {}) => ({ tenantId: "T1", vehicleId, status, pickupDate: "2026-11-01", pickupTime: "10:00", returnDate: "2026-11-06", returnTime: "10:00", ...extra });
 
@@ -227,6 +227,17 @@ test("ο server ξανατρέχει minDays, παρελθόν, προθεσμί
   assert.match(lead.error.message.el, /τουλάχιστον 3 ώρες/);
   const minDays = planSiteBooking(cat, { ...REQ, criteria: { ...CRIT, from: "2027-07-01T10:00", to: "2027-07-03T10:00" } }, [], NOW);
   assert.match(minDays.error.message.el, /Ελάχιστη διάρκεια 5/);
+});
+
+test("ο server απαιτεί τοποθεσία επιστροφής: χωρίς dl ή dl άλλης εταιρίας → INVALID, dl = pl → περνά", () => {
+  const cat = makeCat();
+  for (const dl of [null, "kissamos-of-other-company"]) {
+    const r = planSiteBooking(cat, { ...REQ, criteria: { ...CRIT, dl } }, [], NOW);
+    assert.equal(r.ok, false, String(dl));
+    assert.equal(r.error.code, "INVALID");
+    assert.equal(r.error.message.el, "Διαλέξτε τοποθεσία επιστροφής.");
+  }
+  assert.equal(planSiteBooking(cat, { ...REQ, criteria: { ...CRIT, dl: CRIT.pl } }, [], NOW).ok, true);
 });
 
 /* ─────────────────────────────────────────────

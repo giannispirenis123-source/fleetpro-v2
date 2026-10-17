@@ -64,7 +64,6 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
   const router = useRouter();
   const [pl, setPl] = useState(initial.pl ?? "");
   const [dl, setDl] = useState(initial.dl ?? "");
-  const [otherDropoff, setOtherDropoff] = useState(!!initial.dl);
   const [fromDate, setFromDate] = useState(initial.from.slice(0, 10));
   const [fromTime, setFromTime] = useState(initial.from.slice(11, 16) || "10:00");
   const [toDate, setToDate] = useState(initial.to.slice(0, 10));
@@ -103,7 +102,8 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
     const urlType = parseCriteria(new URLSearchParams(window.location.search)).type;
     const c: SearchCriteria = {
       pl: pl || null,
-      dl: otherDropoff && dl && dl !== pl ? dl : null,
+      // ΠΑΝΤΑ ρητή επιστροφή — και όταν είναι ίδια με την παραλαβή.
+      dl: dl || null,
       from: `${fromDate}T${fromTime}`,
       to: `${toDate}T${toTime}`,
       age: age ? Number(age) : null,
@@ -114,7 +114,9 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
     if (found.length > 0) {
       const first = found[0].field;
       const target = first === "from" || first === "to" ? "dates" : first;
-      document.getElementById(fieldId(target))?.focus();
+      const el = document.getElementById(fieldId(target));
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      el?.focus({ preventScroll: true });
       return;
     }
     setBusy(true);
@@ -145,22 +147,32 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
               </select>
             </label>
             {dropoffs.length > 0 && (
-              <label className="sf-check">
-                <input type="checkbox" checked={otherDropoff} onChange={(e) => setOtherDropoff(e.target.checked)} />
-                <span>{d.differentDropoff}</span>
-              </label>
-            )}
-            {otherDropoff && (
               <label className={`sf-field${invalid("dl") ? " is-invalid" : ""}`} htmlFor={fieldId("dl")}>
                 <span className="sf-label">{d.dropoffLocation}</span>
-                <select id={fieldId("dl")} value={dl} onChange={(e) => setDl(e.target.value)} aria-invalid={invalid("dl")}>
-                  <option value="">—</option>
+                <select
+                  id={fieldId("dl")}
+                  value={dl}
+                  required
+                  onChange={(e) => {
+                    setDl(e.target.value);
+                    if (e.target.value) setProblems((ps) => ps.filter((p) => p.field !== "dl"));
+                  }}
+                  aria-invalid={invalid("dl")}
+                  aria-describedby={invalid("dl") ? fieldId("dl-error") : undefined}
+                >
+                  {/* Καμία προεπιλογή — ούτε με μία μόνο τοποθεσία. */}
+                  <option value="">{d.chooseOption}</option>
                   {dropoffs.map((l) => (
                     <option key={l.slug} value={l.slug}>
                       {l.name}
                     </option>
                   ))}
                 </select>
+                {invalid("dl") && (
+                  <span className="sf-field-error" id={fieldId("dl-error")}>
+                    {messageOf(problems.find((p) => p.field === "dl")!, lang)}
+                  </span>
+                )}
               </label>
             )}
           </div>

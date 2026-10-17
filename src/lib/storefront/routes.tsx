@@ -17,12 +17,14 @@ import { headers } from "next/headers";
 import { publicFormQuote, needsFlight } from "../public/bookingSubmit";
 import { extraOptions, insuranceOptions, toPublicQuote } from "../public/bookingView";
 import { loadConfirmation } from "../public/bookingLookup";
+import { loadReviewSection, loadSitePlace, loadSitePlaces } from "../public/placesServer";
 import { hitLimit, LIMITS } from "../public/rateLimit";
 import { dbCounterStore } from "../public/rateLimitStore";
 import {
   StorefrontConfirmation,
   StorefrontBook,
   StorefrontHome,
+  StorefrontPlace,
   StorefrontSearch,
   StorefrontVehicle,
   type SearchBoxData,
@@ -130,6 +132,12 @@ export async function StorefrontHomePage({ params, searchParams = {} }: { params
   const { company, companyId, lang } = await openStorefront(params.slug, params.lang, "", rawQuery(searchParams));
   const cat = await catalogOr404(companyId);
   const initial = defaultCriteria(cat.rules);
+  // Μέρη: με τοποθεσία παραλαβής στο URL (pl), πρώτα τα δικά της.
+  const pl = first(searchParams.pl);
+  const [places, reviews] = await Promise.all([
+    loadSitePlaces(companyId, pl && /^[a-z0-9-]{1,60}$/.test(pl) ? pl : null, lang),
+    loadReviewSection(companyId, lang, { name: company.name, url: absoluteUrl(storefrontPath(company.slug, lang)) }),
+  ]);
   return (
     <StorefrontHome
       company={company}
@@ -138,8 +146,56 @@ export async function StorefrontHomePage({ params, searchParams = {} }: { params
       search={searchBoxData(company, cat, lang, initial)}
       initialType={parseCriteria(searchParams).type}
       initialSort={sortOf(searchParams)}
+      places={places}
+      reviews={reviews.section}
+      jsonLd={reviews.jsonLd}
     />
   );
+}
+
+/** Απόλυτο URL του ίδιου deployment (για το schema.org). */
+function absoluteUrl(path: string): string {
+  const h = headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = (h.get("x-forwarded-proto") ?? "https").split(",")[0];
+  return host ? `${proto}://${host.split(",")[0]}${path}` : path;
+}
+
+/* ─────────────────────────────────────────────
+   Μέρος για επίσκεψη — /places/<placeSlug> (index)
+   ───────────────────────────────────────────── */
+
+export async function storefrontPlaceMetadata(p: StorefrontParams & { placeSlug?: string }): Promise<Metadata> {
+  const { company, companyId, lang } = await openStorefront(p.slug, p.lang, { placeSlug: p.placeSlug ?? "" });
+  const place = p.placeSlug ? await loadSitePlace(companyId, p.placeSlug, lang) : null;
+  if (!place) return { title: company.name, robots: { index: false, follow: false } };
+  const title = `${place.name} — ${company.name}`;
+  const description = place.short || place.description.slice(0, 160) || undefined;
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      locale: lang,
+      type: "article",
+      ...(place.coverUrl ? { images: [{ url: cloudinaryThumb(place.coverUrl, 1200), width: 1200 }] } : {}),
+    },
+    alternates: {
+      languages: Object.fromEntries(
+        company.settings.supportedLanguages.map((l) => [l, storefrontPath(company.slug, l, { placeSlug: place.slug })])
+      ),
+    },
+    robots: { index: true, follow: true },
+  };
+}
+
+export async function StorefrontPlacePage({ params }: { params: StorefrontParams & { placeSlug: string } }) {
+  const { company, companyId, lang } = await openStorefront(params.slug, params.lang, { placeSlug: params.placeSlug });
+  // Ανενεργό ή μέρος ΑΛΛΗΣ εταιρίας (η αναζήτηση γίνεται μόνο στο companyId) → 404.
+  const place = await loadSitePlace(companyId, params.placeSlug, lang);
+  if (!place) notFound();
+  return <StorefrontPlace company={company} lang={lang} place={place} />;
 }
 
 /* ─────────────────────────────────────────────

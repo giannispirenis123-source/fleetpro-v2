@@ -85,11 +85,17 @@ export function checkSlugAvailability(
 export function storefrontPath(
   slug: string,
   lang: string,
-  page: "" | "search" | "book" | { vehicleId: string } = "",
+  page: "" | "search" | "book" | { vehicleId: string } | { placeSlug: string } = "",
   query = ""
 ): string {
   const tail =
-    typeof page === "object" ? `/v/${encodeURIComponent(page.vehicleId)}` : page ? `/${page}` : "";
+    typeof page === "object"
+      ? "placeSlug" in page
+        ? `/places/${encodeURIComponent(page.placeSlug)}`
+        : `/v/${encodeURIComponent(page.vehicleId)}`
+      : page
+        ? `/${page}`
+        : "";
   return `/s/${slug}/${lang}${tail}${query ? `?${query}` : ""}`;
 }
 

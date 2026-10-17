@@ -39,9 +39,15 @@ export const POST = withPublicSite(async (req, companyId, params) => {
     const problem = def.check ? await def.check(companyId, parsed.data, null) : null;
     if (problem) return badRequest(problem);
 
+    // Με «Πάνω/Κάτω»: η νέα εγγραφή μπαίνει στο ΤΕΛΟΣ της λίστας.
+    if (def.movable) {
+      const last = await def.delegate().findFirst({ where: { tenantId: companyId }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
+      parsed.data.sortOrder = (last?.sortOrder ?? -1) + 1;
+    }
+
     try {
       const row = await def.delegate().create({
-        data: { ...parsed.data, tenantId: companyId },
+        data: { ...(def.toData ? def.toData(parsed.data, "create") : parsed.data), tenantId: companyId },
         ...(def.include && { include: def.include }),
       });
       await def.afterSave?.(companyId, row);

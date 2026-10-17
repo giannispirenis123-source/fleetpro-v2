@@ -196,6 +196,8 @@ export interface LocationItem {
   allowDropoff: boolean;
   sortOrder: number;
   isActive: boolean;
+  /** Για τις κριτικές Google (SQL 26). */
+  googlePlaceId?: string | null;
 }
 
 const coord = (s: string): number | null => {
@@ -321,6 +323,7 @@ export function LocationsTab() {
         allowDropoff: true,
         sortOrder: 0,
         isActive: true,
+        googlePlaceId: null,
       })}
       title={(l) => el(l.name)}
       summary={(l) => (
@@ -401,6 +404,19 @@ export function LocationsTab() {
             <Check label={t("askFerryName")} checked={v.askFerryName} onChange={(x) => f.set("askFerryName", x)} />
             <Check label={t("askAddress")} checked={v.askAddress} onChange={(x) => f.set("askAddress", x)} />
             <Check label={t("isActive")} checked={v.isActive} onChange={(x) => f.set("isActive", x)} />
+            <label className="dash-field dash-field--wide">
+              {t("googlePlaceId")}
+              <input
+                value={v.googlePlaceId ?? ""}
+                maxLength={300}
+                placeholder="ChIJ…"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                onChange={(e) => f.set("googlePlaceId", e.target.value.trim() || null)}
+              />
+              <span className="dash-form-note">{t("googlePlaceIdHint")}</span>
+            </label>
           </>
         );
       }}

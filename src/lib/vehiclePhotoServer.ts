@@ -23,7 +23,7 @@ import {
 export interface PhotoVehicle {
   id: string;
   tenantId: string;
-  /** Ο πίνακας με τη στήλη "photos": οχήματα ή ομάδες του site (SQL 21). */
+  /** Ο πίνακας με τη στήλη "photos": οχήματα, ομάδες του site (SQL 21) ή μέρη (SQL 26). */
   table?: PhotoTable;
   photos: VehiclePhoto[];
   /** Η στήλη όπως διαβάστηκε (για τον έλεγχο «άλλαξε στο μεταξύ»). */
@@ -47,8 +47,9 @@ export async function loadPhotoVehicle(
 }
 
 /** Μόνο αυτοί οι πίνακες έχουν στήλη photos με αυτή τη μορφή (whitelist). */
-export type PhotoTable = "vehicles" | "rental_groups";
-const tableSql = (v: PhotoVehicle) => Prisma.raw(v.table === "rental_groups" ? '"rental_groups"' : '"vehicles"');
+export type PhotoTable = "vehicles" | "rental_groups" | "places";
+const TABLE_SQL: Record<PhotoTable, string> = { vehicles: '"vehicles"', rental_groups: '"rental_groups"', places: '"places"' };
+const tableSql = (v: PhotoVehicle) => Prisma.raw(TABLE_SQL[v.table ?? "vehicles"]);
 
 export const newPhotoId = () => randomBytes(12).toString("base64url");
 

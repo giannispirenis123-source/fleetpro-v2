@@ -25,6 +25,9 @@ import SearchBox, { type SearchAgeOption, type SearchLocationOption } from "./Se
 import BookingForm from "./BookingForm";
 import { CopyCode, PrintButton } from "./ConfirmActions";
 import { cancelReasonText } from "@/lib/bookingMessages";
+import type { PublicPlace, PublicPlaceCard } from "@/lib/public/places";
+import type { ReviewSection } from "@/lib/public/reviews";
+import { PlacesSection, ReviewsSection } from "./PlacesReviews";
 import { bookingTexts, type ConfirmationDTO } from "@/lib/public/bookingRequest";
 import type { PublicExtraOption, PublicInsuranceOption, PublicQuote } from "@/lib/public/bookingView";
 import Results, { GroupCard } from "./Results";
@@ -214,6 +217,9 @@ export function StorefrontHome({
   search,
   initialType,
   initialSort,
+  places = [],
+  reviews = null,
+  jsonLd = null,
 }: {
   company: PublicCompany;
   lang: string;
@@ -221,6 +227,12 @@ export function StorefrontHome({
   search: SearchBoxData;
   initialType: VehicleType | null;
   initialSort: SortOrder;
+  /** «Μέρη για επίσκεψη» — κενό = χωρίς ενότητα. */
+  places?: PublicPlaceCard[];
+  /** «Κριτικές πελατών» — null = χωρίς ενότητα. */
+  reviews?: ReviewSection | null;
+  /** schema.org AggregateRating — ΜΟΝΟ με πραγματικά δεδομένα. */
+  jsonLd?: Record<string, unknown> | null;
 }) {
   const d = storefrontDictionary(lang);
   const ctx: Ctx = { company, lang, d };
@@ -264,6 +276,10 @@ export function StorefrontHome({
         </section>
       )}
 
+      {/* Σειρά: hero → about → μέρη → κριτικές → οχήματα (κενές ενότητες = τίποτα). */}
+      <PlacesSection slug={company.slug} lang={lang} d={d} places={places} />
+      <ReviewsSection lang={lang} d={d} section={reviews} />
+
       <div className="sf-wrap sf-section">
         {cards.length === 0 ? (
           <>
@@ -282,6 +298,102 @@ export function StorefrontHome({
             title={d.ourVehicles}
           />
         )}
+      </div>
+
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          // Δικά μας δεδομένα (χειροκίνητες κριτικές)· «<» διαφυγή για ασφάλεια.
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+        />
+      )}
+    </Shell>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   /s/<slug>/<lang>/places/<placeSlug> — ένα μέρος
+   ───────────────────────────────────────────── */
+
+export function StorefrontPlace({ company, lang, place: p }: { company: PublicCompany; lang: string; place: PublicPlace }) {
+  const d = storefrontDictionary(lang);
+  const ctx: Ctx = { company, lang, d };
+  const back = storefrontPath(company.slug, lang);
+  return (
+    <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, { placeSlug: p.slug })}>
+      <div className="sf-wrap sf-vehicle sf-place">
+        <Link href={`${back}#sf-places-title`} className="sf-back">
+          ← {d.backToHome}
+        </Link>
+        <div className="sf-vehicle-grid">
+          <div>
+            {p.photos.length === 0 ? (
+              <div className="sf-gallery-main sf-noimg">{d.noPhoto}</div>
+            ) : (
+              <>
+                <div className="sf-gallery" aria-label={d.photos}>
+                  {p.photos.map((url, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={url}
+                      id={`photo-${i + 1}`}
+                      src={cloudinaryThumb(url, 1200)}
+                      srcSet={[640, 960, 1200].map((w) => `${cloudinaryThumb(url, w)} ${w}w`).join(", ")}
+                      sizes="(max-width: 900px) 100vw, 60vw"
+                      alt={`${p.name} — ${i + 1}/${p.photos.length}`}
+                      loading={i === 0 ? "eager" : "lazy"}
+                      decoding="async"
+                    />
+                  ))}
+                </div>
+                {p.photos.length > 1 && (
+                  <div className="sf-thumbs">
+                    {p.photos.map((url, i) => (
+                      <a key={url} href={`#photo-${i + 1}`} aria-label={`${d.photos} ${i + 1}`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={cloudinaryThumb(url, 160)} alt="" loading="lazy" decoding="async" />
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          <div className="sf-vehicle-info">
+            <h1 className="sf-h1 sf-h1--dark">{p.name}</h1>
+            {p.short && <p className="sf-tagline sf-place-tagline">{p.short}</p>}
+            {p.description && (
+              <div className="sf-place-text">
+                {p.description.split(/\n{2,}/).map((para, i) => (
+                  <p key={i}>{para}</p>
+                ))}
+              </div>
+            )}
+            {p.details.length > 0 && (
+              <>
+                <h2 className="sf-h3">{d.placeDetailsTitle}</h2>
+                <dl className="sf-dl sf-dl--left sf-place-details">
+                  {p.details.map((x, i) => (
+                    <div key={i} className="sf-place-detail">
+                      <dt>{x.label}</dt>
+                      <dd>{x.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </>
+            )}
+            <div className="sf-place-actions">
+              {p.mapUrl && (
+                <a className="sf-btn sf-btn--primary" href={p.mapUrl} target="_blank" rel="noopener noreferrer">
+                  {d.openMap}
+                </a>
+              )}
+              <Link className="sf-btn" href={back}>
+                {d.backToHome}
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     </Shell>
   );
@@ -440,7 +552,7 @@ export function StorefrontBook({
                   <dt>{d.dropoffAt}</dt>
                   <dd>
                     {formatDateTime(criteria.to, d)}
-                    <span className="sf-muted"> · {dropoffName ?? (pickupName ? d.sameLocation : "")}</span>
+                    {dropoffName && <span className="sf-muted"> · {dropoffName}</span>}
                   </dd>
                   {ageLabel && (
                     <>

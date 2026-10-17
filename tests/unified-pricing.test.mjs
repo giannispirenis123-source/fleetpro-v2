@@ -319,3 +319,14 @@ test("χειροκίνητη τιμή: δεν γράφεται πάνω από �
   assert.equal(reset.override, null);
   assert.equal(reset.total, 104.5);
 });
+
+test("υποχρεωτική επιστροφή: dl = pl δίνει ΑΚΡΙΒΩΣ την ίδια quote() με το παλιό dl = null", () => {
+  for (const sc of SCENARIOS) {
+    if (!sc.site.pl || sc.site.dl) continue;
+    const ctx = makeCtx(sc.ctx);
+    const run = (dl) => quoteFromContext(ctx, requestFromCriteria(ctx, GROUPS, "g.A", { ...sc.site, dl }));
+    const same = run(sc.site.pl);
+    assert.deepEqual(same, run(null), sc.name);
+    if (same.ok) assert.equal(same.result.lines.some((l) => l.kind === "one_way"), false, `${sc.name}: χωρίς χρέωση δρομολογίου`);
+  }
+});

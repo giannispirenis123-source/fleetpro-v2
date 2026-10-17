@@ -3,7 +3,7 @@ import { StorefrontConfirmationPage, storefrontConfirmationMetadata, type Storef
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: StorefrontParams & { code: string } };
+type Props = { params: StorefrontParams & { code: string }; searchParams?: Record<string, string | string[] | undefined> };
 
 export const generateMetadata = ({ params }: Props) => storefrontConfirmationMetadata(params);
 

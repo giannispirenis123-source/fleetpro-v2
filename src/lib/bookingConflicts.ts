@@ -4,6 +4,7 @@
 // τελευταίο το φορτώνουν και client components — δεν πρέπει να τραβά Prisma.
 
 import { db } from "./db";
+import { notExpiredHold } from "./public/payments";
 import {
   CONFLICT_STATUSES,
   findConflicts,
@@ -27,6 +28,8 @@ export async function checkVehicleConflicts(opts: {
       vehicleId: opts.vehicleId,
       status: { in: CONFLICT_STATUSES as never[] },
       ...(opts.excludeBookingId ? { id: { not: opts.excludeBookingId } } : {}),
+      // Ληγμένη αναμονή online πληρωμής: δεν κρατά πια το όχημα.
+      ...notExpiredHold(new Date()),
     },
     select: {
       id: true,

@@ -180,6 +180,7 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
       total: true,
       cancelReasonCode: true,
       cancelNote: true,
+      payments: { where: { status: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] } }, select: { amountCents: true, refundedCents: true } },
       customer: { select: { firstName: true, email: true, phone: true } },
       rentalGroup: { select: { name: true, similarModels: true } },
       vehicle: { select: { brand: true, model: true, rentalGroup: { select: { name: true, similarModels: true } } } },
@@ -224,6 +225,12 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
       totalCents,
       insuranceName,
       company: { name: b.tenant.name, phone: b.tenant.phone || null, email: b.tenant.email || null },
+      payment: b.payments.length
+        ? {
+            paidCents: b.payments.reduce((n, p) => n + p.amountCents, 0),
+            refundedCents: b.payments.reduce((n, p) => n + p.refundedCents, 0),
+          }
+        : null,
       bookingUrl: slug && b.publicCode ? `${base}${storefrontPath(slug, lang)}/booking/${b.publicCode}` : null,
       searchUrl: slug ? `${base}${storefrontPath(slug, lang)}` : null,
     },

@@ -23,7 +23,7 @@ import type { VehicleType } from "@/lib/public/pricing";
 import type { SearchCriteria, SearchProblem, SearchRules } from "@/lib/public/search";
 import SearchBox, { type SearchAgeOption, type SearchLocationOption } from "./SearchBox";
 import BookingForm from "./BookingForm";
-import { CopyCode, PrintButton } from "./ConfirmActions";
+import { CopyCode, PaymentPoll, PrintButton } from "./ConfirmActions";
 import { cancelReasonText } from "@/lib/bookingMessages";
 import type { PublicPlace, PublicPlaceCard } from "@/lib/public/places";
 import type { ReviewSection } from "@/lib/public/reviews";
@@ -489,6 +489,14 @@ export interface BookFormData {
   insurance: PublicInsuranceOption[];
   initialQuote: PublicQuote;
   needsFlight: boolean;
+  /** Οι τρόποι πληρωμής που ΙΣΧΥΟΥΝ (ο server τους ξαναελέγχει) + πόσο χρεώνεται online. */
+  payment: BookFormPayment;
+}
+
+export interface BookFormPayment {
+  methods: ("ONLINE" | "PICKUP")[];
+  amountType: string;
+  depositPercent: number;
 }
 
 export function StorefrontBook({
@@ -582,7 +590,65 @@ export function StorefrontBook({
    /s/<slug>/<lang>/booking/<code> — επιβεβαίωση
    ───────────────────────────────────────────── */
 
-export function StorefrontConfirmation({ company, lang, b }: { company: PublicCompany; lang: string; b: ConfirmationDTO }) {
+/** Η κατάσταση της online πληρωμής στη σελίδα της κράτησης. */
+function PaymentStatusBox({ p, lang, d, justPaid }: { p: NonNullable<ConfirmationDTO["payment"]>; lang: string; d: StorefrontDictionary; justPaid: boolean }) {
+  const euro = (c: number) => formatCents(c, lang);
+  if (p.badge === "AWAITING") {
+    const until = p.expiresAt
+      ? new Intl.DateTimeFormat(lang === "el" ? "el-GR" : "en-GB", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit" }).format(new Date(p.expiresAt))
+      : "";
+    return (
+      <div className="sf-pay-status is-wait" role="status">
+        <strong>{justPaid ? d.payChecking : d.payStatusAwaiting}</strong>
+        {!justPaid && until && <p>{fill(d.payStatusAwaitingText, { time: until })}</p>}
+        {!justPaid && p.checkoutUrl && (
+          <a className="sf-btn sf-btn--primary" href={p.checkoutUrl}>
+            {d.payComplete} · {euro(p.amountCents)}
+          </a>
+        )}
+        {justPaid && <PaymentPoll />}
+      </div>
+    );
+  }
+  if (p.badge === "PAID") {
+    return (
+      <div className="sf-pay-status is-ok" role="status">
+        <strong>✓ {fill(d.payPaid, { amount: euro(p.amountCents) })}</strong>
+        {p.balanceCents > 0 && <p>{fill(d.payBalance, { amount: euro(p.balanceCents) })}</p>}
+      </div>
+    );
+  }
+  if (p.badge === "REFUNDED" || p.badge === "PARTIAL_REFUND") {
+    return (
+      <div className="sf-pay-status" role="status">
+        <strong>
+          {p.badge === "REFUNDED"
+            ? fill(d.payRefunded, { amount: euro(p.refundedCents) })
+            : fill(d.payPartRefunded, { amount: euro(p.refundedCents), total: euro(p.amountCents) })}
+        </strong>
+      </div>
+    );
+  }
+  return (
+    <div className="sf-pay-status is-bad" role="status">
+      <strong>{d.payNotCompleted}</strong>
+      <p>{d.payNotCompletedText}</p>
+    </div>
+  );
+}
+
+export function StorefrontConfirmation({
+  company,
+  lang,
+  b,
+  justPaid = false,
+}: {
+  company: PublicCompany;
+  lang: string;
+  b: ConfirmationDTO;
+  /** Επιστροφή από το Stripe (?paid=1) — ΜΟΝΟ για το μήνυμα «επιβεβαιώνουμε»· το PAID έρχεται από το webhook. */
+  justPaid?: boolean;
+}) {
   const d = storefrontDictionary(lang);
   const ctx: Ctx = { company, lang, d };
   const texts = bookingTexts(company.rentalMode);
@@ -608,6 +674,8 @@ export function StorefrontConfirmation({ company, lang, b }: { company: PublicCo
           {b.status === "PENDING" && <p className="sf-small">{pick(texts.next)}</p>}
           {(b.status === "CONFIRMED" || b.status === "ACTIVE") && <p className="sf-small">{d.confirmedNext}</p>}
         </div>
+
+        {b.payment && <PaymentStatusBox p={b.payment} lang={lang} d={d} justPaid={justPaid} />}
 
         {b.status === "CANCELLED" && (
           <div className="sf-book-panel sf-confirm-cancelled" role="status">

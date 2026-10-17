@@ -29,10 +29,11 @@ import {
   CheckCircle2,
   MessageCircle,
   MapPin,
+  Undo2,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import { kindForStatus } from "@/lib/bookingMessages";
-import { DecisionModal, MessageModal } from "./BookingDecision";
+import { DecisionModal, MessageModal, PaymentInfo, RefundModal, refundableOf } from "./BookingDecision";
 import {
   BOOKING_STATUSES,
   BOOKING_STATUS_CLASS,
@@ -203,6 +204,7 @@ export default function BookingsClient({
   prepMinutes,
   roundUpTotal,
   role,
+  stripeLive = false,
   partners,
   currentUserId,
   myCommission,
@@ -220,6 +222,8 @@ export default function BookingsClient({
   prepMinutes: number;
   roundUpTotal: boolean;
   role: string;
+  /** Test ή live κλειδιά Stripe — για τα links προς τον πίνακα Stripe. */
+  stripeLive?: boolean;
   /** Οι ενεργοί συνεργάτες της εταιρίας, για το dropdown της φόρμας. */
   partners: PartnerOption[];
   /** Ο τρέχων χρήστης — για το φίλτρο «οι κρατήσεις μου». */
@@ -252,6 +256,7 @@ export default function BookingsClient({
     ? tr("bookings.addRequest")
     : tr("bookings.addBooking");
 
+  const [refunding, setRefunding] = useState<BookingDTO | null>(null);
   const [bookings, setBookings] = useState<BookingDTO[]>(initialBookings);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>(initialStatus ?? "ALL");
@@ -332,8 +337,10 @@ export default function BookingsClient({
   const upsert = (booking: BookingDTO) =>
     setBookings((prev) => {
       const exists = prev.some((b) => b.id === booking.id);
+      // Απαντήσεις που δεν φορτώνουν την πληρωμή (undefined) κρατούν την προηγούμενη.
+      const merge = (b: BookingDTO) => (booking.payment === undefined ? { ...booking, payment: b.payment } : booking);
       return exists
-        ? prev.map((b) => (b.id === booking.id ? booking : b))
+        ? prev.map((b) => (b.id === booking.id ? merge(b) : b))
         : [booking, ...prev];
     });
 
@@ -437,11 +444,23 @@ export default function BookingsClient({
               onCancel={() => setCancelling(b)}
               onConfirm={() => setConfirming(b)}
               onMessage={() => setMessaging(b)}
+              stripeLive={stripeLive}
+              onRefund={isAdmin && refundableOf(b) > 0 ? () => setRefunding(b) : undefined}
               issuing={issuingId === b.id}
               onIssueInvoice={() => issueInvoice(b)}
             />
           ))}
         </div>
+      )}
+
+      {refunding && (
+        <RefundModal
+          booking={refunding}
+          tr={tr}
+          locale={locale}
+          onClose={() => setRefunding(null)}
+          onDone={(booking) => booking && upsert(booking)}
+        />
       )}
 
       {showCreate && (
@@ -635,6 +654,8 @@ function BookingCard({
   onCancel,
   onConfirm,
   onMessage,
+  stripeLive,
+  onRefund,
   issuing,
   onIssueInvoice,
 }: {
@@ -648,6 +669,9 @@ function BookingCard({
   onCancel: () => void;
   onConfirm: () => void;
   onMessage: () => void;
+  stripeLive: boolean;
+  /** Μόνο Διαχειριστής, ακυρωμένη κράτηση με online πληρωμή που δεν επιστράφηκε όλη. */
+  onRefund?: () => void;
   issuing: boolean;
   onIssueInvoice: () => void;
 }) {
@@ -711,6 +735,7 @@ function BookingCard({
             <Plane size={13} /> {tr("bookings.flight")}: {b.flightNumber}
           </span>
         )}
+        <PaymentInfo booking={b} tr={tr} locale={locale} stripeLive={stripeLive} />
         {b.source === "site" && b.notes && (
           <span className="dash-booking-note">
             <MessageSquare size={13} /> {b.notes}
@@ -834,6 +859,11 @@ function BookingCard({
             {b.status === "PENDING" && (
               <button className="dash-btn dash-btn--primary dash-btn--sm" onClick={onConfirm}>
                 <CheckCircle2 size={15} /> {tr("decision.decisionConfirm")}
+              </button>
+            )}
+            {onRefund && (
+              <button className="dash-btn dash-btn--danger dash-btn--sm" onClick={onRefund}>
+                <Undo2 size={15} /> {tr("decision.refundButton")}
               </button>
             )}
             {msgKind && (

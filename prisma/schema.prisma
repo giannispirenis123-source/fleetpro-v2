@@ -222,8 +222,22 @@ model Tenant {
   trialEndsAt      DateTime?
   stripeCustomerId String?
   stripeSubId      String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+
+  // Online πληρωμές κρατήσεων — Stripe Connect Express (SQL 27). ΧΩΡΙΣΤΑ από
+  // τα stripeCustomerId/stripeSubId πιο πάνω (συνδρομή της εταιρίας στην πλατφόρμα).
+  stripeAccountId        String?  @unique
+  stripeChargesEnabled   Boolean  @default(false)
+  stripePayoutsEnabled   Boolean  @default(false)
+  stripeDetailsSubmitted Boolean  @default(false)
+  // PICKUP_ONLY | ONLINE_OR_PICKUP | ONLINE_ONLY — online μόνο με «Ενεργό» λογαριασμό.
+  paymentOptions         String   @default("PICKUP_ONLY")
+  // FULL | DEPOSIT (depositPercent %, στρογγυλό σε ακέραιο €)
+  onlineAmountType       String   @default("FULL")
+  depositPercent         Int      @default(30)
+  // Προμήθεια πλατφόρμας σε basis points — ΜΟΝΟ ο Super Admin τη βλέπει/αλλάζει.
+  platformFeeBps         Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   // Relations
   users             User[]
@@ -248,6 +262,7 @@ model Tenant {
   driverAgeBands    DriverAgeBand[]
   promotions        Promotion[]
   bookingMessages   BookingNotification[]
+  bookingPayments   BookingPayment[]
   places            Place[]
   reviews           Review[]
   entitlementPlan   Plan?                 @relation(fields: [planKey], references: [key], onDelete: SetNull)
@@ -490,6 +505,13 @@ model Booking {
   cancelReasonCode String?
   cancelNote       String?
 
+  // Πληρωμή (SQL 27): paymentMethod NULL (dashboard/παλιές) | PICKUP | ONLINE·
+  // paymentStatus NONE | AWAITING_PAYMENT | PAID | FAILED | EXPIRED | REFUNDED |
+  // PARTIALLY_REFUNDED. Η AWAITING_PAYMENT κρατά το όχημα ΜΕΧΡΙ το paymentExpiresAt.
+  paymentMethod    String?
+  paymentStatus    String    @default("NONE")
+  paymentExpiresAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -503,8 +525,10 @@ model Booking {
   damages     Damage[]
   rentalGroup RentalGroup?          @relation(fields: [rentalGroupId], references: [id], onDelete: SetNull)
   messages    BookingNotification[]
+  payments    BookingPayment[]
 
   @@index([tenantId, partnerId])
+  @@index([tenantId, paymentStatus])
   @@index([tenantId, createdById])
   @@map("bookings")
 }
@@ -1260,4 +1284,45 @@ model Review {
 
   @@index([tenantId])
   @@map("reviews")
+}
+
+// Online πληρωμή μιας κράτησης — μία γραμμή ανά Stripe Checkout Session (SQL 27).
+// Ποσά σε cents. ΚΑΝΕΝΑ στοιχείο κάρτας.
+model BookingPayment {
+  id                      String    @id @default(cuid())
+  tenantId                String
+  bookingId               String
+  stripeAccountId         String
+  stripeCheckoutSessionId String    @unique
+  stripePaymentIntentId   String?
+  checkoutUrl             String?
+  amountCents             Int
+  refundedCents           Int       @default(0)
+  applicationFeeCents     Int       @default(0)
+  currency                String    @default("eur")
+  /// OPEN | PAID | FAILED | EXPIRED | REFUNDED | PARTIALLY_REFUNDED
+  status                  String    @default("OPEN")
+  /// [{ id, amountCents, at, userId }]
+  refunds                 Json      @default("[]")
+  expiresAt               DateTime?
+  paidAt                  DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @default(now()) @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, bookingId])
+  @@index([stripePaymentIntentId])
+  @@map("booking_payments")
+}
+
+// Events του Stripe Connect webhook που εφαρμόστηκαν (idempotency).
+model StripeEvent {
+  id         String   @id
+  type       String
+  account    String?
+  receivedAt DateTime @default(now())
+
+  @@map("stripe_events")
 }

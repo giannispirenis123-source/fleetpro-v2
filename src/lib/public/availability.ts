@@ -13,6 +13,8 @@
 //     (καθυστέρηση) κρατά το όχημα μέχρι «τώρα».
 //   · Χρόνος προετοιμασίας (tenants.prepTimeMinutes) και από τις δύο πλευρές.
 //   · Όχημα σε service (status MAINTENANCE) ή «Ανενεργό» δεν μετρά ποτέ.
+//   · Κράτηση που περιμένει online πληρωμή (AWAITING_PAYMENT) κλείνει το
+//     όχημα ΜΕΧΡΙ τη λήξη της· μετά δεν μετρά, ακόμα κι αν δεν ήρθε webhook.
 //
 // Ώρες: όπως στο dashboard, ημερομηνία + "HH:mm" ως «ώρα τοίχου» της
 // εταιρίας· κράτηση χωρίς ώρα = όλη η ημέρα (00:00 → 23:59).
@@ -21,6 +23,7 @@
 // παράμετρο — έτσι τα tests τρέχουν χωρίς βάση.
 
 import type { PrismaClient } from "@prisma/client";
+import { holdExpired, notExpiredHold } from "./payments";
 
 /** Ίδιες με το CONFLICT_STATUSES του src/lib/bookings.ts. */
 export const BLOCKING_STATUSES = ["PENDING", "CONFIRMED", "ACTIVE"] as const;
@@ -50,6 +53,9 @@ export interface BlockingBooking {
   returnTime: string | null;
   /** Οχήματα από αλλαγές οχήματος στο συμβόλαιο. */
   extraVehicleIds?: string[];
+  /** Online πληρωμή: AWAITING_PAYMENT κρατά το όχημα μέχρι το paymentExpiresMs (πραγματική στιγμή). */
+  paymentStatus?: string | null;
+  paymentExpiresMs?: number | null;
 }
 
 export interface Interval {
@@ -99,6 +105,8 @@ export interface AvailabilityInput {
   prepMinutes: number;
   /** "YYYY-MM-DDTHH:mm" — τώρα, στη ζώνη της εταιρίας (για τις καθυστερήσεις). */
   now?: string;
+  /** Η πραγματική στιγμή (ms) — για τη λήξη των αναμονών πληρωμής. */
+  instantMs?: number;
 }
 
 /** Τα οχήματα που ΚΛΕΙΝΟΥΝ στο διάστημα (κρατήσεις της ίδιας εταιρίας). */
@@ -109,6 +117,7 @@ function blockedIds(input: AvailabilityInput, window: Interval): Set<string> {
   for (const b of input.bookings) {
     if (b.tenantId !== input.companyId) continue;
     if (!(BLOCKING_STATUSES as readonly string[]).includes(b.status)) continue;
+    if (holdExpired(b, input.instantMs ?? Date.now())) continue;
     if (!intervalsConflict(window, bookingInterval(b, Number.isFinite(nowMs) ? nowMs : undefined), prep)) continue;
     blocked.add(b.vehicleId);
     for (const id of b.extraVehicleIds ?? []) blocked.add(id);
@@ -177,7 +186,8 @@ const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 export async function loadBlockingBookings(
   client: Pick<PrismaClient, "booking">,
   companyId: string,
-  window: { from: string; to: string }
+  window: { from: string; to: string },
+  now: Date = new Date()
 ): Promise<BlockingBooking[]> {
   const from = new Date(`${window.from.slice(0, 10)}T00:00:00.000Z`);
   from.setUTCDate(from.getUTCDate() - 3);
@@ -190,6 +200,7 @@ export async function loadBlockingBookings(
       status: { in: [...BLOCKING_STATUSES] },
       pickupDate: { lte: until },
       OR: [{ returnDate: { gte: from } }, { status: "ACTIVE" }],
+      ...notExpiredHold(now),
     },
     select: {
       id: true,
@@ -200,6 +211,8 @@ export async function loadBlockingBookings(
       pickupTime: true,
       returnDate: true,
       returnTime: true,
+      paymentStatus: true,
+      paymentExpiresAt: true,
       contract: { select: { vehicleChanges: true } },
     },
   });
@@ -214,5 +227,7 @@ export async function loadBlockingBookings(
     returnDate: isoDate(r.returnDate),
     returnTime: r.returnTime,
     extraVehicleIds: changedVehicleIds(r.contract?.vehicleChanges),
+    paymentStatus: r.paymentStatus,
+    paymentExpiresMs: r.paymentExpiresAt ? r.paymentExpiresAt.getTime() : null,
   }));
 }

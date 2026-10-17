@@ -2,7 +2,8 @@
 // src/components/storefront/ConfirmActions.tsx
 // Μικρά κουμπιά της σελίδας επιβεβαίωσης: αντιγραφή κωδικού και εκτύπωση.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export function CopyCode({ code, copyLabel, copiedLabel }: { code: string; copyLabel: string; copiedLabel: string }) {
   const [copied, setCopied] = useState(false);
@@ -31,4 +32,23 @@ export function PrintButton({ label }: { label: string }) {
       {label}
     </button>
   );
+}
+
+/**
+ * Μετά την επιστροφή από το Stripe (?paid=1): η σελίδα ξαναφορτώνεται κάθε
+ * 3΄΄ (έως ~45΄΄) μέχρι το webhook να γράψει την πληρωμή. Το PAID έρχεται
+ * ΜΟΝΟ από το webhook — εδώ απλώς ανανεώνεται η εικόνα.
+ */
+export function PaymentPoll() {
+  const router = useRouter();
+  useEffect(() => {
+    let n = 0;
+    const id = setInterval(() => {
+      n += 1;
+      if (n > 15) clearInterval(id);
+      else router.refresh();
+    }, 3000);
+    return () => clearInterval(id);
+  }, [router]);
+  return null;
 }

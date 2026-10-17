@@ -28,6 +28,11 @@ export interface SiteBookingWrite {
   window: { from: string; to: string };
   /** Η γλώσσα του site στην υποβολή — για τα μηνύματα προς τον πελάτη. */
   lang?: string;
+  /**
+   * Τρόπος πληρωμής (SQL 27). ONLINE → AWAITING_PAYMENT που κρατά το όχημα
+   * μέχρι το expiresAt. Χωρίς τιμή = όπως πριν (καμία πληροφορία πληρωμής).
+   */
+  payment?: { method: "PICKUP" | "ONLINE"; expiresAt: Date | null };
 }
 
 const toDate = (v: string) => new Date(`${v.slice(0, 10)}T00:00:00.000Z`);
@@ -98,6 +103,13 @@ export async function writeSiteBooking<Tx extends SiteBookingTx>(
       flightNumber: contact.flightNumber,
       notes: contact.notes,
       siteLang: w.lang ?? null,
+      ...(w.payment
+        ? {
+            paymentMethod: w.payment.method,
+            paymentStatus: w.payment.method === "ONLINE" ? "AWAITING_PAYMENT" : "NONE",
+            paymentExpiresAt: w.payment.method === "ONLINE" ? w.payment.expiresAt : null,
+          }
+        : {}),
     },
     select: { id: true },
   });
@@ -106,7 +118,7 @@ export async function writeSiteBooking<Tx extends SiteBookingTx>(
     data: {
       tenantId,
       type: "BOOKING_NEW",
-      title: "Νέα κράτηση από το site",
+      title: w.payment?.method === "ONLINE" ? "Νέα κράτηση από το site (αναμονή online πληρωμής)" : "Νέα κράτηση από το site",
       message: `${code} · ${contact.firstName} ${contact.lastName}`.slice(0, 200),
       link: `/dashboard/bookings?status=PENDING&booking=${booking.id}`,
     },

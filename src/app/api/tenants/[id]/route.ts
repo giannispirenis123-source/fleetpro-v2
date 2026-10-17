@@ -28,6 +28,8 @@ const updateTenantSchema = z.object({
   plan: z.enum(["STARTER", "PRO", "ENTERPRISE"]).optional(),
   // Πακέτο (entitlements) — κλειδί του πίνακα plans· null = χωρίς πακέτο.
   planKey: z.string().min(1).nullable().optional(),
+  // Προμήθεια πλατφόρμας στις online πληρωμές (basis points, 100 = 1%) — ΜΟΝΟ Super Admin.
+  platformFeeBps: z.number().int().min(0).max(5000).optional(),
 });
 
 // GET /api/tenants/[id]

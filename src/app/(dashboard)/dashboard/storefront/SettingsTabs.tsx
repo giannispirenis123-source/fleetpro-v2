@@ -346,12 +346,9 @@ export function BookingTab() {
             setDraft({ ...draft, payOnPickup: v });
           }}
         />
-        <label className="dash-field dash-field--check dash-sf-disabled">
-          <input type="checkbox" checked={false} disabled /> {t("payOnline")}{" "}
-          <span className="dash-soon">
-            <Lock size={11} /> {t("soon")}
-          </span>
-        </label>
+        <p className="dash-form-note">
+          {t("payOnlineMoved")} <Link href="/dashboard/storefront?tab=payments">{t("tabPayments")}</Link>
+        </p>
         <p className="dash-form-note">
           {t("vat")}: <strong>{draft.vatRate}%</strong> — {t("vatHint")}{" "}
           <Link href="/dashboard/settings">{t("openSettings")}</Link>

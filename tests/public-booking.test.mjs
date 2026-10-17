@@ -319,7 +319,7 @@ test("DTO επιβεβαίωσης: μικρό όνομα + μασκαρισμέ
   });
   assert.deepEqual(Object.keys(dto).sort(), [
     "cancelNote", "cancelReasonCode", "code", "depositCents", "excessCents", "firstName", "from", "groupName", "groupSimilar", "insurance", "lines", "listTotalCents",
-    "maskedEmail", "photoUrl", "pickupLocation", "returnLocation", "status", "to", "totalCents", "vatCents",
+    "maskedEmail", "payment", "photoUrl", "pickupLocation", "returnLocation", "status", "to", "totalCents", "vatCents",
   ]);
   assert.equal(dto.maskedEmail, "g******@gmail.com");
   assert.equal(dto.totalCents, 9500, "από το ΑΠΟΘΗΚΕΥΜΕΝΟ priceQuote");

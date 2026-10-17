@@ -24,7 +24,7 @@ import {
 import { loadBlockingBookings } from "@/lib/public/availability";
 import { nowLocal } from "@/lib/public/search";
 import { windowOfBooking } from "@/lib/bookingDecision";
-import { toBookingDTO } from "@/lib/bookings";
+import { BOOKING_PAYMENT_INCLUDE, toBookingDTO } from "@/lib/bookings";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -147,6 +147,7 @@ export const POST = withPermission(
             },
             createdBy: { select: { id: true, name: true } },
             messages: { select: { kind: true, channel: true, result: true } },
+            payments: BOOKING_PAYMENT_INCLUDE,
           },
         });
         return ok({ ...result.data, booking: row ? toBookingDTO(row) : null });

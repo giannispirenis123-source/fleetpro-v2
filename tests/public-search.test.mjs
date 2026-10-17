@@ -204,7 +204,11 @@ test("ΕΝΑ ερώτημα ανά αναζήτηση, φιλτραρισμέν�
     returnDate: "2026-07-12",
     returnTime: null,
     extraVehicleIds: ["a2"],
+    paymentStatus: undefined,
+    paymentExpiresMs: null,
   });
+  // Ληγμένη αναμονή online πληρωμής: έξω ήδη από το ερώτημα.
+  assert.ok(calls[0].where.NOT?.paymentStatus === "AWAITING_PAYMENT", "χωρίς ληγμένες αναμονές πληρωμής");
 });
 
 /* ─────────────────────────────────────────────

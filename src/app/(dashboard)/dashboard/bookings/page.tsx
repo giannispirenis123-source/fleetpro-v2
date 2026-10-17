@@ -2,8 +2,10 @@ import { redirect } from "next/navigation";
 import { pageGuard, bookingScope, viewerCan } from "@/lib/authz";
 import { listPartners } from "@/lib/partners";
 import { db } from "@/lib/db";
-import { toBookingDTO } from "@/lib/bookings";
+import { BOOKING_PAYMENT_INCLUDE, toBookingDTO } from "@/lib/bookings";
 import { toExtraDTO } from "@/lib/extras";
+import { expireStaleHolds } from "@/lib/public/paymentServer";
+import { stripeLiveMode } from "@/lib/stripeConnect";
 import BookingsClient from "./BookingsClient";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,8 @@ export default async function BookingsPage({
   const { session, viewer } = guard;
 
   const tenantId = session.tenantId;
+  // Αναμονές online πληρωμής που έληξαν χωρίς webhook → ακυρωμένες, πριν τη λίστα.
+  if (tenantId) await expireStaleHolds(db, tenantId);
 
   const [bookings, customers, vehicles, extras, tenant, partners, me] =
     await Promise.all([
@@ -43,6 +47,7 @@ export default async function BookingsPage({
           },
           createdBy: { select: { id: true, name: true } },
           messages: { select: { kind: true, channel: true, result: true } },
+            payments: BOOKING_PAYMENT_INCLUDE,
       },
     }),
     db.customer.findMany({
@@ -107,6 +112,7 @@ export default async function BookingsPage({
       prepMinutes={tenant?.prepTimeMinutes ?? 0}
       roundUpTotal={tenant?.roundUpTotal ?? false}
       role={session.role}
+      stripeLive={stripeLiveMode()}
       partners={partners}
       currentUserId={viewer.userId}
       myCommission={{

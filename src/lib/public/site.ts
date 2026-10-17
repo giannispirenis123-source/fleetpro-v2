@@ -249,6 +249,7 @@ export async function searchCards(
     to: c.to,
     prepMinutes: cat.prepTimeMinutes,
     now: nowLocal(cat.rules.timezone, now),
+    instantMs: now.getTime(),
   });
 
   return cards.map((card) => {

@@ -165,7 +165,9 @@ export function PlacesTab() {
 
             <div className="dash-field dash-field--wide">
               <span>{t("placeLocations")}</span>
-              <Check label={t("placeAllLocations")} checked={v.allLocations} onChange={(x) => f.set("allLocations", x)} />
+              <div className="dash-ps-row">
+                <Check label={t("placeAllLocations")} checked={v.allLocations} onChange={(x) => f.set("allLocations", x)} />
+              </div>
               {!v.allLocations && (
                 <div className="dash-ps-row">
                   {locations

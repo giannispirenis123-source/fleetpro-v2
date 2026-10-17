@@ -425,3 +425,4 @@
 .sf-review-text { margin: 0; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
 .sf-review-foot { display: flex; justify-content: space-between; gap: 8px; color: var(--sf-text-2); font-size: 13px; }
 .sf-review-src.is-google { font-weight: 700; }
+.sf-place-tagline { margin: 4px 0 14px; }

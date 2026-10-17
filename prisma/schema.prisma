@@ -248,6 +248,8 @@ model Tenant {
   driverAgeBands    DriverAgeBand[]
   promotions        Promotion[]
   bookingMessages   BookingNotification[]
+  places            Place[]
+  reviews           Review[]
   entitlementPlan   Plan?                 @relation(fields: [planKey], references: [key], onDelete: SetNull)
 
   @@index([planKey])
@@ -995,10 +997,14 @@ model PickupLocation {
   collectionFeeCents Int      @default(0)
   feeFreeFromDays    Int?
   feeLabel           Json     @default("{}")
+  /// Google Place ID (SQL 26) — για τις κριτικές Google (Places API, χωρίς αποθήκευση).
+  googlePlaceId      String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @default(now()) @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  places  PlaceLocation[]
+  reviews Review[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -1184,4 +1190,74 @@ model BookingNotification {
 
   @@index([tenantId, bookingId])
   @@map("booking_notifications")
+}
+
+/// «Μέρη για επίσκεψη» του δημόσιου site (SQL 26). Κείμενα ανά γλώσσα (JSONB),
+/// φωτογραφίες Cloudinary (fleetpro/{companyId}/places/{placeId}), η πρώτη = εξώφυλλο.
+model Place {
+  id              String   @id @default(cuid())
+  tenantId        String
+  /// Μικρά λατινικά, αριθμοί, παύλες — μοναδικό ανά εταιρία (URL /places/<slug>).
+  slug            String
+  nameI18n        Json     @default("{}")
+  /// Μία γραμμή (κάτω από τον τίτλο).
+  shortI18n       Json     @default("{}")
+  descriptionI18n Json     @default("{}")
+  /// [{ label: {el,en}, value: {el,en} }] — ώρες, είσοδος, απόσταση, συμβουλές.
+  detailsI18n     Json     @default("[]")
+  mapUrl          String?
+  /// Η πρώτη φωτογραφία (συγχρονίζεται σε κάθε αλλαγή φωτογραφιών).
+  coverImage      String?
+  photos          Json     @default("[]")
+  /// true = για όλες τις τοποθεσίες· false = μόνο όσες είναι στο place_locations.
+  allLocations    Boolean  @default(true)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  locations PlaceLocation[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("places")
+}
+
+model PlaceLocation {
+  placeId          String
+  pickupLocationId String
+
+  place          Place          @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  pickupLocation PickupLocation @relation(fields: [pickupLocationId], references: [id], onDelete: Cascade)
+
+  @@id([placeId, pickupLocationId])
+  @@index([pickupLocationId])
+  @@map("place_locations")
+}
+
+/// Κριτικές πελατών που προσθέτει ΧΕΙΡΟΚΙΝΗΤΑ η εταιρία (SQL 26). Οι κριτικές
+/// Google ΔΕΝ αποθηκεύονται — έρχονται από το Places API με cache 24 ωρών.
+model Review {
+  id               String   @id @default(cuid())
+  tenantId         String
+  /// null = γενική κριτική της εταιρίας.
+  pickupLocationId String?
+  authorName       String
+  /// 1–5 (CHECK στη βάση).
+  rating           Int
+  /// Το κείμενο ανά γλώσσα {el,en} (συνήθως μία, στη γλώσσα του πελάτη).
+  text             Json     @default("{}")
+  reviewDate       DateTime @default(dbgenerated("CURRENT_DATE")) @db.Date
+  sourceUrl        String?
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pickupLocation PickupLocation? @relation(fields: [pickupLocationId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@map("reviews")
 }

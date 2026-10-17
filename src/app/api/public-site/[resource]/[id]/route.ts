@@ -28,7 +28,7 @@ export const PATCH = withPublicSite(async (req, companyId, params) => {
     try {
       const row = await def.delegate().update({
         where: { id: current.id },
-        data: parsed.data,
+        data: def.toData ? def.toData(parsed.data, "update") : parsed.data,
         ...(def.include && { include: def.include }),
       });
       await def.afterSave?.(companyId, row);

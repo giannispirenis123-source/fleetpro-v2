@@ -19,7 +19,7 @@ export interface StorefrontPage extends ResolvedStorefront {
   lang: string;
 }
 
-export type SitePage = "" | "search" | "book" | { vehicleId: string };
+export type SitePage = "" | "search" | "book" | { vehicleId: string } | { placeSlug: string };
 
 /**
  * `langParam` = το τμήμα γλώσσας του URL (/s/<slug>/<lang>/…), `page` = πού

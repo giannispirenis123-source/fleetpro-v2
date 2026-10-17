@@ -41,7 +41,7 @@ export const POST = withPublicSite(async (req, companyId, params) => {
 
     try {
       const row = await def.delegate().create({
-        data: { ...parsed.data, tenantId: companyId },
+        data: { ...(def.toData ? def.toData(parsed.data, "create") : parsed.data), tenantId: companyId },
         ...(def.include && { include: def.include }),
       });
       await def.afterSave?.(companyId, row);

@@ -10,9 +10,10 @@ import { useT } from "@/lib/i18n/I18nProvider";
 import { AgesTab, GroupsTab, LocationsTab } from "./ListTabs";
 import RatesTab from "./RatesTab";
 import PromotionsTab from "./PromotionsTab";
+import { PlacesTab, ReviewsTab } from "./ContentTabs";
 import { AppearanceTab, BookingTab, ExtrasTab, TrustTab } from "./SettingsTabs";
 
-export const TABS = ["page", "appearance", "groups", "locations", "rates", "promotions", "ages", "extras", "booking", "trust"] as const;
+export const TABS = ["page", "appearance", "groups", "locations", "rates", "promotions", "ages", "extras", "places", "reviews", "booking", "trust"] as const;
 export type TabKey = (typeof TABS)[number];
 
 const LABEL: Record<TabKey, string> = {
@@ -24,6 +25,8 @@ const LABEL: Record<TabKey, string> = {
   promotions: "tabPromotions",
   ages: "tabAges",
   extras: "tabExtras",
+  places: "tabPlaces",
+  reviews: "tabReviews",
   booking: "tabBooking",
   trust: "tabTrust",
 };
@@ -68,6 +71,8 @@ export default function StorefrontTabs({ page }: { page: React.ReactNode }) {
         {tab === "promotions" && <PromotionsTab />}
         {tab === "ages" && <AgesTab />}
         {tab === "extras" && <ExtrasTab />}
+        {tab === "places" && <PlacesTab />}
+        {tab === "reviews" && <ReviewsTab />}
         {tab === "booking" && <BookingTab />}
         {tab === "trust" && <TrustTab />}
       </div>

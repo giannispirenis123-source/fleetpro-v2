@@ -14,6 +14,8 @@ import { readVehiclePhotos, toPhotoViews } from "../vehiclePhotos";
 import { readLocalized } from "./text";
 import { VEHICLE_TYPES } from "./pricing";
 import { destroyPhotos } from "./photos";
+import { placeSchema, placeToData, readPlaceDetails } from "./places";
+import { GOOGLE_PLACE_ID_RE, reviewSchema } from "./reviews";
 
 /* ─────────────────────────────────────────────
    Κοινά πεδία
@@ -102,6 +104,14 @@ export const locationSchema = z
     allowDropoff: z.boolean().default(true),
     sortOrder,
     isActive: z.boolean().default(true),
+    /** Για τις κριτικές Google (SQL 26)· κενό = καμία. */
+    googlePlaceId: z
+      .string()
+      .trim()
+      .nullable()
+      .default(null)
+      .transform((v) => v || null)
+      .refine((v) => v === null || GOOGLE_PLACE_ID_RE.test(v), "Μη έγκυρο Google Place ID (π.χ. ChIJ…)"),
   })
   .refine((l) => l.adjustmentType !== "percent" || (l.adjustmentValue >= -100 && l.adjustmentValue <= 100), {
     message: "Το ποσοστό πρέπει να είναι από −100 έως 100",
@@ -206,6 +216,10 @@ export interface ResourceDef {
   deactivate?: Record<string, unknown>;
   /** Πριν τη διαγραφή (π.χ. φωτογραφίες από το Cloudinary)· μήνυμα = ακύρωση. */
   beforeDelete?: (companyId: string, id: string) => Promise<string | null>;
+  /** Τα δεδομένα της φόρμας → δεδομένα Prisma (π.χ. σχέσεις). Προεπιλογή: ως έχουν. */
+  toData?: (data: any, mode: "create" | "update") => Record<string, unknown>;
+  /** «Πάνω/Κάτω» στη λίστα (στήλη sortOrder). */
+  movable?: boolean;
 }
 
 const strip = (row: Record<string, unknown>) => {
@@ -309,6 +323,56 @@ export const RESOURCES: Record<string, ResourceDef> = {
         data: { isDefault: false },
       });
     },
+  },
+};
+
+RESOURCES.places = {
+  delegate: () => db.place as unknown as Delegate,
+  schema: placeSchema,
+  orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  include: { locations: { select: { pickupLocationId: true } } },
+  toDTO: (row) => {
+    const { locations, photos, detailsI18n, ...rest } = jsonText(strip(row), ["nameI18n", "shortI18n", "descriptionI18n"]);
+    return {
+      ...rest,
+      detailsI18n: readPlaceDetails(detailsI18n),
+      photos: toPhotoViews(readVehiclePhotos(photos)),
+      locationIds: ((locations as { pickupLocationId: string }[] | undefined) ?? []).map((l) => l.pickupLocationId),
+    };
+  },
+  toData: (data, mode) => placeToData(data, mode),
+  uniqueMessage: "Υπάρχει ήδη μέρος με αυτό το slug",
+  movable: true,
+  // Οι τοποθεσίες πρέπει να είναι της ΙΔΙΑΣ εταιρίας.
+  check: async (companyId, data) => {
+    if (data.allLocations || data.locationIds.length === 0) return null;
+    const n = await db.pickupLocation.count({ where: { tenantId: companyId, id: { in: data.locationIds } } });
+    return n === data.locationIds.length ? null : "Κάποια τοποθεσία δεν βρέθηκε";
+  },
+  // Πρώτα οι φωτογραφίες από το Cloudinary· οι γραμμές place_locations
+  // φεύγουν με το μέρος (ON DELETE CASCADE) — και ρητά εδώ, για σιγουριά.
+  beforeDelete: async (companyId, id) => {
+    const p = await db.place.findFirst({ where: { id, tenantId: companyId }, select: { photos: true } });
+    const ok = await destroyPhotos(readVehiclePhotos(p?.photos));
+    if (!ok) return "Οι φωτογραφίες του μέρους δεν σβήστηκαν από το Cloudinary. Δοκιμάστε ξανά.";
+    await db.placeLocation.deleteMany({ where: { placeId: id, place: { tenantId: companyId } } });
+    return null;
+  },
+};
+
+RESOURCES.reviews = {
+  delegate: () => db.review as unknown as Delegate,
+  schema: reviewSchema,
+  orderBy: [{ sortOrder: "asc" }, { reviewDate: "desc" }],
+  toDTO: (row) => {
+    const out = strip(row);
+    return { ...out, text: readLocalized(row.text, 1500), reviewDate: isoDate(row.reviewDate) };
+  },
+  movable: true,
+  check: async (companyId, data) => {
+    if (!data.pickupLocationId) return null;
+    const n = await db.pickupLocation.count({ where: { tenantId: companyId, id: data.pickupLocationId } });
+    return n === 1 ? null : "Η τοποθεσία δεν βρέθηκε";
   },
 };
 

@@ -16,6 +16,7 @@ export const HERO_MIN_WIDTH = 1600;
 
 export const SITE_PHOTO_MSG = {
   groupNotFound: "Η ομάδα δεν βρέθηκε",
+  placeNotFound: "Το μέρος δεν βρέθηκε",
   heroSize: "Η φωτογραφία πρέπει να είναι οριζόντια και τουλάχιστον 1600px πλάτος.",
 } as const;
 
@@ -33,6 +34,27 @@ export async function loadPhotoGroup(
   return {
     vehicle: { id: g.id, tenantId: g.tenantId, table: "rental_groups", photos: readVehiclePhotos(g.photos), raw: g.photos },
   };
+}
+
+/** Το μέρος της ΙΔΙΑΣ εταιρίας (SQL 26), για το vehiclePhotoServer (πίνακας "places"). */
+export async function loadPhotoPlace(
+  companyId: string,
+  placeId: string
+): Promise<{ vehicle: PhotoVehicle } | { error: NextResponse }> {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(placeId)) return { error: notFound(SITE_PHOTO_MSG.placeNotFound) };
+  const p = await db.place.findFirst({
+    where: { id: placeId, tenantId: companyId },
+    select: { id: true, tenantId: true, photos: true },
+  });
+  if (!p) return { error: notFound(SITE_PHOTO_MSG.placeNotFound) };
+  return {
+    vehicle: { id: p.id, tenantId: p.tenantId, table: "places", photos: readVehiclePhotos(p.photos), raw: p.photos },
+  };
+}
+
+/** Εξώφυλλο μέρους = η πρώτη φωτογραφία (μετά από κάθε αλλαγή φωτογραφιών). */
+export async function syncPlaceCover(companyId: string, placeId: string, photos: VehiclePhoto[]): Promise<void> {
+  await db.place.updateMany({ where: { id: placeId, tenantId: companyId }, data: { coverImage: photos[0]?.url ?? null } });
 }
 
 /** 503 όταν λείπουν οι μεταβλητές του Cloudinary (ίδιο μήνυμα με τα οχήματα). */

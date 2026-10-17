@@ -6,7 +6,7 @@
 // χρησιμοποιείται, ο server την κάνει «Ανενεργή».
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Pencil, Plus, Trash2, Zap } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { ConfirmModal, Status, api } from "./ui";
 
@@ -30,6 +30,7 @@ export default function ResourceList<T extends object>({
   quickEdit,
   copy,
   extraActions,
+  movable,
 }: {
   resource: string;
   intro: string;
@@ -47,6 +48,8 @@ export default function ResourceList<T extends object>({
   copy?: (item: T & { id: string }) => T;
   /** Επιπλέον κουμπιά ανά γραμμή· `save` αποθηκεύει όλη την εγγραφή. */
   extraActions?: (item: T & { id: string }, save: (next: T & { id: string }) => Promise<string | null>) => React.ReactNode;
+  /** «Πάνω/Κάτω» (POST {resource}/{id}/move) — η σειρά της λίστας είναι η σειρά στο site. */
+  movable?: boolean;
 }) {
   const tr = useT();
   const url = `/api/public-site/${resource}`;
@@ -115,6 +118,15 @@ export default function ResourceList<T extends object>({
     update((items ?? []).map((i) => (i.id === saved.id ? saved : i)));
     setNotice(tr("publicSite.saved"));
     return null;
+  };
+
+  const move = async (id: string, dir: "up" | "down") => {
+    setBusy(true);
+    setError("");
+    const r = await api<{ items: (T & { id: string })[] }>(`${url}/${id}/move`, "POST", { dir });
+    setBusy(false);
+    if (r.ok && r.data) update(r.data.items);
+    else setError(r.message || tr("publicSite.errorSave"));
   };
 
   const remove = async () => {
@@ -188,13 +200,35 @@ export default function ResourceList<T extends object>({
         items && (
           <ul className="dash-ps-list">
             {items.length === 0 && <li className="dash-form-note">{tr("publicSite.empty")}</li>}
-            {items.map((item) => (
+            {items.map((item, index) => (
               <li key={item.id} className="dash-ps-item">
                 <div className="dash-ps-item-main">
                   <strong>{title(item)}</strong>
                   <div className="dash-ps-item-sub">{summary(item)}</div>
                 </div>
                 <div className="dash-ps-item-actions">
+                  {movable && (
+                    <>
+                      <button
+                        className="dash-icon-btn"
+                        onClick={() => move(item.id, "up")}
+                        disabled={busy || index === 0}
+                        aria-label={tr("publicSite.moveUp")}
+                        title={tr("publicSite.moveUp")}
+                      >
+                        <ArrowUp size={15} />
+                      </button>
+                      <button
+                        className="dash-icon-btn"
+                        onClick={() => move(item.id, "down")}
+                        disabled={busy || index === items.length - 1}
+                        aria-label={tr("publicSite.moveDown")}
+                        title={tr("publicSite.moveDown")}
+                      >
+                        <ArrowDown size={15} />
+                      </button>
+                    </>
+                  )}
                   {extraActions?.(item, saveItem)}
                   {quickEdit && (
                     <button

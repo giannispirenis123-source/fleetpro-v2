@@ -117,6 +117,7 @@
 }
 .sf-field:focus-within { border-color: var(--sf-brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--sf-brand) 22%, transparent); }
 .sf-field.is-invalid { border-color: var(--sf-danger); background: #fef2f2; }
+.sf-field-error { font-size: 12.5px; font-weight: 600; color: var(--sf-danger); }
 .sf-label { font-size: 12px; font-weight: 650; color: var(--sf-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sf-value { font-size: 15.5px; font-weight: 650; color: var(--sf-text); white-space: nowrap; }
 .sf-field select {
@@ -415,7 +416,7 @@
 .sf-reviews-score { font-size: 32px; font-weight: 800; line-height: 1; }
 .sf-stars { color: #f59e0b; letter-spacing: 1px; font-size: 16px; white-space: nowrap; }
 .sf-stars-off { color: #d1d5db; }
-.sf-reviews-carousel .sf-carousel-track { grid-auto-columns: min(86vw, 340px); }
+.sf-reviews-carousel .sf-carousel-track { grid-auto-columns: min(78vw, 340px); }
 .sf-review {
   height: 100%; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; padding: 16px;
   border: 1px solid var(--sf-border); border-radius: 16px; background: #fff;

@@ -28,6 +28,7 @@ import {
   MessageSquare,
   CheckCircle2,
   MessageCircle,
+  MapPin,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import { kindForStatus } from "@/lib/bookingMessages";
@@ -731,6 +732,11 @@ function BookingCard({
           {dateWithTime(b.returnDate, b.returnTime, locale)} ({b.totalDays}{" "}
           {b.totalDays === 1 ? tr("bookings.dayOne") : tr("bookings.days")})
         </span>
+        {(b.pickupLocation || b.returnLocation) && (
+          <span>
+            <MapPin size={13} /> {b.pickupLocation ?? "—"} <ArrowRight size={11} /> {b.returnLocation ?? b.pickupLocation}
+          </span>
+        )}
         {readyStamp && (
           <span className="dash-booking-ready">
             <Timer size={13} /> {tr("bookings.conflictReadyAt")} {readyStamp} ·{" "}

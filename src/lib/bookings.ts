@@ -90,6 +90,9 @@ export interface BookingDTO {
   publicCode: string | null;
   /** Αριθμός πτήσης που έδωσε ο πελάτης στο site. */
   flightNumber: string | null;
+  /** Τοποθεσίες παραλαβής/επιστροφής (ονόματα, όπως γράφτηκαν στην κράτηση). */
+  pickupLocation: string | null;
+  returnLocation: string | null;
   /**
    * Η ΧΕΙΡΟΚΙΝΗΤΗ έκπτωση από το priceQuote (χωρίς την αυτόματη προσφορά).
    * undefined = παλιά κράτηση χωρίς priceQuote (τότε ισχύει το discountAmount).
@@ -195,6 +198,8 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
     source: b.source,
     publicCode: b.publicCode ?? null,
     flightNumber: b.flightNumber ?? null,
+    pickupLocation: b.pickupLocation ?? null,
+    returnLocation: b.returnLocation ?? null,
     manualDiscount: storedManualDiscount(b.priceQuote),
     cancelReasonCode: b.cancelReasonCode ?? null,
     cancelNote: b.cancelNote ?? null,

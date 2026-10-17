@@ -276,6 +276,10 @@ export function StorefrontHome({
         </section>
       )}
 
+      {/* Σειρά: hero → about → μέρη → κριτικές → οχήματα (κενές ενότητες = τίποτα). */}
+      <PlacesSection slug={company.slug} lang={lang} d={d} places={places} />
+      <ReviewsSection lang={lang} d={d} section={reviews} />
+
       <div className="sf-wrap sf-section">
         {cards.length === 0 ? (
           <>
@@ -296,8 +300,6 @@ export function StorefrontHome({
         )}
       </div>
 
-      <PlacesSection slug={company.slug} lang={lang} d={d} places={places} />
-      <ReviewsSection lang={lang} d={d} section={reviews} />
       {jsonLd && (
         <script
           type="application/ld+json"
@@ -550,7 +552,7 @@ export function StorefrontBook({
                   <dt>{d.dropoffAt}</dt>
                   <dd>
                     {formatDateTime(criteria.to, d)}
-                    <span className="sf-muted"> · {dropoffName ?? (pickupName ? d.sameLocation : "")}</span>
+                    {dropoffName && <span className="sf-muted"> · {dropoffName}</span>}
                   </dd>
                   {ageLabel && (
                     <>

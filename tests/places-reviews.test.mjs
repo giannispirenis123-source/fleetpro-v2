@@ -306,3 +306,32 @@ test("readPlaceDetails: μόνο πλήρεις γραμμές, έως 20", () =
   assert.equal(readPlaceDetails(rows).length, 20);
   assert.deepEqual(readPlaceDetails("x"), []);
 });
+
+test("αρχική: σειρά hero → about → μέρη → κριτικές → οχήματα· κενές ενότητες κρυφές", () => {
+  const src = readFileSync(new URL("../src/components/storefront/StorefrontViews.tsx", import.meta.url), "utf8");
+  const home = src.slice(src.indexOf("export function StorefrontHome("), src.indexOf("export function", src.indexOf("export function StorefrontHome(") + 10));
+  const at = (s) => {
+    const i = home.indexOf(s);
+    assert.ok(i >= 0, s);
+    return i;
+  };
+  const order = ["<SearchBox", "sf-about", "<PlacesSection", "<ReviewsSection", "<Results"].map(at);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "σειρά ενοτήτων");
+  const comp = readFileSync(new URL("../src/components/storefront/PlacesReviews.tsx", import.meta.url), "utf8");
+  assert.match(comp, /if \(places\.length === 0\) return null;/, "κενά μέρη → τίποτα");
+  assert.match(comp, /if \(!section \|\| section\.reviews\.length \+ section\.count === 0\) return null;/, "κενές κριτικές → τίποτα");
+  // Οι εικόνες των καρτών φορτώνουν lazy (μόνο το hero eager).
+  assert.match(comp, /loading="lazy"/);
+  assert.doesNotMatch(comp, /loading="eager"/);
+});
+
+test("μέρη: όνομα μόνο στα ελληνικά → η κάρτα ΔΕΝ χάνεται σε άλλη γλώσσα του site", () => {
+  const rows = [place("a", { nameI18n: { el: "Μπάλος" } }), place("b", { nameI18n: { el: "Ελαφονήσι", en: "Elafonisi" } })];
+  for (const lang of ["el", "en", "fr", "pl"]) {
+    const cards = visiblePlaces(rows, T, null).map((p) => toPublicPlaceCard(p, lang));
+    assert.equal(cards.length, 2, lang);
+    assert.ok(cards.every((c) => c.name.length > 0), lang);
+  }
+  assert.equal(toPublicPlaceCard(rows[1], "fr").name, "Elafonisi", "fr → en");
+  assert.equal(toPublicPlaceCard(rows[0], "pl").name, "Μπάλος", "pl → el");
+});

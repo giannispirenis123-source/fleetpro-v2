@@ -160,3 +160,61 @@ test("security headers: nosniff, HSTS, όχι iframe εκτός από το δη
   assert.ok(frames);
   assert.match(frames.source, /\(\?!s\/\)/, "το /s/* μένει embeddable");
 });
+
+/* ── Χρήματα ── */
+
+const P = await import("../src/lib/public/payments.ts");
+
+test("ληγμένη αναμονή πληρωμής: αποδεσμεύει ΜΟΝΟ κράτηση PENDING, όχι επιβεβαιωμένη", () => {
+  const now = Date.UTC(2026, 9, 19, 12);
+  const hold = { paymentStatus: "AWAITING_PAYMENT", paymentExpiresMs: now - 1 };
+  assert.equal(P.holdExpired({ ...hold, status: "PENDING" }, now), true);
+  assert.equal(P.holdExpired({ ...hold, status: "CONFIRMED" }, now), false);
+  assert.equal(P.holdExpired({ ...hold, status: "ACTIVE" }, now), false);
+  assert.equal(P.notExpiredHold(new Date(now)).NOT.status, "PENDING");
+});
+
+test("επιστροφή: υπολογισμός από την τρέχουσα γραμμή — δύο επιστροφές αθροίζονται, ποτέ πάνω από το ποσό", () => {
+  const row = { status: "PAID", amountCents: 10_000, refundedCents: 0, retainedCents: 0 };
+  const a = P.refundRowAfter(row, 3_000);
+  const b = P.refundRowAfter({ ...row, ...a }, 4_000);
+  assert.equal(b.refundedCents, 7_000);
+  assert.equal(b.status, "PARTIALLY_REFUNDED");
+  const over = P.refundRowAfter({ ...row, ...b }, 9_000);
+  assert.equal(over.refundedCents, 10_000);
+  assert.equal(over.status, "REFUNDED");
+  // Με κρατημένο υπόλοιπο: refunded + retained <= amount.
+  const r = P.refundRowAfter({ ...row, retainedCents: 6_000 }, 5_000);
+  assert.ok(r.refundedCents + r.retainedCents <= 10_000);
+  const src = read("src/lib/public/paymentServer.ts");
+  assert.match(src, /FOR UPDATE[\s\S]*refundRowAfter\(fresh/);
+});
+
+test("«κρατείται»: γράφει μόνο αν η πληρωμή δεν άλλαξε στο μεταξύ", () => {
+  const w = P.retainWhere({ id: "p1", tenantId: "t1", bookingId: "b1", refundedCents: 2_000, retainedCents: 0 });
+  assert.equal(w.tenantId, "t1");
+  assert.equal(w.refundedCents, 2_000);
+  assert.equal(w.retainedCents, 0);
+  assert.match(read("src/app/api/bookings/[id]/retain/route.ts"), /status:\s*409/);
+});
+
+test("αριθμός κράτησης: αριθμητικό max (μετά το 999 έρχεται 1000, όχι ξανά 1000)", () => {
+  const C = read("src/lib/bookingCreate.ts");
+  assert.doesNotMatch(C, /orderBy:\s*\{\s*bookingNumber:\s*"desc"/);
+  assert.match(C, /MAX\(CAST\(substring\("bookingNumber"/);
+  assert.match(C, /export function bookingNumberAfter/);
+});
+
+test("κρατήσεις dashboard/walk-in/αλλαγή: κλείδωμα εταιρίας και επανέλεγχος σύγκρουσης μέσα σε αυτό", () => {
+  const C = read("src/lib/bookingCreate.ts");
+  assert.match(C, /pg_advisory_xact_lock\(hashtext\(\$\{lockKeyFor\(plan\.tenantId\)\}\)\)[\s\S]*checkVehicleConflicts\(\{\s*client: tx/);
+  const patch = read("src/app/api/bookings/[id]/route.ts");
+  assert.match(patch, /pg_advisory_xact_lock[\s\S]*checkVehicleConflicts\(\{ \.\.\.recheck, client: tx \}\)/);
+  for (const f of ["src/app/api/bookings/route.ts", "src/app/api/contracts/walk-in/route.ts", "src/app/api/bookings/[id]/route.ts"]) {
+    assert.match(read(f), /instanceof BookingConflictError\) return conflict/, f);
+  }
+});
+
+test("Stripe checkout: σύντομο όριο χρόνου μέσα στο αίτημα του πελάτη", () => {
+  assert.match(read("src/lib/public/paymentServer.ts"), /fleetpro-checkout-\$\{b\.id\}`, timeout: 8_000, maxNetworkRetries: 1/);
+});

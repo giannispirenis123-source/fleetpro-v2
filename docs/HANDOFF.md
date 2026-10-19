@@ -607,9 +607,43 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 **Για αργότερα:** (1) **Accounts v2**: το Stripe ζήτησε «Accounts v1 support» για το `accounts.create({type:"express"})`. Η μετάβαση θέλει νέο SDK (≥ v18), `v2.core.accounts.create` με configuration `merchant`/`recipient`, νέα events (`v2.core.account[...].updated`, thin events) και αντιστοίχιση των flags — δεν έγινε. (2) Αναβάθμιση του SDK/apiVersion ώστε να ταιριάζει με το webhook endpoint. (3) Ένδειξη «θέλει απόφαση» και στον Πίνακα/φίλτρο κρατήσεων. (4) Τα ήδη ακυρωμένα-πληρωμένα δεν στέλνουν αυτόματα μήνυμα.
 
+### Audit 10/2026: τι διορθώθηκε, τι εκκρεμεί
+
+Branch `claude/audit-fixes` (από το audit του PR #30). **Χωρίς SQL, χωρίς αλλαγή `schema.prisma`, χωρίς νέα env.** Tests: `tests/audit-fixes.test.mjs` (+ `invoice-pdf`, `stripe-payments`).
+
+**Ασφάλεια**
+- **Χρήστης/εταιρία σε ΚΑΘΕ αίτημα:** `withAuth` → `loadViewer` (`src/lib/viewer.ts`, κανόνας στο `viewerCore.ts`): ανενεργός χρήστης, εταιρία `SUSPENDED`/`CANCELLED`, ή token άλλης εταιρίας → 401, ακόμη και με έγκυρο JWT. Ο ρόλος/δικαιώματα από τη βάση, μία ανάγνωση ανά αίτημα (περνά ως 4ο όρισμα στον handler). Ίδιο στο `/api/auth/me` και στο `/api/users/me/locale` (δεν ανανεώνει πια token σε ανενεργό).
+- **Login:** κωδικός ελέγχεται ΠΡΩΤΑ (`loginCore.ts`, dummy hash όταν δεν υπάρχει χρήστης)· όριο `login-email` 10/15΄ και `login-ip` 30/15΄ (rate_limits) → 429· ακυρωμένη εταιρία δεν συνδέεται.
+- **Αφαιρέθηκε** το ανοιχτό `POST /api/discounts/validate` (χωρίς σύνδεση, tenantId από το body)· δεν το καλούσε κανείς.
+- **Δικαιώματα:** μη-Διαχειριστής δεν δίνει δικαίωμα που δεν έχει ο ίδιος (`permissionsBeyondActor`)· κωδικό άλλου χρήστη αλλάζει μόνο ο Διαχειριστής (`canSetOthersPassword`).
+- **Κατάσταση κράτησης (PATCH):** ο συνεργάτης δεν την αλλάζει, η ακύρωση θέλει `bookings.cancel` (`bookingStatusRule.ts`).
+- **Πίνακας:** έσοδα μήνα/απλήρωτα μόνο με `invoices.view`, εκκρεμείς ζημιές μόνο με `damages.view` (ο συνεργάτης δεν τα βλέπει). Service: οι κρατήσεις του dropdown με `bookingScope`.
+- **«Εμφάνιση» κάρτας:** όριο 20/ώρα ανά χρήστη + ιστορικό `contract.card_reveal` (μόνο το είδος, ποτέ ο αριθμός).
+- **Headers** (`next.config.js`): nosniff, HSTS, Referrer-Policy, Permissions-Policy παντού· `X-Frame-Options: DENY` + `frame-ancestors 'none'` παντού ΕΚΤΟΣ από το δημόσιο `/s/*`.
+- **Δημόσια τιμή** `/api/public/quote`: όριο 120/10΄ ανά IP.
+- **Logs:** κανένα API route δεν γράφει ολόκληρο το σφάλμα (τα σφάλματα Prisma κουβαλούν ορίσματα = στοιχεία πελάτη)· `logError` γράφει μόνο όνομα/κωδικό/πεδίο.
+
+**Χρήματα**
+- Ληγμένη αναμονή πληρωμής αποδεσμεύει το όχημα ΜΟΝΟ σε κράτηση `PENDING` (`holdExpired`, `notExpiredHold`) — επιβεβαιωμένη κράτηση κρατά το όχημα.
+- Επιστροφή: η εγγραφή γίνεται από την κλειδωμένη (`FOR UPDATE`) τρέχουσα γραμμή (`refundRowAfter`) — δύο ταυτόχρονες επιστροφές αθροίζονται. «Κρατείται»: γράφει μόνο αν η πληρωμή δεν άλλαξε στο μεταξύ (`retainWhere`), αλλιώς 409 «Η πληρωμή άλλαξε στο μεταξύ…».
+- Κρατήσεις dashboard (νέα, αλλαγή, walk-in): ίδιο `pg_advisory_xact_lock` με το site + επανέλεγχος σύγκρουσης μέσα στο κλείδωμα (`BookingConflictError` → 409). Τοπικά: 3 ταυτόχρονες στο ίδιο όχημα → 1×201, 2×409.
+- Αριθμός κράτησης: αριθμητικό max (μετά το `BP-2026-999` και `-1000` έρχεται `-1001`, όχι ξανά `-1000`).
+- Stripe Checkout: όριο 8΄΄/1 επανάληψη μέσα στο αίτημα του πελάτη.
+
+**Bugs / απόδοση**
+- `GET /api/bookings?status=…` άγνωστη τιμή → 400 (όχι 500).
+- Hydration στο `/login` και `/super-admin` (`<style dangerouslySetInnerHTML>`).
+- Λίστα συμβολαίων: οι υπογραφές base64 δεν διαβάζονται πια· πλήθη οδηγών/υπογραφών στη βάση (ίδιος κανόνας με `readDrivers`).
+- Walk-in αναζήτηση: πλήθος κρατήσεων με ένα `groupBy` μόνο για όσους εμφανίζονται (όχι υποερώτημα ×200).
+- Ασταθές `invoice-pdf`: το pdf-lib έγραφε `ModDate` με το ρολόι → `updateMetadata: false` + `setModificationDate(now)`.
+
+**Για αργότερα** (θέλουν SQL, ρυθμίσεις ή απόφαση): UNIQUE `(tenantId, bookingNumber)` + indexes (SQL)· Next 14.2.x (minor)· αφαίρεση αχρησιμοποίητου `jspdf`· μάσκα ταυτότητας/διπλώματος στο `/c/`· ποσότητα πρόσθετων στην επανατιμολόγηση· δύο συστήματα έκπτωσης· `roundUpTotal`· σημεία Χανίων· tenant id στο Cloudinary· έλεγχος σύγκρουσης στην αλλαγή οχήματος του συμβολαίου· διαφορετικοί κανόνες διαθεσιμότητας dashboard/site· `commission.view` στο DTO· δικαίωμα αποστολής email συμβολαίου· όριο κρατήσεων site ανά IP· pagination λιστών· `error.tsx`· timeouts Supabase/Google· υπογραφές σε Storage· retention `activity_logs`· Accounts v2.
+
 ## 6. Migrations
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
+
+- **Audit 10/2026 (branch `claude/audit-fixes`): κανένα νέο SQL.** Επόμενος ελεύθερος αριθμός: `29`.
 
 - **28-payment-retained: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/stripe-connect-payments`). Σε transaction: `booking_payments` + `retainedCents` (default 0), `retainedAt`, `retainedNote`, `retainedBy` + CHECK `booking_payments_retained_check`. Αναμενόμενο verification `4 | 1 | 0`. **Τρέχει πριν τη δοκιμή.** Επόμενος ελεύθερος αριθμός: `29`.
 - **27-stripe-connect: έτρεξε** (`8|3|2|10|0`). Ιστορικό: (branch `claude/stripe-connect-payments`). Σε transaction: 8 στήλες στο `tenants` (+ unique `stripeAccountId`), 3 στο `bookings` (+ index), πίνακες `booking_payments`, `stripe_events`, 10 constraints. Μόνο προσθήκες με προεπιλογές = σημερινή συμπεριφορά. Αναμενόμενο verification `8 | 3 | 2 | 10 | 0`. **Τρέχει πριν τη δοκιμή στο preview.** Επόμενος ελεύθερος αριθμός: `28`.
@@ -663,9 +697,9 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 | 🟠 Αδοκίμαστα στην παραγωγή | **PDF/αποστολή τιμολογίου (§5.1):** πραγματική παράδοση μέσω Resend δεν δοκιμάστηκε (tests με mock· τοπικά το δίκτυο προς Resend ήταν κλειστό). Ίδιος περιορισμός με το συμβόλαιο: με `onboarding@resend.dev` στέλνει **μόνο** στο email του λογαριασμού Resend μέχρι να επαληθευτεί domain. Το λογότυπο στο PDF δοκιμάστηκε με τοπικό PNG — όχι από το πραγματικό Storage. |
 | 🟡 Χαμηλή | **Λογότυπο WebP** (επιτρέπεται στο ανέβασμα των Ρυθμίσεων) **δεν** μπαίνει στο PDF τιμολογίου — το pdf-lib δέχεται μόνο PNG/JPEG· το PDF βγαίνει με την επωνυμία. Πιθανή επόμενη δουλειά: μετατροπή σε PNG κατά το ανέβασμα. |
 | 🟡 Χαμηλή | Παλιό branch `claude/graphify-setup-install-hwt5im` στο GitHub — να σβηστεί. |
-| 🟠 PCI DSS | Με αποθήκευση πλήρους αριθμού κάρτας η εταιρία μπαίνει σε πλήρες πεδίο PCI DSS (κρυπτογράφηση ✅, ρόλος ✅· απομένουν: διαχείριση/εναλλαγή κλειδιού, καταγραφή κάθε «Εμφάνισης» σε audit log, πολιτική διαγραφής μετά το τέλος της ενοικίασης). |
+| 🟠 PCI DSS | Με αποθήκευση πλήρους αριθμού κάρτας η εταιρία μπαίνει σε πλήρες πεδίο PCI DSS (κρυπτογράφηση ✅, ρόλος ✅· απομένουν: διαχείριση/εναλλαγή κλειδιού, πολιτική διαγραφής μετά το τέλος της ενοικίασης). |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
-| 🟡 Χαμηλή | Η σελίδα `/login` βγάζει σφάλματα hydration του React (#425/#418) στον browser — υπήρχαν πριν τα Συμβόλαια, δεν επηρεάζουν τη σύνδεση. |
+| ✅ Ολοκληρώθηκε | ~~Σφάλματα hydration στο `/login`~~ → διορθώθηκαν στο Audit 10/2026 (§5). |
 | 🟡 Χαμηλή | Το `09-platform-discounts` να επιβεβαιωθεί ότι έτρεξε (§6). |
 | 🟡 Χαμηλή | Το `08` να επιβεβαιωθεί ότι έτρεξε (§6). |
 

@@ -520,7 +520,7 @@ export default function SuperAdminDashboard() {
         />
       )}
 
-      <style>{superAdminStyles}</style>
+      <style dangerouslySetInnerHTML={{ __html: superAdminStyles }} />
     </div>
   );
 }

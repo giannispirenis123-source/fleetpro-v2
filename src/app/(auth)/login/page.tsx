@@ -201,7 +201,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <style>{loginStyles}</style>
+      <style dangerouslySetInnerHTML={{ __html: loginStyles }} />
     </div>
   );
 }

@@ -139,13 +139,20 @@ export function checkoutLocale(lang: string | null | undefined): "el" | "en" | "
    ───────────────────────────────────────────── */
 
 export interface PaymentHold {
+  /** Κατάσταση κράτησης· μόνο η PENDING αποδεσμεύει το όχημα όταν λήξει η αναμονή. */
+  status?: string;
   paymentStatus?: string | null;
   /** ms (πραγματική στιγμή) */
   paymentExpiresMs?: number | null;
 }
 
-/** Η αναμονή πληρωμής έχει λήξει (άρα ΔΕΝ κρατά πια το όχημα); */
+/**
+ * Η αναμονή πληρωμής έχει λήξει (άρα ΔΕΝ κρατά πια το όχημα);
+ * Κράτηση που επιβεβαιώθηκε (CONFIRMED/ACTIVE) κρατά το όχημα ό,τι κι αν
+ * έγινε με την πληρωμή — την αποδεσμεύει μόνο η ακύρωση.
+ */
 export function holdExpired(b: PaymentHold, nowMs: number): boolean {
+  if (b.status !== undefined && b.status !== "PENDING") return false;
   return b.paymentStatus === "AWAITING_PAYMENT" && typeof b.paymentExpiresMs === "number" && b.paymentExpiresMs <= nowMs;
 }
 
@@ -154,7 +161,7 @@ export function holdExpired(b: PaymentHold, nowMs: number): boolean {
  * (Για όλα τα ερωτήματα συγκρούσεων: site, dashboard, walk-in.)
  */
 export const notExpiredHold = (now: Date) => ({
-  NOT: { paymentStatus: "AWAITING_PAYMENT", paymentExpiresAt: { lte: now } },
+  NOT: { status: "PENDING" as const, paymentStatus: "AWAITING_PAYMENT", paymentExpiresAt: { lte: now } },
 });
 
 /* ─────────────────────────────────────────────
@@ -284,7 +291,21 @@ export const RETAIN_MSG = {
   notFound: "Η κράτηση δεν βρέθηκε",
   notCancelled: "Το υπόλοιπο κρατείται μόνο σε ακυρωμένη κράτηση.",
   nothing: "Δεν υπάρχει υπόλοιπο πληρωμής χωρίς απόφαση.",
+  changed: "Η πληρωμή άλλαξε στο μεταξύ. Ανανεώστε τη σελίδα και δοκιμάστε ξανά.",
 } as const;
+
+/**
+ * Φίλτρο της εγγραφής «κρατείται»: γράφει ΜΟΝΟ αν η πληρωμή είναι ακόμα όπως
+ * τη διαβάσαμε — αλλιώς μια ταυτόχρονη επιστροφή θα έδινε refunded + retained > amount.
+ */
+export const retainWhere = (p: { id: string; tenantId: string; bookingId: string; refundedCents: number; retainedCents: number }) => ({
+  id: p.id,
+  tenantId: p.tenantId,
+  bookingId: p.bookingId,
+  status: { in: ["PAID", "PARTIALLY_REFUNDED"] },
+  refundedCents: p.refundedCents,
+  retainedCents: p.retainedCents,
+});
 
 export const RETAIN_NOTE_MAX = 300;
 
@@ -301,6 +322,23 @@ export function checkRetain(
   const add = payment ? outstandingCents(payment) : 0;
   if (!payment || add <= 0) return { ok: false, status: 400, message: RETAIN_MSG.nothing };
   return { ok: true, retainedCents: (payment.retainedCents ?? 0) + add, addedCents: add };
+}
+
+/**
+ * Η γραμμή πληρωμής μετά από επιστροφή amountCents, από την ΤΡΕΧΟΥΣΑ (κλειδωμένη)
+ * εγγραφή — ώστε δύο ταυτόχρονες επιστροφές να αθροίζονται, όχι να σβήνει η μία
+ * την άλλη. Ποτέ πάνω από το ποσό της πληρωμής.
+ */
+export function refundRowAfter(
+  fresh: PaymentRowState,
+  amountCents: number
+): { refundedCents: number; retainedCents: number; status: "REFUNDED" | "PARTIALLY_REFUNDED" } {
+  const refundedCents = Math.min(fresh.amountCents, fresh.refundedCents + amountCents);
+  return {
+    refundedCents,
+    retainedCents: retainedAfterRefund(fresh, refundedCents),
+    status: refundedCents >= fresh.amountCents ? "REFUNDED" : "PARTIALLY_REFUNDED",
+  };
 }
 
 /** Πόσο μπορεί ακόμα να επιστραφεί από μια πληρωμή (cents). */

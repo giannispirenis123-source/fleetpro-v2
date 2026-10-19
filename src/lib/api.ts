@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest, JWTPayload } from "./auth";
+import { loadViewer, type Viewer } from "./viewer";
 
 // Standard API responses
 export function ok<T>(data: T, status = 200) {
@@ -52,28 +53,47 @@ export function serverError(message = "Εσωτερικό σφάλμα διακ�
 type RouteHandler = (
   req: NextRequest,
   session: JWTPayload,
-  params?: Record<string, string>
+  params?: Record<string, string>,
+  /** Ο χρήστης όπως είναι ΤΩΡΑ στη βάση (ενεργός, εταιρία όχι σε αναστολή). */
+  viewer?: Viewer
 ) => Promise<NextResponse>;
 
+/**
+ * Φύλακας API: έγκυρο token ΚΑΙ ο χρήστης στη βάση ενεργός, η εταιρία του όχι
+ * σε αναστολή/ακυρωμένη. Ο ρόλος ελέγχεται από τη ΒΑΣΗ (όχι από το JWT), ώστε
+ * απενεργοποίηση ή αλλαγή ρόλου να ισχύει αμέσως. Ένα διάβασμα χρήστη ανά αίτημα.
+ */
 export function withAuth(handler: RouteHandler, roles?: string[]) {
   return async (req: NextRequest, context?: { params?: Record<string, string> }) => {
     try {
       const session = await getSessionFromRequest(req);
+      if (!session) return unauthorized();
 
-      if (!session) {
-        return unauthorized();
-      }
+      const viewer = await loadViewer(session);
+      if (!viewer) return unauthorized();
 
-      if (roles && !roles.includes(session.role)) {
+      if (roles && !roles.includes(viewer.role)) {
         return forbidden();
       }
 
-      return handler(req, session, context?.params);
+      return await handler(req, { ...session, role: viewer.role }, context?.params, viewer);
     } catch (error) {
-      console.error("API Error:", error);
+      logError("API", error);
       return serverError();
     }
   };
+}
+
+/**
+ * Σφάλμα στα logs ΧΩΡΙΣ προσωπικά δεδομένα: μόνο όνομα/κωδικό (π.χ. Prisma
+ * P2002 και τα πεδία του constraint) — ποτέ το μήνυμα, που μπορεί να έχει
+ * τιμές πελατών (email, τηλέφωνα, υπογραφές).
+ */
+export function logError(tag: string, error: unknown): void {
+  const e = (error && typeof error === "object" ? error : {}) as { name?: unknown; code?: unknown; meta?: { target?: unknown } };
+  const parts = [typeof e.name === "string" ? e.name : typeof error, typeof e.code === "string" ? e.code : null];
+  const target = e.meta && Array.isArray(e.meta.target) ? e.meta.target.join(",") : null;
+  console.error(`[FleetPro] ${tag}: ${parts.filter(Boolean).join(" ")}${target ? ` (${target})` : ""}`);
 }
 
 // Tenant isolation check

@@ -2830,3 +2830,34 @@ input.dash-invalid,
 @media (max-width: 600px) {
   .dash-place-detail-row { grid-template-columns: 1fr; }
 }
+
+/* ---------- Online πληρωμή (Stripe Connect) ---------- */
+.dash-booking-pay { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.dash-booking-pay .dash-badge { display: inline-flex; align-items: center; gap: 5px; }
+.dash-link { display: inline-flex; align-items: center; gap: 3px; color: var(--primary); font-size: 12.5px; font-weight: 600; text-decoration: none; }
+.dash-link:hover { text-decoration: underline; }
+.dash-radio-list { display: grid; gap: 8px; margin: 10px 0; }
+.dash-form-ok {
+  padding: 10px 12px; border-radius: 9px; font-size: 13px;
+  background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); color: var(--ok-fg);
+}
+.dash-form-warn {
+  margin-top: 12px; padding: 10px 12px; border-radius: 9px; font-size: 13px;
+  background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); color: var(--warn-fg, #92400e);
+}
+.dash-form-error-inline { color: var(--bad-fg); font-size: 12px; font-weight: 600; }
+.dash-field.is-invalid input { border-color: var(--bad-fg); }
+.dash-pay-status { display: grid; gap: 10px; }
+.dash-pay-status-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.dash-pay-options { display: grid; gap: 8px; }
+.dash-pay-option {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+}
+.dash-pay-option.is-on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+.dash-pay-option small { grid-column: 2; color: var(--text-3); font-size: 12px; }
+.dash-pay-option input { margin-top: 3px; accent-color: var(--primary); }
+.dash-pay-option.is-disabled { opacity: 0.55; cursor: not-allowed; }
+.dash-pay-options + .dash-section-title,
+.dash-pay-options + .dash-alert + .dash-section-title,
+.dash-alert + .dash-section-title { margin-top: 20px; }

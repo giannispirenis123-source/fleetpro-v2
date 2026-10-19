@@ -23,7 +23,8 @@ import type { VehicleType } from "@/lib/public/pricing";
 import type { SearchCriteria, SearchProblem, SearchRules } from "@/lib/public/search";
 import SearchBox, { type SearchAgeOption, type SearchLocationOption } from "./SearchBox";
 import BookingForm from "./BookingForm";
-import { CopyCode, PrintButton } from "./ConfirmActions";
+import { CopyCode, PaymentPoll, PrintButton } from "./ConfirmActions";
+import { paymentHeadline } from "@/lib/storefront/paymentText";
 import { cancelReasonText } from "@/lib/bookingMessages";
 import type { PublicPlace, PublicPlaceCard } from "@/lib/public/places";
 import type { ReviewSection } from "@/lib/public/reviews";
@@ -489,6 +490,14 @@ export interface BookFormData {
   insurance: PublicInsuranceOption[];
   initialQuote: PublicQuote;
   needsFlight: boolean;
+  /** Οι τρόποι πληρωμής που ΙΣΧΥΟΥΝ (ο server τους ξαναελέγχει) + πόσο χρεώνεται online. */
+  payment: BookFormPayment;
+}
+
+export interface BookFormPayment {
+  methods: ("ONLINE" | "PICKUP")[];
+  amountType: string;
+  depositPercent: number;
 }
 
 export function StorefrontBook({
@@ -582,7 +591,47 @@ export function StorefrontBook({
    /s/<slug>/<lang>/booking/<code> — επιβεβαίωση
    ───────────────────────────────────────────── */
 
-export function StorefrontConfirmation({ company, lang, b }: { company: PublicCompany; lang: string; b: ConfirmationDTO }) {
+/** Η κατάσταση της online πληρωμής στη σελίδα της κράτησης. */
+function PaymentStatusBox({ p, lang, d, justPaid }: { p: NonNullable<ConfirmationDTO["payment"]>; lang: string; d: StorefrontDictionary; justPaid: boolean }) {
+  const head = paymentHeadline(p, d, lang);
+  if (p.badge === "AWAITING") {
+    const until = p.expiresAt
+      ? new Intl.DateTimeFormat(lang === "el" ? "el-GR" : "en-GB", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit" }).format(new Date(p.expiresAt))
+      : "";
+    return (
+      <div className="sf-pay-status is-wait" role="status">
+        <strong>{justPaid ? d.payChecking : head.text}</strong>
+        {!justPaid && until && <p>{fill(d.payStatusAwaitingText, { time: until })}</p>}
+        {!justPaid && p.checkoutUrl && (
+          <a className="sf-btn sf-btn--primary" href={p.checkoutUrl}>
+            {d.payContinue} · {formatCents(p.amountCents, lang)}
+          </a>
+        )}
+        {/* Ο server ρωτά και το Stripe σε κάθε ανανέωση (όριο 1/10΄΄) — το PAID ΠΟΤΕ από το URL. */}
+        <PaymentPoll everyMs={justPaid ? 3000 : 10000} maxTimes={justPaid ? 20 : 180} />
+      </div>
+    );
+  }
+  return (
+    <div className={`sf-pay-status is-${head.tone}`} role="status">
+      <strong>{head.text}</strong>
+      {head.tone === "bad" && <p>{d.payNotCompletedText}</p>}
+    </div>
+  );
+}
+
+export function StorefrontConfirmation({
+  company,
+  lang,
+  b,
+  justPaid = false,
+}: {
+  company: PublicCompany;
+  lang: string;
+  b: ConfirmationDTO;
+  /** Επιστροφή από το Stripe (?paid=1) — ΜΟΝΟ για το μήνυμα «επιβεβαιώνουμε»· το PAID έρχεται από το webhook. */
+  justPaid?: boolean;
+}) {
   const d = storefrontDictionary(lang);
   const ctx: Ctx = { company, lang, d };
   const texts = bookingTexts(company.rentalMode);
@@ -608,6 +657,8 @@ export function StorefrontConfirmation({ company, lang, b }: { company: PublicCo
           {b.status === "PENDING" && <p className="sf-small">{pick(texts.next)}</p>}
           {(b.status === "CONFIRMED" || b.status === "ACTIVE") && <p className="sf-small">{d.confirmedNext}</p>}
         </div>
+
+        {b.payment && <PaymentStatusBox p={b.payment} lang={lang} d={d} justPaid={justPaid} />}
 
         {b.status === "CANCELLED" && (
           <div className="sf-book-panel sf-confirm-cancelled" role="status">
@@ -682,7 +733,8 @@ export function StorefrontConfirmation({ company, lang, b }: { company: PublicCo
                 </ul>
               )}
             </div>
-            <p className="sf-bk-pay">{d.payAtPickup}</p>
+            {/* Online κράτηση: η πληρωμή φαίνεται πάνω (PaymentStatusBox) — ΠΟΤΕ «στην παραλαβή». */}
+            {!b.payment && <p className="sf-bk-pay">{d.payAtPickup}</p>}
           </div>
         </div>
 

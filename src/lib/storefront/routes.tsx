@@ -18,6 +18,8 @@ import { publicFormQuote, needsFlight } from "../public/bookingSubmit";
 import { extraOptions, insuranceOptions, toPublicQuote } from "../public/bookingView";
 import { loadConfirmation } from "../public/bookingLookup";
 import { loadReviewSection, loadSitePlace, loadSitePlaces } from "../public/placesServer";
+import { loadSitePayment } from "../public/paymentServer";
+import { availableMethods } from "../public/payments";
 import { hitLimit, LIMITS } from "../public/rateLimit";
 import { dbCounterStore } from "../public/rateLimitStore";
 import {
@@ -282,6 +284,7 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
     const l = slug ? cat.locations.find((x) => x.slug === slug) : null;
     return l ? textFor(l.name, lang) || l.slug : null;
   };
+  const pay = bookable ? await loadSitePayment(companyId) : null;
   const band = criteria.age !== null ? cat.ageBands.find((b) => criteria.age! >= b.minAge && criteria.age! <= b.maxAge) : cat.ageBands.find((b) => b.isDefault);
   const problem = problems.length > 0 ? (lang === "el" ? problems[0].message.el : problems[0].message.en) : null;
 
@@ -309,6 +312,11 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
               insurance: insuranceOptions(cat.ctx, card.type, lang, q.days),
               initialQuote: toPublicQuote(q),
               needsFlight: needsFlight(cat, criteria.pl, criteria.dl),
+              payment: {
+                methods: availableMethods(pay?.options ?? "PICKUP_ONLY"),
+                amountType: pay?.settings.onlineAmountType ?? "FULL",
+                depositPercent: pay?.settings.depositPercent ?? 100,
+              },
             }
           : null
       }
@@ -325,14 +333,21 @@ export async function storefrontConfirmationMetadata(p: StorefrontParams & { cod
   return { title: `${company.name}`, robots: { index: false, follow: false } };
 }
 
-export async function StorefrontConfirmationPage({ params }: { params: StorefrontParams & { code: string } }) {
+export async function StorefrontConfirmationPage({
+  params,
+  searchParams = {},
+}: {
+  params: StorefrontParams & { code: string };
+  searchParams?: SearchParams;
+}) {
   const { company, companyId, lang } = await openStorefront(params.slug, params.lang);
   // Όριο αιτημάτων ανά client (hash του IP, όχι IP) — κατά της μαντεψιάς κωδικών.
   const ip = (headers().get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
   if (!(await hitLimit(dbCounterStore, LIMITS.confirmationPerClient, ip))) notFound();
-  const b = await loadConfirmation(companyId, params.code, lang);
+  const justPaid = first(searchParams.paid) === "1";
+  const b = await loadConfirmation(companyId, params.code, lang, justPaid);
   if (!b) notFound();
-  return <StorefrontConfirmation company={company} lang={lang} b={b} />;
+  return <StorefrontConfirmation company={company} lang={lang} b={b} justPaid={justPaid} />;
 }
 
 /* ─────────────────────────────────────────────

@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { submitPublicBooking } from "@/lib/public/bookingSubmit";
+import { publicOrigin } from "@/lib/bookingDecisionServer";
 
 const NO_STORE = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 
@@ -14,7 +15,7 @@ const NO_STORE = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    const r = await submitPublicBooking(body);
+    const r = await submitPublicBooking(body, new Date(), publicOrigin(req));
     if (r.ok) return NextResponse.json({ success: true, data: { code: r.code, url: r.url } }, { status: 201, headers: NO_STORE });
     return NextResponse.json(
       { success: false, message: r.message, fieldErrors: r.fieldErrors ?? [], ageUpdate: r.ageUpdate ?? null },

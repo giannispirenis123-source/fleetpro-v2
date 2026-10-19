@@ -63,6 +63,8 @@ interface Tenant {
   logoUrl?: string;
   trialEndsAt?: string;
   createdAt: string;
+  /** Προμήθεια πλατφόρμας στις online πληρωμές (basis points). */
+  platformFeeBps?: number;
   _count: {
     users: number;
     vehicles: number;
@@ -1666,17 +1668,22 @@ function EditTenantModal({
     brandColor: tenant.brandColor,
     website: "",
     customDomain: "",
+    // % με έως 2 δεκαδικά (π.χ. «1,5») ↔ basis points στη βάση.
+    platformFee: String((tenant.platformFeeBps ?? 0) / 100).replace(".", ","),
   });
   const [loading, setLoading] = useState(false);
+  const feeBps = Math.round(Number(form.platformFee.trim().replace(",", ".") || "0") * 100);
+  const feeValid = Number.isInteger(feeBps) && feeBps >= 0 && feeBps <= 5000;
 
   const handleSubmit = async () => {
     setLoading(true);
     try {
       // Τα website/customDomain δεν φορτώνονται στη φόρμα: κενά = «δεν
       // αλλάζουν» (αλλιώς θα σβήνονταν, και το customDomain είναι UNIQUE).
-      const { website, customDomain, ...rest } = form;
+      const { website, customDomain, platformFee: _fee, ...rest } = form;
       const payload = {
         ...rest,
+        platformFeeBps: feeBps,
         ...(website.trim() && { website: website.trim() }),
         ...(customDomain.trim() && { customDomain: customDomain.trim() }),
       };
@@ -1732,11 +1739,16 @@ function EditTenantModal({
             </label>
             <label>Custom Domain<input value={form.customDomain} onChange={e => setForm(f => ({...f, customDomain: e.target.value}))} placeholder="mycompany.gr" /></label>
             <label>Website (embed)<input value={form.website} onChange={e => setForm(f => ({...f, website: e.target.value}))} placeholder="https://mycompany.gr" /></label>
+            <label>
+              Προμήθεια πλατφόρμας στις online πληρωμές (%)
+              <input inputMode="decimal" value={form.platformFee} onChange={e => setForm(f => ({...f, platformFee: e.target.value}))} placeholder="0" aria-invalid={!feeValid} />
+              <small>0 = καμία προμήθεια. Έως 50%. Δεν τη βλέπει η εταιρία.</small>
+            </label>
           </div>
         </div>
         <div className="sa-modal-footer">
           <button className="sa-btn-ghost" onClick={onClose}>Ακύρωση</button>
-          <button className="sa-btn-primary" onClick={handleSubmit} disabled={loading}>
+          <button className="sa-btn-primary" onClick={handleSubmit} disabled={loading || !feeValid}>
             {loading ? "Αποθήκευση..." : "Αποθήκευση"}
           </button>
         </div>

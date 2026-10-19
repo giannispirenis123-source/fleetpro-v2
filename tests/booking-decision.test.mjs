@@ -428,7 +428,7 @@ test("σελίδα πελάτη: σωστή κατάσταση, λόγος ΜΟ�
   for (const leak of ["6900000000", "LO 123", "Arriving", "maria.k@", "Kowalska"]) assert.ok(!json.includes(leak), `διαρροή: ${leak}`);
   assert.deepEqual(Object.keys(c).sort(), [
     "cancelNote", "cancelReasonCode", "code", "depositCents", "excessCents", "firstName", "from", "groupName", "groupSimilar",
-    "insurance", "lines", "listTotalCents", "maskedEmail", "photoUrl", "pickupLocation", "returnLocation", "status", "to", "totalCents", "vatCents",
+    "insurance", "lines", "listTotalCents", "maskedEmail", "payment", "photoUrl", "pickupLocation", "returnLocation", "status", "to", "totalCents", "vatCents",
   ]);
 });
 

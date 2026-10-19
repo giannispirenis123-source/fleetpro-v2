@@ -127,7 +127,53 @@ export interface BookingDTO {
   /** Ποιος χρήστης καταχώρησε την κράτηση· null στις παλιές. */
   createdById: string | null;
   createdByName: string | null;
+
+  /** Πληρωμή (SQL 27): NULL = κράτηση dashboard/παλιά· PICKUP | ONLINE. */
+  paymentMethod: string | null;
+  paymentStatus: string;
+  paymentExpiresAt: string | null;
+  /**
+   * Η online πληρωμή (η τελευταία Checkout Session). undefined = το ερώτημα
+   * δεν τη φόρτωσε (ο client κρατά την προηγούμενη)· null = καμία.
+   */
+  payment?: BookingPaymentDTO | null;
 }
+
+export interface BookingPaymentDTO {
+  status: string;
+  amountCents: number;
+  refundedCents: number;
+  /** Κρατήθηκε ως χρέωση ακύρωσης (SQL 28). */
+  retainedCents: number;
+  paymentIntentId: string | null;
+}
+
+/** Το include του Prisma για την online πληρωμή στο DTO (η πιο πρόσφατη). */
+export const BOOKING_PAYMENT_INCLUDE = {
+  orderBy: { createdAt: "desc" as const },
+  take: 1,
+  select: { status: true, amountCents: true, refundedCents: true, retainedCents: true, stripePaymentIntentId: true },
+};
+
+/** Ό,τι χρειάζεται το toBookingDTO (για τις απαντήσεις των ενεργειών πληρωμής). */
+export const BOOKING_DTO_INCLUDE = {
+  vehicle: { select: { brand: true, model: true, plate: true } },
+  customer: { select: { firstName: true, lastName: true } },
+  invoice: { select: { invoiceNumber: true, invoiceCode: true } },
+  partner: {
+    select: {
+      id: true,
+      name: true,
+      commissionRate: true,
+      commissionOnRental: true,
+      commissionOnExtras: true,
+      commissionOnInsurance: true,
+    },
+  },
+  createdBy: { select: { id: true, name: true } },
+  messages: { select: { kind: true, channel: true, result: true } },
+  payments: BOOKING_PAYMENT_INCLUDE,
+};
 
 type BookingWithRelations = Booking & {
   vehicle: Pick<Vehicle, "brand" | "model" | "plate">;
@@ -146,6 +192,8 @@ type BookingWithRelations = Booking & {
   createdBy?: { id: string; name: string } | null;
   /** Προαιρετικό: οι αποστολές μηνυμάτων (μόνο είδος/κανάλι/αποτέλεσμα). */
   messages?: { kind: string; channel: string; result: string }[];
+  /** Προαιρετικό: η πιο πρόσφατη online πληρωμή (BOOKING_PAYMENT_INCLUDE). */
+  payments?: { status: string; amountCents: number; refundedCents: number; retainedCents?: number; stripePaymentIntentId: string | null }[];
 };
 
 const toDateInput = (d: Date): string => d.toISOString().slice(0, 10);
@@ -208,6 +256,23 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
       cancel: messageState(b.messages ?? [], "cancel"),
     },
     invoiceNumber: b.invoice ? displayInvoiceCode(b.invoice) : null,
+
+    paymentMethod: b.paymentMethod ?? null,
+    paymentStatus: b.paymentStatus ?? "NONE",
+    paymentExpiresAt: b.paymentExpiresAt ? b.paymentExpiresAt.toISOString() : null,
+    ...(b.payments
+      ? {
+          payment: b.payments[0]
+            ? {
+                status: b.payments[0].status,
+                amountCents: b.payments[0].amountCents,
+                refundedCents: b.payments[0].refundedCents,
+                retainedCents: b.payments[0].retainedCents ?? 0,
+                paymentIntentId: b.payments[0].stripePaymentIntentId,
+              }
+            : null,
+        }
+      : {}),
 
     partnerId: b.partnerId,
     partnerName: b.partner?.name ?? null,

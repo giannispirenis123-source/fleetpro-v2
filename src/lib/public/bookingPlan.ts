@@ -105,6 +105,7 @@ export function planSiteBooking(
     to: criteria.to,
     prepMinutes: cat.prepTimeMinutes,
     now: nowLocal(cat.rules.timezone, now),
+    instantMs: now.getTime(),
   };
   const free = freeVehicleIds(availability, req.key);
   if (free.length === 0 || (countAvailableByGroup(availability).get(req.key) ?? 0) === 0) {

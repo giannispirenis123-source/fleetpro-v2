@@ -11,6 +11,7 @@
 // Κανένα ποσό δεν διαβάζεται από τον browser: δεν υπάρχει καν πεδίο ποσού.
 
 import { z } from "zod";
+import { paymentBadge, type PaymentBadge } from "./payments";
 import { ageAt } from "./engine";
 import type { QuoteLine } from "./pricing";
 import type { LocalizedText } from "./text";
@@ -103,6 +104,8 @@ export const publicBookingSchema = z.object({
   flightNumber: z.string().max(12).optional().default(""),
   notes: z.string().max(NOTES_MAX * 2).optional().default(""),
   acceptTerms: z.boolean(),
+  /** Τρόπος πληρωμής — υποχρεωτικός ΜΟΝΟ όταν η εταιρία δέχεται και τους δύο (ελέγχει ο server). */
+  paymentMethod: z.enum(["ONLINE", "PICKUP"]).nullable().optional(),
   /** Honeypot: κρυφό πεδίο — άνθρωπος δεν το βλέπει, bot το γεμίζει. */
   website: z.string().max(200).optional().default(""),
 });
@@ -293,6 +296,35 @@ export interface ConfirmationSource {
   photoUrl: string | null;
   cancelReasonCode?: string | null;
   cancelNote?: string | null;
+  /** Online πληρωμή (SQL 27) — προαιρετικά. */
+  paymentMethod?: string | null;
+  paymentStatus?: string | null;
+  paymentExpiresAt?: Date | null;
+  /** Η πιο πρόσφατη Checkout Session. */
+  payment?: {
+    status: string;
+    amountCents: number;
+    refundedCents: number;
+    retainedCents?: number;
+    checkoutUrl: string | null;
+    expiresAt: Date | null;
+  } | null;
+}
+
+/** Η πληρωμή όπως τη βλέπει ο πελάτης — ΜΟΝΟ ποσά και κατάσταση. */
+export interface ConfirmationPayment {
+  badge: PaymentBadge;
+  /** Το ποσό της online χρέωσης (πληρωμένο ή αναμενόμενο). */
+  amountCents: number;
+  refundedCents: number;
+  /** Κρατήθηκε ως χρέωση ακύρωσης. */
+  retainedCents: number;
+  /** Υπόλοιπο στην παραλαβή (0 σε ακυρωμένη). */
+  balanceCents: number;
+  /** ΜΟΝΟ όσο η συνεδρία του Stripe δεν έχει λήξει. */
+  checkoutUrl: string | null;
+  /** ISO — ως πότε κρατιέται η κράτηση. */
+  expiresAt: string | null;
 }
 
 export interface ConfirmationDTO {
@@ -318,6 +350,8 @@ export interface ConfirmationDTO {
   cancelNote: string | null;
   /** Το επίπεδο ασφάλειας από το ΑΠΟΘΗΚΕΥΜΕΝΟ priceQuote — null = χωρίς πρόσθετη. */
   insurance: { name: LocalizedText; coverages: LocalizedText[] } | null;
+  /** null = πληρωμή στην παραλαβή χωρίς online (όπως πριν). */
+  payment: ConfirmationPayment | null;
 }
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -326,7 +360,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
  * Από την κράτηση στη σελίδα επιβεβαίωσης. Η τιμή ΑΠΟ το αποθηκευμένο
  * priceQuote (όχι νέος υπολογισμός). Ποτέ τηλέφωνο, ηλικία, σχόλια, πτήση.
  */
-export function toConfirmationDTO(b: ConfirmationSource): ConfirmationDTO {
+export function toConfirmationDTO(b: ConfirmationSource, nowMs: number = Date.now()): ConfirmationDTO {
   const q = (b.priceQuote && typeof b.priceQuote === "object" ? b.priceQuote : {}) as {
     quote?: { lines?: QuoteLine[]; listTotalCents?: number; vatCents?: number; depositCents?: number | null; excessCents?: number | null };
     totalCents?: number;
@@ -354,5 +388,24 @@ export function toConfirmationDTO(b: ConfirmationSource): ConfirmationDTO {
     cancelReasonCode: b.status === "CANCELLED" ? b.cancelReasonCode ?? null : null,
     cancelNote: b.status === "CANCELLED" ? b.cancelNote ?? null : null,
     insurance: ins ? { name: ins.name, coverages: ins.coverages } : null,
+    payment: confirmationPayment(b, typeof q.totalCents === "number" ? q.totalCents : Math.round(Number(b.total) * 100), nowMs),
+  };
+}
+
+function confirmationPayment(b: ConfirmationSource, totalCents: number, nowMs: number): ConfirmationPayment | null {
+  if (b.paymentMethod !== "ONLINE") return null;
+  const expiresMs = b.paymentExpiresAt ? b.paymentExpiresAt.getTime() : null;
+  const badge = paymentBadge({ paymentMethod: b.paymentMethod, paymentStatus: b.paymentStatus ?? "NONE" }, nowMs, expiresMs);
+  const p = b.payment ?? null;
+  const amount = p?.amountCents ?? 0;
+  const live = badge === "AWAITING" && p?.status === "OPEN" && !!p.expiresAt && p.expiresAt.getTime() > nowMs;
+  return {
+    badge,
+    amountCents: amount,
+    refundedCents: p?.refundedCents ?? 0,
+    retainedCents: p?.retainedCents ?? 0,
+    balanceCents: badge === "PAID" && b.status !== "CANCELLED" ? Math.max(0, totalCents - amount) : 0,
+    checkoutUrl: live && p?.checkoutUrl && /^https:\/\/checkout\.stripe\.com\//.test(p.checkoutUrl) ? p.checkoutUrl : null,
+    expiresAt: badge === "AWAITING" && expiresMs ? new Date(expiresMs).toISOString() : null,
   };
 }

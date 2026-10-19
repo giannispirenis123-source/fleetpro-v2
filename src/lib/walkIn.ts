@@ -7,6 +7,7 @@
 // Server-only: εισάγει db.
 
 import { z } from "zod";
+import { notExpiredHold } from "./public/payments";
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
 import type { Viewer } from "./authz";
@@ -225,6 +226,8 @@ export async function loadWalkInVehicles(
         status: { in: CONFLICT_STATUSES as never[] },
         returnDate: { gte: from },
         pickupDate: { lte: until },
+        // Ληγμένη αναμονή online πληρωμής: δεν κρατά πια το όχημα.
+        ...notExpiredHold(new Date()),
       },
       select: {
         id: true,

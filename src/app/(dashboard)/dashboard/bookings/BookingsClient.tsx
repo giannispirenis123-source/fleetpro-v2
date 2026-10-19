@@ -29,10 +29,14 @@ import {
   CheckCircle2,
   MessageCircle,
   MapPin,
+  Undo2,
+  RefreshCw,
+  Lock,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import { kindForStatus } from "@/lib/bookingMessages";
-import { DecisionModal, MessageModal } from "./BookingDecision";
+import { DecisionModal, MessageModal, PaymentInfo, RefundModal, RetainModal, outstandingOf, refundableOf } from "./BookingDecision";
+import { isCheckable } from "@/lib/public/payments";
 import {
   BOOKING_STATUSES,
   BOOKING_STATUS_CLASS,
@@ -203,6 +207,7 @@ export default function BookingsClient({
   prepMinutes,
   roundUpTotal,
   role,
+  stripeLive = false,
   partners,
   currentUserId,
   myCommission,
@@ -220,6 +225,8 @@ export default function BookingsClient({
   prepMinutes: number;
   roundUpTotal: boolean;
   role: string;
+  /** Test ή live κλειδιά Stripe — για τα links προς τον πίνακα Stripe. */
+  stripeLive?: boolean;
   /** Οι ενεργοί συνεργάτες της εταιρίας, για το dropdown της φόρμας. */
   partners: PartnerOption[];
   /** Ο τρέχων χρήστης — για το φίλτρο «οι κρατήσεις μου». */
@@ -252,6 +259,34 @@ export default function BookingsClient({
     ? tr("bookings.addRequest")
     : tr("bookings.addBooking");
 
+  const [refunding, setRefunding] = useState<BookingDTO | null>(null);
+  const [retaining, setRetaining] = useState<BookingDTO | null>(null);
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [checkNotice, setCheckNotice] = useState<{ id: string; text: string; bad: boolean } | null>(null);
+
+  // «Έλεγχος πληρωμής στο Stripe»: ίδια μετάβαση με το webhook, στον server.
+  const checkPayment = async (b: BookingDTO) => {
+    setCheckingId(b.id);
+    setCheckNotice(null);
+    try {
+      const res = await fetch(`/api/bookings/${b.id}/payment-check`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setCheckNotice({ id: b.id, text: body.message ?? tr("bookings.errorSave"), bad: true });
+      else {
+        if (body.data?.booking) upsert(body.data.booking);
+        const o = body.data?.outcome;
+        setCheckNotice({
+          id: b.id,
+          text: tr(o === "applied" ? "decision.checkApplied" : o === "amount_mismatch" || o === "mismatch" || o === "unknown_account" ? "decision.checkMismatch" : "decision.checkNoChange"),
+          bad: o === "amount_mismatch" || o === "mismatch" || o === "unknown_account",
+        });
+      }
+    } catch {
+      setCheckNotice({ id: b.id, text: tr("bookings.errorConnection"), bad: true });
+    } finally {
+      setCheckingId(null);
+    }
+  };
   const [bookings, setBookings] = useState<BookingDTO[]>(initialBookings);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>(initialStatus ?? "ALL");
@@ -332,8 +367,10 @@ export default function BookingsClient({
   const upsert = (booking: BookingDTO) =>
     setBookings((prev) => {
       const exists = prev.some((b) => b.id === booking.id);
+      // Απαντήσεις που δεν φορτώνουν την πληρωμή (undefined) κρατούν την προηγούμενη.
+      const merge = (b: BookingDTO) => (booking.payment === undefined ? { ...booking, payment: b.payment } : booking);
       return exists
-        ? prev.map((b) => (b.id === booking.id ? booking : b))
+        ? prev.map((b) => (b.id === booking.id ? merge(b) : b))
         : [booking, ...prev];
     });
 
@@ -437,11 +474,38 @@ export default function BookingsClient({
               onCancel={() => setCancelling(b)}
               onConfirm={() => setConfirming(b)}
               onMessage={() => setMessaging(b)}
+              stripeLive={stripeLive}
+              onRefund={isAdmin && refundableOf(b) > 0 ? () => setRefunding(b) : undefined}
+              onRetain={canManage && outstandingOf(b) > 0 ? () => setRetaining(b) : undefined}
+              retainAllowed={isAdmin}
+              onCheckPayment={canManage && isCheckable(b) ? () => checkPayment(b) : undefined}
+              checkingPayment={checkingId === b.id}
+              checkNotice={checkNotice?.id === b.id ? checkNotice : null}
               issuing={issuingId === b.id}
               onIssueInvoice={() => issueInvoice(b)}
             />
           ))}
         </div>
+      )}
+
+      {retaining && (
+        <RetainModal
+          booking={retaining}
+          tr={tr}
+          locale={locale}
+          onClose={() => setRetaining(null)}
+          onDone={(booking) => booking && upsert(booking)}
+        />
+      )}
+
+      {refunding && (
+        <RefundModal
+          booking={refunding}
+          tr={tr}
+          locale={locale}
+          onClose={() => setRefunding(null)}
+          onDone={(booking) => booking && upsert(booking)}
+        />
       )}
 
       {showCreate && (
@@ -635,6 +699,13 @@ function BookingCard({
   onCancel,
   onConfirm,
   onMessage,
+  stripeLive,
+  onRefund,
+  onRetain,
+  retainAllowed,
+  onCheckPayment,
+  checkingPayment,
+  checkNotice,
   issuing,
   onIssueInvoice,
 }: {
@@ -648,6 +719,16 @@ function BookingCard({
   onCancel: () => void;
   onConfirm: () => void;
   onMessage: () => void;
+  stripeLive: boolean;
+  /** Μόνο Διαχειριστής, ακυρωμένη κράτηση με online πληρωμή που δεν επιστράφηκε όλη. */
+  onRefund?: () => void;
+  /** Ακυρωμένη πληρωμένη με υπόλοιπο χωρίς απόφαση· ο Υπάλληλος το βλέπει ανενεργό. */
+  onRetain?: () => void;
+  retainAllowed: boolean;
+  /** Online κράτηση σε αναμονή/λήξη/αποτυχία: ρωτά το Stripe (Διαχειριστής/Υπάλληλος). */
+  onCheckPayment?: () => void;
+  checkingPayment: boolean;
+  checkNotice: { text: string; bad: boolean } | null;
   issuing: boolean;
   onIssueInvoice: () => void;
 }) {
@@ -711,6 +792,8 @@ function BookingCard({
             <Plane size={13} /> {tr("bookings.flight")}: {b.flightNumber}
           </span>
         )}
+        <PaymentInfo booking={b} tr={tr} locale={locale} stripeLive={stripeLive} />
+        {checkNotice && <span className={`dash-badge dash-badge--${checkNotice.bad ? "bad" : "info"}`}>{checkNotice.text}</span>}
         {b.source === "site" && b.notes && (
           <span className="dash-booking-note">
             <MessageSquare size={13} /> {b.notes}
@@ -834,6 +917,26 @@ function BookingCard({
             {b.status === "PENDING" && (
               <button className="dash-btn dash-btn--primary dash-btn--sm" onClick={onConfirm}>
                 <CheckCircle2 size={15} /> {tr("decision.decisionConfirm")}
+              </button>
+            )}
+            {onCheckPayment && (
+              <button className="dash-btn dash-btn--sm" onClick={onCheckPayment} disabled={checkingPayment}>
+                <RefreshCw size={15} /> {tr("decision.checkButton")}
+              </button>
+            )}
+            {onRetain && (
+              <button
+                className="dash-btn dash-btn--sm"
+                onClick={retainAllowed ? onRetain : undefined}
+                disabled={!retainAllowed}
+                title={retainAllowed ? undefined : tr("decision.retainAdminOnly")}
+              >
+                <Lock size={15} /> {tr("decision.retainButton")}
+              </button>
+            )}
+            {onRefund && (
+              <button className="dash-btn dash-btn--danger dash-btn--sm" onClick={onRefund}>
+                <Undo2 size={15} /> {tr("decision.refundButton")}
               </button>
             )}
             {msgKind && (

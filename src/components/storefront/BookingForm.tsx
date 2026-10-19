@@ -15,6 +15,7 @@ import { fill, type StorefrontDictionary } from "@/lib/storefront/i18n";
 import { formatCents } from "@/lib/public/money";
 import { textFor } from "@/lib/public/text";
 import { PHONE_COUNTRIES, NOTES_MAX } from "@/lib/public/bookingRequest";
+import { paymentSplit, type PaymentMethod } from "@/lib/public/payments";
 import type { PublicExtraOption, PublicInsuranceOption, PublicQuote } from "@/lib/public/bookingView";
 
 type Msg = { el?: string; en?: string };
@@ -34,6 +35,8 @@ interface Props {
   insurance: PublicInsuranceOption[];
   initialQuote: PublicQuote;
   needsFlight: boolean;
+  /** Οι τρόποι πληρωμής που ισχύουν (ο server τους ξαναελέγχει) + πόσο χρεώνεται online. */
+  payment: { methods: PaymentMethod[]; amountType: string; depositPercent: number };
 }
 
 const DRAFT_KEY = "sf-book-draft";
@@ -62,7 +65,7 @@ const EMPTY: Contact = {
   acceptTerms: false,
 };
 
-export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, query, d, submitLabel, options, insurance, initialQuote, needsFlight }: Props) {
+export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, query, d, submitLabel, options, insurance, initialQuote, needsFlight, payment }: Props) {
   const t = (m: Msg | undefined) => (m ? textFor(m as Record<string, string>, lang) : "");
   const extrasOpts = options;
   const insuranceOpts = insurance;
@@ -79,6 +82,8 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
   const [formError, setFormError] = useState("");
   const [ageUpdate, setAgeUpdate] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Με ΔΥΟ τρόπους: καμία προεπιλογή (υποχρεωτική ρητή επιλογή). Με έναν: αυτός.
+  const [method, setMethod] = useState<PaymentMethod | null>(payment.methods.length === 1 ? payment.methods[0] : null);
   const firstRender = useRef(true);
 
   // Μετά την «Ενημέρωση τιμής» (νέα ηλικία στο URL) τα στοιχεία επιστρέφουν
@@ -151,6 +156,13 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+    if (!method) {
+      setErrors((x) => ({ ...x, paymentMethod: t({ el: "Διαλέξτε τρόπο πληρωμής.", en: "Choose a payment method." }) }));
+      const el = document.getElementById("bk-paymentMethod");
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      (el?.querySelector("input") as HTMLInputElement | null)?.focus({ preventScroll: true });
+      return;
+    }
     setSubmitting(true);
     setFormError("");
     setAgeUpdate(null);
@@ -165,6 +177,7 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
           criteria,
           extras: extrasPayload(),
           insuranceId,
+          paymentMethod: method,
           ...contact,
           website,
         }),
@@ -185,7 +198,8 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
       setFormError(t(body.message) || "—");
       if (typeof body.ageUpdate === "number") setAgeUpdate(body.ageUpdate);
       const first = Object.keys(fieldErrors)[0];
-      if (first) document.getElementById(`bk-${first}`)?.focus();
+      if (first === "paymentMethod") document.getElementById("bk-paymentMethod")?.scrollIntoView({ block: "center" });
+      else if (first) document.getElementById(`bk-${first}`)?.focus();
     } catch {
       setFormError(lang === "el" ? "Πρόβλημα σύνδεσης. Δοκιμάστε ξανά." : "Connection problem. Please try again.");
     }
@@ -221,6 +235,9 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
     "aria-invalid": !!errors[name] || undefined,
     "aria-describedby": [errors[name] ? `bk-${name}-err` : "", hint ? `bk-${name}-hint` : ""].filter(Boolean).join(" ") || undefined,
   });
+
+  // Ποσό τώρα / στην παραλαβή — μόνο για εμφάνιση· ο server το ξαναβγάζει από την αποθηκευμένη τιμή.
+  const split = paymentSplit(quote.totalCents, payment.amountType, payment.depositPercent);
 
   const price = (o: PublicExtraOption) =>
     `${formatCents(o.priceCents, lang)} ${o.priceType === "per_day" ? d.perDayShort : d.perRental}`;
@@ -350,8 +367,59 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
           </tfoot>
         </table>
         <p className="sf-muted sf-small">{fill(d.vatIncludedAmount, { amount: formatCents(quote.vatCents, lang) })}</p>
-        <p className="sf-bk-pay">{d.payAtPickup}</p>
+        {!payment.methods.includes("ONLINE") && <p className="sf-bk-pay">{d.payAtPickup}</p>}
       </section>
+
+      {/* Πληρωμή: μόνο όταν η εταιρία δέχεται online (ο server ελέγχει ξανά τι ισχύει). */}
+      {payment.methods.includes("ONLINE") && (
+        <section className="sf-bk-box" aria-labelledby="bk-pay-title">
+          <fieldset
+            className={`sf-bk-set sf-pay${errors.paymentMethod ? " is-invalid" : ""}`}
+            id="bk-paymentMethod"
+            aria-invalid={!!errors.paymentMethod || undefined}
+            aria-describedby={errors.paymentMethod ? "bk-paymentMethod-err" : undefined}
+          >
+            <legend className="sf-h3" id="bk-pay-title">
+              {d.payMethodTitle}
+            </legend>
+            {payment.methods.map((m) => {
+              const on = method === m;
+              return (
+                <label key={m} className={`sf-ins-card sf-pay-card${on ? " is-on" : ""}`}>
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value={m}
+                    checked={on}
+                    onChange={() => {
+                      setMethod(m);
+                      setErrors(({ paymentMethod: _gone, ...rest }) => rest);
+                    }}
+                  />
+                  <span className="sf-ins-body">
+                    <span className="sf-ins-name">{m === "ONLINE" ? d.payOnlineNow : d.payOnPickupOption}</span>
+                    <span className="sf-ins-desc">{m === "ONLINE" ? d.payOnlineHint : d.payPickupHint}</span>
+                    {m === "ONLINE" && (
+                      <span className="sf-pay-split">
+                        <strong>{fill(d.payNowAmount, { amount: formatCents(split.nowCents, lang) })}</strong>
+                        {split.laterCents > 0 && <span>{fill(d.payLaterAmount, { amount: formatCents(split.laterCents, lang) })}</span>}
+                      </span>
+                    )}
+                  </span>
+                  <span className="sf-ins-price">
+                    <strong>{formatCents(m === "ONLINE" ? split.nowCents : 0, lang)}</strong>
+                  </span>
+                </label>
+              );
+            })}
+            {errors.paymentMethod && (
+              <span className="sf-bk-err" id="bk-paymentMethod-err" role="alert">
+                {errors.paymentMethod}
+              </span>
+            )}
+          </fieldset>
+        </section>
+      )}
 
       <section className="sf-bk-box" aria-labelledby="bk-details-title">
         <h2 className="sf-h3" id="bk-details-title">
@@ -423,7 +491,8 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
       )}
 
       <button type="submit" className="sf-btn sf-btn--primary sf-btn--block sf-bk-submit" disabled={submitting || quoting}>
-        {submitting ? d.submitting : submitLabel} · {formatCents(quote.totalCents, lang)}
+        {submitting ? d.submitting : method === "ONLINE" ? d.payContinue : submitLabel} ·{" "}
+        {formatCents(method === "ONLINE" ? split.nowCents : quote.totalCents, lang)}
       </button>
     </form>
   );

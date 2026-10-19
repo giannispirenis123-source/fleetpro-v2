@@ -427,3 +427,16 @@
 .sf-review-foot { display: flex; justify-content: space-between; gap: 8px; color: var(--sf-text-2); font-size: 13px; }
 .sf-review-src.is-google { font-weight: 700; }
 .sf-place-tagline { margin: 4px 0 14px; }
+
+/* ── Πληρωμή (online / στην παραλαβή) ── */
+.sf-pay { display: grid; gap: 10px; border-radius: 14px; }
+.sf-pay.is-invalid { outline: 2px solid var(--sf-danger); outline-offset: 6px; }
+.sf-pay.is-invalid .sf-pay-card { border-color: var(--sf-danger); background: #fef2f2; }
+.sf-pay-split { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 14px; }
+.sf-pay-status { display: grid; gap: 8px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--sf-border); margin: 0 0 16px; }
+.sf-pay-status.is-ok { background: #f0fdf4; border-color: #86efac; }
+.sf-pay-status.is-wait { background: #fffbeb; border-color: #fcd34d; }
+.sf-pay-status.is-bad { background: #fef2f2; border-color: #fca5a5; }
+.sf-pay-status strong { font-size: 16px; }
+.sf-pay-status p { margin: 0; }
+.sf-pay-status.is-info { background: #eff6ff; border-color: #93c5fd; }

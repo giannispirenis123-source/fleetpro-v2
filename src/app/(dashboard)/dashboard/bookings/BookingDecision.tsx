@@ -8,7 +8,9 @@
 // (GET /api/bookings/[id]/decision) — ό,τι βλέπει ο χρήστης είναι ό,τι φεύγει.
 
 import { useEffect, useMemo, useState } from "react";
-import { MessageCircle, Mail, X } from "lucide-react";
+import { CreditCard, ExternalLink, MessageCircle, Mail, X } from "lucide-react";
+import { centsToInput, formatCents, parseEuroInput } from "@/lib/public/money";
+import { RETAIN_NOTE_MAX, dashboardPaymentText, needsDecision, outstandingCents, refundableCents, stripeDashboardPaymentUrl } from "@/lib/public/payments";
 import type { BookingDTO } from "@/lib/bookings";
 import {
   CANCEL_NOTE_MAX,
@@ -420,6 +422,253 @@ export function MessageModal({
             ))}
           </ul>
         </div>
+      )}
+    </Shell>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Online πληρωμή: ένδειξη στην κάρτα + «Επιστροφή χρημάτων»
+   ───────────────────────────────────────────── */
+
+const euroOf = (cents: number, locale: string) => formatCents(cents, locale === "en" ? "en" : "el");
+
+/** Η ένδειξη πληρωμής μιας κράτησης (και link προς την πληρωμή στον πίνακα Stripe). */
+export function PaymentInfo({ booking: b, tr, locale, stripeLive }: { booking: BookingDTO; tr: Tr; locale: string; stripeLive: boolean }) {
+  const p = b.payment ?? null;
+  const info = dashboardPaymentText(
+    { status: b.status, paymentMethod: b.paymentMethod, paymentStatus: b.paymentStatus, totalCents: Math.round(b.total * 100) },
+    p,
+    Date.now(),
+    b.paymentExpiresAt ? Date.parse(b.paymentExpiresAt) : null
+  );
+  if (!info) return null;
+  let text = tr(`decision.${info.key}`);
+  for (const [k, v] of Object.entries(info.vars)) text = text.replace(`{${k}}`, euroOf(v, locale));
+  const url = stripeDashboardPaymentUrl(p?.paymentIntentId ?? null, stripeLive);
+  return (
+    <span className="dash-booking-pay">
+      <span className={`dash-badge dash-badge--${info.tone}`}>
+        <CreditCard size={13} /> {text}
+      </span>
+      {url && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="dash-link">
+          {tr("decision.payStripeLink")} <ExternalLink size={12} />
+        </a>
+      )}
+      {needsDecision(b.status, p) && <span className="dash-badge dash-badge--warn">{tr("decision.payNeedsRefund")}</span>}
+    </span>
+  );
+}
+
+/** Υπόλοιπο πληρωμής χωρίς απόφαση (για «Το υπόλοιπο κρατείται»). */
+export const outstandingOf = (b: BookingDTO): number => (b.status === "CANCELLED" && b.payment ? outstandingCents(b.payment) : 0);
+
+export function RetainModal({
+  booking,
+  tr,
+  locale,
+  onClose,
+  onDone,
+}: {
+  booking: BookingDTO;
+  tr: Tr;
+  locale: string;
+  onClose: () => void;
+  onDone: (booking: BookingDTO | null) => void;
+}) {
+  const amount = outstandingOf(booking);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/retain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: note.trim() || null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setError(body.message ?? tr("bookings.errorSave"));
+      else {
+        setDone(true);
+        onDone(body.data?.booking ?? null);
+      }
+    } catch {
+      setError(tr("bookings.errorConnection"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Shell
+      title={tr("decision.retainButton")}
+      onClose={onClose}
+      tr={tr}
+      footer={
+        done ? (
+          <button className="dash-btn dash-btn--primary" onClick={onClose}>
+            {tr("common.close")}
+          </button>
+        ) : (
+          <>
+            <button className="dash-btn" onClick={onClose} disabled={busy}>
+              {tr("bookings.back")}
+            </button>
+            <button className="dash-btn dash-btn--primary" onClick={submit} disabled={busy || amount <= 0}>
+              {tr("decision.retainConfirm").replace("{amount}", euroOf(amount, locale))}
+            </button>
+          </>
+        )
+      }
+    >
+      <p className="dash-confirm-vehicle">
+        {booking.bookingNumber} · {booking.customerName}
+        {booking.publicCode && <code className="dash-code"> {booking.publicCode}</code>}
+      </p>
+      {done ? (
+        <div className="dash-form-ok">{tr("decision.retainDone")}</div>
+      ) : (
+        <>
+          <p className="dash-form-note">{tr("decision.retainIntro")}</p>
+          <p>
+            <strong>{tr("decision.retainAmount").replace("{amount}", euroOf(amount, locale))}</strong>
+          </p>
+          <label className="dash-field">
+            {tr("decision.retainNote")}
+            <textarea rows={2} maxLength={RETAIN_NOTE_MAX} value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+          {error && <div className="dash-form-error">{error}</div>}
+        </>
+      )}
+    </Shell>
+  );
+}
+
+/** Μπορεί να γίνει επιστροφή χρημάτων (ακυρωμένη, με υπόλοιπο πληρωμής); */
+export const refundableOf = (b: BookingDTO): number => (b.status === "CANCELLED" && b.payment ? refundableCents(b.payment) : 0);
+
+export function RefundModal({
+  booking,
+  tr,
+  locale,
+  onClose,
+  onDone,
+}: {
+  booking: BookingDTO;
+  tr: Tr;
+  locale: string;
+  onClose: () => void;
+  onDone: (booking: BookingDTO | null) => void;
+}) {
+  const max = refundableOf(booking);
+  const [mode, setMode] = useState<"full" | "partial">("full");
+  const [input, setInput] = useState(centsToInput(max));
+  const [sure, setSure] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const parsed = mode === "full" ? max : parseEuroInput(input);
+  const amount = typeof parsed === "number" && Number.isFinite(parsed) && parsed >= 1 && parsed <= max ? parsed : null;
+
+  const submit = async () => {
+    if (amount === null || busy) return;
+    if (!sure) {
+      setSure(true);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amountCents: mode === "full" ? null : amount }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body.message ?? tr("bookings.errorSave"));
+        setSure(false);
+      } else {
+        setDone(true);
+        onDone(body.data?.booking ?? null);
+      }
+    } catch {
+      setError(tr("bookings.errorConnection"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Shell
+      title={tr("decision.refundButton")}
+      onClose={onClose}
+      tr={tr}
+      footer={
+        done ? (
+          <button className="dash-btn dash-btn--primary" onClick={onClose}>
+            {tr("common.close")}
+          </button>
+        ) : (
+          <>
+            <button className="dash-btn" onClick={onClose} disabled={busy}>
+              {tr("bookings.back")}
+            </button>
+            <button className="dash-btn dash-btn--danger" onClick={submit} disabled={busy || amount === null || max <= 0}>
+              {tr("decision.refundConfirm").replace("{amount}", amount !== null ? euroOf(amount, locale) : "—")}
+            </button>
+          </>
+        )
+      }
+    >
+      <p className="dash-confirm-vehicle">
+        {booking.bookingNumber} · {booking.customerName}
+        {booking.publicCode && <code className="dash-code"> {booking.publicCode}</code>}
+      </p>
+      {done ? (
+        <div className="dash-form-ok">{tr("decision.refundDone")}</div>
+      ) : (
+        <>
+          <p className="dash-form-note">{tr("decision.refundIntro")}</p>
+          <p>
+            <strong>{tr("decision.refundAvailable").replace("{amount}", euroOf(max, locale))}</strong>
+          </p>
+          <div className="dash-radio-list" role="radiogroup" aria-label={tr("decision.refundButton")}>
+            <label className="dash-check">
+              <input type="radio" name="refund-mode" checked={mode === "full"} onChange={() => (setMode("full"), setSure(false))} />
+              {tr("decision.refundFull")} ({euroOf(max, locale)})
+            </label>
+            <label className="dash-check">
+              <input type="radio" name="refund-mode" checked={mode === "partial"} onChange={() => (setMode("partial"), setSure(false))} />
+              {tr("decision.refundPartial")}
+            </label>
+          </div>
+          {mode === "partial" && (
+            <label className={`dash-field${amount === null ? " is-invalid" : ""}`}>
+              {tr("decision.refundAmount")}
+              <input
+                inputMode="decimal"
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setSure(false);
+                }}
+                aria-invalid={amount === null}
+              />
+              {amount === null && <span className="dash-form-error-inline">{tr("decision.refundInvalid").replace("{max}", euroOf(max, locale))}</span>}
+            </label>
+          )}
+          {sure && amount !== null && <div className="dash-form-warn">{tr("decision.refundSure").replace("{amount}", euroOf(amount, locale))}</div>}
+          {error && <div className="dash-form-error">{error}</div>}
+        </>
       )}
     </Shell>
   );

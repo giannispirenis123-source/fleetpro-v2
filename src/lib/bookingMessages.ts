@@ -20,8 +20,10 @@ export type MessageChannel = (typeof MESSAGE_CHANNELS)[number];
 /** Συνηθισμένοι λόγοι ακύρωσης — ο κωδικός αποθηκεύεται, το κείμενο βγαίνει στη γλώσσα του πελάτη. */
 export const CANCEL_REASONS = ["no_vehicle", "customer_request", "invalid_details", "driver_age", "other"] as const;
 export type CancelReason = (typeof CANCEL_REASONS)[number];
+/** Λόγοι που βάζει ΜΟΝΟ το σύστημα (δεν εμφανίζονται στη λίστα του διαχειριστή). */
+export const SYSTEM_CANCEL_REASONS = ["payment_not_completed"] as const;
 export const isCancelReason = (v: unknown): v is CancelReason =>
-  typeof v === "string" && (CANCEL_REASONS as readonly string[]).includes(v);
+  typeof v === "string" && ([...CANCEL_REASONS, ...SYSTEM_CANCEL_REASONS] as readonly string[]).includes(v);
 
 /** Όριο του ελεύθερου κειμένου ακύρωσης. */
 export const CANCEL_NOTE_MAX = 300;
@@ -60,6 +62,13 @@ export interface MessageData {
   searchUrl: string | null;
   reasonCode?: string | null;
   note?: string | null;
+  /**
+   * Online πληρωμή (SQL 27): ό,τι πληρώθηκε/επιστράφηκε. undefined/null =
+   * πληρωμή στην παραλαβή (όπως πριν).
+   */
+  payment?: { paidCents: number; refundedCents: number; retainedCents?: number } | null;
+  /** ONLINE = κράτηση με online πληρωμή: ΠΟΤΕ «Πληρωμή στην παραλαβή», ακόμα κι αν δεν πληρώθηκε. */
+  paymentMethod?: string | null;
 }
 
 export interface BookingMessage {
@@ -100,6 +109,13 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
   const company = m.company.name;
   const vehicle = m.groupSimilar ? `${m.groupName} (${fill(d.orSimilar, { name: m.groupSimilar })})` : m.groupName;
   const place = (p: string | null) => (p ? ` · ${p}` : "");
+  const euro = (cents: number) => formatEuro(Math.round(cents) / 100, lang);
+  const paid = m.payment && m.payment.paidCents > 0 ? m.payment.paidCents : 0;
+  const payLines = (): string[] => {
+    if (paid === 0) return [m.paymentMethod === "ONLINE" ? d.msgOnlinePending : d.msgPayAtPickup];
+    const balance = Math.max(0, Math.round(m.totalCents) - paid);
+    return [fill(d.msgPaidOnline, { amount: euro(paid) }), ...(balance > 0 ? [fill(d.msgBalanceOnPickup, { amount: euro(balance) })] : [])];
+  };
 
   const contact =
     m.company.phone && m.company.email
@@ -122,7 +138,7 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
         fill(d.msgDropoff, { when: when(m.to, lang) + place(m.returnLocation ?? m.pickupLocation) }),
         ...(m.insuranceName === undefined ? [] : [fill(d.msgInsurance, { name: m.insuranceName || d.noInsuranceChosen })]),
         fill(d.msgTotal, { amount: formatEuro(Math.round(m.totalCents) / 100, lang) }),
-        d.msgPayAtPickup,
+        ...payLines(),
       ].join("\n")
     );
     if (m.bookingUrl) blocks.push(fill(d.msgViewBooking, { url: m.bookingUrl }));
@@ -130,6 +146,16 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
     blocks.push(fill(d.msgCancelIntro, { code: m.code }));
     const reason = cancelReasonText(lang, m.reasonCode, m.note);
     if (reason) blocks.push(fill(d.msgReason, { reason }));
+    // Πληρωμένη online: τι γίνεται με τα χρήματα (η επιστροφή ΔΕΝ είναι αυτόματη).
+    if (paid > 0) {
+      const refunded = m.payment!.refundedCents;
+      const retained = m.payment!.retainedCents ?? 0;
+      const lines = [
+        ...(refunded > 0 ? [fill(d.msgRefunded, { amount: euro(refunded) })] : []),
+        ...(retained > 0 ? [fill(d.msgRetained, { amount: euro(retained) })] : []),
+      ];
+      blocks.push(lines.length ? lines.join("\n") : fill(d.msgRefundPending, { amount: euro(paid) }));
+    }
     if (m.searchUrl) blocks.push(fill(d.msgNewSearch, { url: m.searchUrl }));
   }
   if (contact) blocks.push(contact);

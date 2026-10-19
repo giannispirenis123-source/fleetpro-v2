@@ -26,6 +26,10 @@ export const LIMITS = {
   bookingPerEmail: { scope: "book-email", max: 5, windowMinutes: 60 },
   bookingPerTenant: { scope: "book-tenant", max: 30, windowMinutes: 60 },
   confirmationPerClient: { scope: "booking-view", max: 60, windowMinutes: 10 },
+  /** Δημιουργία Stripe Checkout Session ανά εταιρία. */
+  checkoutPerTenant: { scope: "checkout-tenant", max: 30, windowMinutes: 60 },
+  /** Εφεδρικός έλεγχος πληρωμής στο Stripe (retrieve): 1 ανά 10΄΄ ανά κράτηση. */
+  paymentCheckPerBooking: { scope: "pay-check", max: 1, windowMinutes: 1 / 6 },
 } as const satisfies Record<string, Limit>;
 
 /** Κλειδί χωρίς προσωπικά δεδομένα: scope + hash(μυστικό + τιμή). */

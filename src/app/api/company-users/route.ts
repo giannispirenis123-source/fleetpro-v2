@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 // όλες τις εταιρίες. Εδώ το tenantId έρχεται ΠΑΝΤΑ από το session και ο
 // Super Admin δεν έχει δουλειά — δεν είναι δικοί του χρήστες.
 
+import { GRANT_MSG, permissionsBeyondActor } from "@/lib/adminRole";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
@@ -90,6 +91,8 @@ export const POST = withPermission(
           : data.permissions
             ? permissionsFromKeys(data.permissions)
             : defaultsForRole(data.role);
+      // Κανείς (εκτός Διαχειριστή) δεν δίνει δικαιώματα που δεν έχει ο ίδιος.
+      if (permissionsBeyondActor(viewer, permissions).length > 0) return forbidden(GRANT_MSG.beyondOwn);
 
       const user = await db.user.create({
         data: {

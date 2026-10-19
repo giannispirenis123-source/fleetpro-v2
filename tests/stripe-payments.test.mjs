@@ -445,7 +445,7 @@ test("σελίδα κράτησης: αναμονή με κουμπί ΜΟΝΟ �
   ).payment;
   assert.equal(waiting.badge, "AWAITING");
   assert.equal(waiting.checkoutUrl, "https://checkout.stripe.com/c/pay/cs_test_1");
-  assert.deepEqual(Object.keys(waiting).sort(), ["amountCents", "badge", "balanceCents", "checkoutUrl", "expiresAt", "refundedCents"]);
+  assert.deepEqual(Object.keys(waiting).sort(), ["amountCents", "badge", "balanceCents", "checkoutUrl", "expiresAt", "refundedCents", "retainedCents"]);
 
   const expired = toConfirmationDTO(
     confSource({
@@ -566,4 +566,204 @@ test("ποσό χρέωσης ΜΟΝΟ από την αποθηκευμένη pr
   assert.match(s, /onlineAmountCents\(totalCents/);
   const schema = src("../src/lib/public/bookingRequest.ts");
   assert.doesNotMatch(schema.slice(schema.indexOf("publicBookingSchema"), schema.indexOf("export type PublicBookingInput")), /amount|cents/i);
+});
+
+/* ─────────────────────────────────────────────
+   «Το υπόλοιπο κρατείται» (SQL 28)
+   ───────────────────────────────────────────── */
+
+test("κράτηση υπολοίπου: μόνο ακυρωμένη, μόνο ό,τι δεν επιστράφηκε, μόνο Διαχειριστής", () => {
+  const p = { status: "PARTIALLY_REFUNDED", amountCents: 12_000, refundedCents: 8_000, retainedCents: 0 };
+  assert.deepEqual(P.checkRetain({ status: "CANCELLED" }, p), { ok: true, retainedCents: 4_000, addedCents: 4_000 });
+  assert.equal(P.checkRetain({ status: "CONFIRMED" }, p).message, P.RETAIN_MSG.notCancelled);
+  assert.equal(P.checkRetain(null, p).status, 404);
+  assert.equal(P.checkRetain({ status: "CANCELLED" }, { ...p, retainedCents: 4_000 }).message, P.RETAIN_MSG.nothing, "ήδη αποφασίστηκε");
+  assert.equal(P.checkRetain({ status: "CANCELLED" }, { ...p, status: "REFUNDED", refundedCents: 12_000 }).ok, false);
+  assert.equal(P.checkRetain({ status: "CANCELLED" }, { ...p, status: "OPEN", refundedCents: 0 }).ok, false, "απλήρωτη");
+  assert.deepEqual(P.checkRetain({ status: "CANCELLED" }, { status: "PAID", amountCents: 12_000, refundedCents: 0 }), { ok: true, retainedCents: 12_000, addedCents: 12_000 });
+  assert.equal(P.canRetain("COMPANY_ADMIN"), true);
+  for (const r of ["STAFF", "PARTNER", "SUPER_ADMIN"]) assert.equal(P.canRetain(r), false, r);
+});
+
+test("προειδοποίηση «θέλει επιστροφή»: φεύγει μετά την κράτηση υπολοίπου ή την πλήρη επιστροφή", () => {
+  const p = { status: "PARTIALLY_REFUNDED", amountCents: 12_000, refundedCents: 8_000, retainedCents: 0 };
+  assert.equal(P.needsDecision("CANCELLED", p), true, "BP-2026-014 πριν");
+  assert.equal(P.needsDecision("CANCELLED", { ...p, retainedCents: 4_000 }), false, "BP-2026-014 μετά");
+  assert.equal(P.needsDecision("CANCELLED", { ...p, status: "REFUNDED", refundedCents: 12_000 }), false);
+  assert.equal(P.needsDecision("CONFIRMED", { status: "PAID", amountCents: 12_000, refundedCents: 0 }), false, "ενεργή: καμία προειδοποίηση");
+  assert.equal(P.needsDecision("CANCELLED", { status: "PAID", amountCents: 22_500, refundedCents: 0 }), true, "BP-2026-013 μετά τον έλεγχο");
+  assert.equal(P.needsDecision("CANCELLED", null), false);
+  // Η επιστροφή μένει διαθέσιμη για διόρθωση (και για το κρατημένο).
+  assert.equal(P.refundableCents({ ...p, retainedCents: 4_000 }), 4_000);
+});
+
+test("επιστροφή ΜΕΤΑ από κράτηση υπολοίπου: το κρατημένο μειώνεται (refunded + retained <= amount)", () => {
+  const p = { status: "PARTIALLY_REFUNDED", amountCents: 12_000, refundedCents: 8_000, retainedCents: 4_000 };
+  assert.equal(P.retainedAfterRefund(p, 9_000), 3_000);
+  assert.equal(P.retainedAfterRefund(p, 12_000), 0);
+  assert.equal(P.retainedAfterRefund({ ...p, retainedCents: 0 }, 9_000), 0);
+  // Ίδιο και από το webhook charge.refunded.
+  const r = P.transitionFor({ status: "CANCELLED", paymentStatus: "PARTIALLY_REFUNDED", rentalMode: "BOOKING" }, p, { kind: "refunded", amountRefunded: 10_000 });
+  assert.equal(r.ok, true);
+  assert.equal(r.t.payment.refundedCents, 10_000);
+  assert.equal(r.t.payment.retainedCents, 2_000);
+  const sql = src("../prisma/sql/28-payment-retained.sql");
+  assert.match(sql, /"refundedCents" \+ "retainedCents" <= "amountCents"/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "retainedCents"/);
+  assert.match(sql, /SELECT\s+\(SELECT count\(\*\)/);
+});
+
+test("κράτηση υπολοίπου (route): ρόλος ΠΡΙΝ από κάθε ερώτημα, μόνο κράτηση της εταιρίας, ιστορικό", () => {
+  const route = src("../src/app/api/bookings/[id]/retain/route.ts");
+  assert.ok(route.indexOf("canRetain(viewer.role)") < route.indexOf("db."), "403 πριν από κάθε ερώτημα");
+  assert.match(route, /where: \{ id, tenantId \}/);
+  assert.match(route, /where: \{ tenantId, bookingId: id/);
+  assert.match(src("../src/lib/public/paymentServer.ts"), /action: "booking\.retain"/);
+});
+
+/* ─────────────────────────────────────────────
+   Εφεδρικός έλεγχος (retrieve) χωρίς webhook
+   ───────────────────────────────────────────── */
+
+const { checkSessionNow } = await import("../src/lib/public/paymentWebhook.ts");
+const retrieveOf = (session) => async () => session;
+const PAYREF = { stripeCheckoutSessionId: "cs_1", stripeAccountId: "acct_1" };
+
+test("retrieve χωρίς webhook: complete + paid → PAID με τους ΙΔΙΟΥΣ ελέγχους", async () => {
+  const { state, store } = fakeStore();
+  const out = await checkSessionNow({ tenantId: "T1", payment: PAYREF, retrieve: retrieveOf(session({ status: "complete" })) }, store);
+  assert.equal(out, "applied");
+  assert.equal(state.bookings[0].paymentStatus, "PAID");
+  assert.equal(state.bookings[0].status, "CONFIRMED");
+  assert.equal(state.events.size, 0, "κανένα ψεύτικο event");
+});
+
+test("retrieve + webhook (με οποιαδήποτε σειρά): ΜΙΑ εγγραφή", async () => {
+  for (const order of ["retrieve-first", "webhook-first"]) {
+    const { store } = fakeStore();
+    let applied = 0;
+    const counting = { ...store, applyTransition: async (...a) => (applied++, store.applyTransition(...a)) };
+    const doRetrieve = () => checkSessionNow({ tenantId: "T1", payment: PAYREF, retrieve: retrieveOf(session({ status: "complete" })) }, counting);
+    const doWebhook = () => handleConnectEvent(ev(`evt_${order}`, "checkout.session.completed", session()), counting);
+    const [a, b] = order === "retrieve-first" ? [await doRetrieve(), await doWebhook()] : [await doWebhook(), await doRetrieve()];
+    assert.equal(a, "applied", order);
+    assert.equal(b, "noop", order);
+    assert.equal(applied, 1, order);
+  }
+  // Ο server κλειδώνει τη γραμμή πληρωμής (FOR UPDATE) — ταυτόχρονα αιτήματα σειριοποιούνται.
+  assert.match(src("../src/lib/public/paymentServer.ts"), /FOR UPDATE/);
+});
+
+test("retrieve: λάθος ποσό, λογαριασμός άλλης εταιρίας, άλλη session, metadata άλλης εταιρίας → ΟΧΙ PAID", async () => {
+  const run = async (payment, sess, tenantId = "T1") => {
+    const { state, store } = fakeStore();
+    const out = await checkSessionNow({ tenantId, payment, retrieve: retrieveOf(sess) }, store);
+    return { out, paid: state.bookings.some((b) => b.paymentStatus === "PAID") };
+  };
+  assert.deepEqual(await run(PAYREF, session({ status: "complete", amount_total: 100 })), { out: "amount_mismatch", paid: false });
+  assert.deepEqual(await run({ ...PAYREF, stripeAccountId: "acct_2" }, session({ status: "complete" })), { out: "unknown_account", paid: false });
+  assert.deepEqual(await run(PAYREF, session({ status: "complete", id: "cs_other" })), { out: "mismatch", paid: false });
+  assert.deepEqual(await run(PAYREF, session({ status: "complete", metadata: { bookingId: "B2", tenantId: "T2" } })), { out: "mismatch", paid: false });
+  assert.deepEqual(await run(PAYREF, session({ status: "open", payment_status: "unpaid" })), { out: "pending", paid: false });
+  assert.deepEqual(await run(PAYREF, session({ status: "complete", payment_status: "unpaid" })), { out: "pending", paid: false });
+});
+
+test("retrieve σε ακυρωμένη κράτηση (BP-2026-013): PAID, μένει ακυρωμένη, θέλει απόφαση", async () => {
+  for (const paymentRow of ["OPEN", "EXPIRED"]) {
+    const { state, store } = fakeStore();
+    Object.assign(state.bookings[0], { status: "CANCELLED", paymentStatus: paymentRow === "OPEN" ? "AWAITING_PAYMENT" : "EXPIRED" });
+    state.payments[0].status = paymentRow;
+    const out = await checkSessionNow({ tenantId: "T1", payment: PAYREF, retrieve: retrieveOf(session({ status: "complete" })) }, store);
+    assert.equal(out, "applied", paymentRow);
+    assert.equal(state.bookings[0].status, "CANCELLED", "ΔΕΝ ξαναγίνεται ενεργή");
+    assert.equal(state.bookings[0].paymentStatus, "PAID");
+    assert.equal(state.payments[0].needsRefund, true);
+    assert.equal(P.needsDecision("CANCELLED", { status: "PAID", amountCents: 7000, refundedCents: 0 }), true);
+  }
+});
+
+test("όριο ρυθμού: 1 έλεγχος στο Stripe ανά 10΄΄ ανά κράτηση", async () => {
+  const { hitLimit, LIMITS } = await import("../src/lib/public/rateLimit.ts");
+  const counts = new Map();
+  const mem = { increment: async (k, w) => { const key = `${k}|${w.getTime()}`; counts.set(key, (counts.get(key) ?? 0) + 1); return counts.get(key); } };
+  const t0 = new Date("2026-10-19T10:00:00.000Z");
+  assert.equal(await hitLimit(mem, LIMITS.paymentCheckPerBooking, "T1|B1", t0), true);
+  assert.equal(await hitLimit(mem, LIMITS.paymentCheckPerBooking, "T1|B1", new Date(t0.getTime() + 5_000)), false);
+  assert.equal(await hitLimit(mem, LIMITS.paymentCheckPerBooking, "T1|B2", new Date(t0.getTime() + 5_000)), true, "άλλη κράτηση");
+  assert.equal(await hitLimit(mem, LIMITS.paymentCheckPerBooking, "T1|B1", new Date(t0.getTime() + 10_000)), true);
+  assert.match(src("../src/lib/public/paymentServer.ts"), /LIMITS\.paymentCheckPerBooking/);
+});
+
+test("έλεγχος πληρωμής: Διαχειριστής/Υπάλληλος (όχι Συνεργάτης), μόνο αναμονή/λήξη/αποτυχία, session ΜΟΝΟ από τη βάση", () => {
+  assert.equal(P.canCheckPayment("COMPANY_ADMIN"), true);
+  assert.equal(P.canCheckPayment("STAFF"), true);
+  assert.equal(P.canCheckPayment("PARTNER"), false);
+  for (const s of ["AWAITING_PAYMENT", "EXPIRED", "FAILED"]) assert.equal(P.isCheckable({ paymentMethod: "ONLINE", paymentStatus: s }), true, s);
+  for (const s of ["PAID", "REFUNDED", "NONE"]) assert.equal(P.isCheckable({ paymentMethod: "ONLINE", paymentStatus: s }), false, s);
+  assert.equal(P.isCheckable({ paymentMethod: "PICKUP", paymentStatus: "NONE" }), false);
+  const route = src("../src/app/api/bookings/[id]/payment-check/route.ts");
+  assert.ok(route.indexOf("canCheckPayment(viewer.role)") < route.indexOf("db."));
+  const server = src("../src/lib/public/paymentServer.ts");
+  assert.match(server, /bookingPayment\.findFirst\(\{\s*where: \{ tenantId, bookingId \}/);
+  assert.doesNotMatch(src("../src/lib/public/bookingLookup.ts"), /searchParams|session_id/);
+});
+
+test("Checkout: ΜΟΝΟ κάρτα", () => {
+  assert.match(src("../src/lib/public/paymentServer.ts"), /payment_method_types: \["card"\]/);
+});
+
+/* ─────────────────────────────────────────────
+   Κείμενα ανά κατάσταση
+   ───────────────────────────────────────────── */
+
+const { paymentHeadline } = await import("../src/lib/storefront/paymentText.ts");
+const { storefrontDictionary } = await import("../src/lib/storefront/i18n.ts");
+const dEl = storefrontDictionary("el");
+const cp = (over = {}) => ({ badge: "PAID", amountCents: 12_000, refundedCents: 0, retainedCents: 0, balanceCents: 0, checkoutUrl: null, expiresAt: null, ...over });
+
+test("σελίδα πελάτη: αναμονή / πληρώθηκε (+υπόλοιπο) / δεν ολοκληρώθηκε / επιστροφή-κράτηση — ΠΟΤΕ «στην παραλαβή»", () => {
+  const t = (p) => paymentHeadline(cp(p), dEl, "el").text.replace(/ /g, " ");
+  assert.equal(t({ badge: "AWAITING" }), "Αναμονή πληρωμής…");
+  assert.equal(t({ balanceCents: 4_500, amountCents: 7_000 }), "✓ Πληρώθηκε 70 € · Υπόλοιπο στην παραλαβή 45 €");
+  assert.equal(t({}), "✓ Πληρώθηκε 120 €");
+  assert.equal(t({ badge: "NOT_COMPLETED", amountCents: 0 }), "Η πληρωμή δεν ολοκληρώθηκε");
+  assert.equal(t({ badge: "PARTIAL_REFUND", refundedCents: 8_000, retainedCents: 4_000 }), "Επιστράφηκαν 80 € · Κρατήθηκαν 40 € (χρέωση ακύρωσης)");
+  assert.equal(t({ retainedCents: 12_000 }), "Κρατήθηκαν 120 € (χρέωση ακύρωσης)");
+  assert.equal(t({ badge: "PARTIAL_REFUND", refundedCents: 8_000 }), "Επιστράφηκαν 80 € από 120 €");
+  for (const b of ["AWAITING", "PAID", "NOT_COMPLETED", "REFUNDED"]) assert.doesNotMatch(t({ badge: b }), /παραλαβή\.|κατά την παραλαβή/);
+  // Η σελίδα κράτησης δείχνει «Πληρωμή κατά την παραλαβή» ΜΟΝΟ χωρίς online πληρωμή.
+  assert.match(src("../src/components/storefront/StorefrontViews.tsx"), /\{!b\.payment && <p className="sf-bk-pay">\{d\.payAtPickup\}<\/p>\}/);
+});
+
+test("κάρτα dashboard: κείμενο ανά κατάσταση (online ΠΟΤΕ «στην παραλαβή»)", () => {
+  const bk = (o = {}) => ({ status: "CONFIRMED", paymentMethod: "ONLINE", paymentStatus: "PAID", totalCents: 23_450, ...o });
+  const pay = (o = {}) => ({ status: "PAID", amountCents: 7_000, refundedCents: 0, retainedCents: 0, ...o });
+  const k = (b, p, exp = null) => P.dashboardPaymentText(b, p, 1_000, exp);
+  assert.deepEqual(k(bk(), pay()), { key: "payPaid", vars: { paid: 7_000, balance: 16_450 }, tone: "ok" });
+  assert.equal(k(bk(), pay({ amountCents: 23_450 })).key, "payPaidFull");
+  assert.equal(k(bk({ status: "CANCELLED" }), pay()).key, "payPaidFull", "ακυρωμένη: χωρίς «υπόλοιπο στην παραλαβή»");
+  assert.equal(k(bk({ paymentStatus: "AWAITING_PAYMENT" }), pay({ status: "OPEN" }), 2_000).key, "payAwaiting");
+  assert.equal(k(bk({ paymentStatus: "AWAITING_PAYMENT" }), pay({ status: "OPEN" }), 500).key, "payNotCompleted");
+  assert.equal(k(bk({ paymentStatus: "EXPIRED" }), pay({ status: "EXPIRED" })).key, "payNotCompleted");
+  assert.deepEqual(k(bk({ status: "CANCELLED", paymentStatus: "PARTIALLY_REFUNDED" }), pay({ status: "PARTIALLY_REFUNDED", amountCents: 12_000, refundedCents: 8_000, retainedCents: 4_000 })), {
+    key: "payRefundedRetained", vars: { refunded: 8_000, retained: 4_000 }, tone: "info",
+  });
+  assert.deepEqual(k(bk({ status: "CANCELLED" }), pay({ amountCents: 12_000, retainedCents: 12_000 })), { key: "payRetained", vars: { amount: 12_000 }, tone: "info" });
+  assert.equal(k(bk({ paymentMethod: "PICKUP", paymentStatus: "NONE" }), null).key, "payPickup");
+  for (const st of ["AWAITING_PAYMENT", "PAID", "EXPIRED", "FAILED", "REFUNDED"]) {
+    assert.notEqual(k(bk({ paymentStatus: st }), pay({ status: st === "AWAITING_PAYMENT" ? "OPEN" : st }), 2_000)?.key, "payPickup", st);
+  }
+});
+
+test("μήνυμα πελάτη: επιστροφή + κράτηση ως χρέωση ακύρωσης· online χωρίς πληρωμή ΠΟΤΕ «στην παραλαβή»", () => {
+  const cancel = buildBookingMessage(msgData({ kind: "cancel", lang: "el", payment: { paidCents: 12_000, refundedCents: 8_000, retainedCents: 4_000 } })).text;
+  assert.match(cancel, /Επιστράφηκαν 80/);
+  assert.match(cancel, /Κρατήθηκαν 40\s€ ως χρέωση ακύρωσης/);
+  assert.doesNotMatch(cancel, /θα σας επιστραφεί/);
+  const kept = buildBookingMessage(msgData({ kind: "cancel", payment: { paidCents: 12_000, refundedCents: 0, retainedCents: 12_000 } })).text;
+  assert.match(kept, /€120 was retained as a cancellation fee/);
+  assert.doesNotMatch(kept, /will be refunded/);
+  const pending = buildBookingMessage(msgData({ paymentMethod: "ONLINE" })).text;
+  assert.match(pending, /Online payment not completed yet/);
+  assert.doesNotMatch(pending, /Payment at pick-up/);
 });

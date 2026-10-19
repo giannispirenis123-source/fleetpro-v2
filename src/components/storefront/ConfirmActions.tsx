@@ -35,20 +35,20 @@ export function PrintButton({ label }: { label: string }) {
 }
 
 /**
- * Μετά την επιστροφή από το Stripe (?paid=1): η σελίδα ξαναφορτώνεται κάθε
- * 3΄΄ (έως ~45΄΄) μέχρι το webhook να γράψει την πληρωμή. Το PAID έρχεται
- * ΜΟΝΟ από το webhook — εδώ απλώς ανανεώνεται η εικόνα.
+ * Όσο η κράτηση περιμένει πληρωμή η σελίδα ξαναφορτώνεται (3΄΄ μετά το ?paid=1,
+ * αλλιώς 10΄΄). Σε κάθε φόρτωση ο server ρωτά το Stripe (όριο 1/10΄΄) με την
+ * ΙΔΙΑ μετάβαση με το webhook — εδώ απλώς ανανεώνεται η εικόνα.
  */
-export function PaymentPoll() {
+export function PaymentPoll({ everyMs = 3000, maxTimes = 15 }: { everyMs?: number; maxTimes?: number }) {
   const router = useRouter();
   useEffect(() => {
     let n = 0;
     const id = setInterval(() => {
       n += 1;
-      if (n > 15) clearInterval(id);
+      if (n > maxTimes) clearInterval(id);
       else router.refresh();
-    }, 3000);
+    }, everyMs);
     return () => clearInterval(id);
-  }, [router]);
+  }, [router, everyMs, maxTimes]);
   return null;
 }

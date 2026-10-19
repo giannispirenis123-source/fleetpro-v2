@@ -1304,6 +1304,12 @@ model BookingPayment {
   status                  String    @default("OPEN")
   /// [{ id, amountCents, at, userId }]
   refunds                 Json      @default("[]")
+  /// Κράτηση υπολοίπου ως χρέωση ακύρωσης (SQL 28): refundedCents + retainedCents <= amountCents.
+  retainedCents           Int       @default(0)
+  retainedAt              DateTime?
+  retainedNote            String?
+  /// userId του Διαχειριστή που το αποφάσισε.
+  retainedBy              String?
   expiresAt               DateTime?
   paidAt                  DateTime?
   createdAt               DateTime  @default(now())

@@ -9,7 +9,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { badRequest, forbidden, ok, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { BOOKING_PAYMENT_INCLUDE, toBookingDTO } from "@/lib/bookings";
+import { BOOKING_DTO_INCLUDE, toBookingDTO } from "@/lib/bookings";
 import { REFUND_MSG, canRefund, checkRefund } from "@/lib/public/payments";
 import { refundPayment } from "@/lib/public/paymentServer";
 import { stripeReady } from "@/lib/stripeConnect";
@@ -57,24 +57,7 @@ export const POST = withPermission(
       });
       const row = await db.booking.findFirst({
         where: { id, tenantId },
-        include: {
-          vehicle: { select: { brand: true, model: true, plate: true } },
-          customer: { select: { firstName: true, lastName: true } },
-          invoice: { select: { invoiceNumber: true, invoiceCode: true } },
-          partner: {
-            select: {
-              id: true,
-              name: true,
-              commissionRate: true,
-              commissionOnRental: true,
-              commissionOnExtras: true,
-              commissionOnInsurance: true,
-            },
-          },
-          createdBy: { select: { id: true, name: true } },
-          messages: { select: { kind: true, channel: true, result: true } },
-          payments: BOOKING_PAYMENT_INCLUDE,
-        },
+        include: BOOKING_DTO_INCLUDE,
       });
       return ok({ refundedCents: check.amountCents, booking: row ? toBookingDTO(row) : null });
     } catch (error) {

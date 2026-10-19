@@ -24,6 +24,7 @@ import type { SearchCriteria, SearchProblem, SearchRules } from "@/lib/public/se
 import SearchBox, { type SearchAgeOption, type SearchLocationOption } from "./SearchBox";
 import BookingForm from "./BookingForm";
 import { CopyCode, PaymentPoll, PrintButton } from "./ConfirmActions";
+import { paymentHeadline } from "@/lib/storefront/paymentText";
 import { cancelReasonText } from "@/lib/bookingMessages";
 import type { PublicPlace, PublicPlaceCard } from "@/lib/public/places";
 import type { ReviewSection } from "@/lib/public/reviews";
@@ -592,47 +593,29 @@ export function StorefrontBook({
 
 /** Η κατάσταση της online πληρωμής στη σελίδα της κράτησης. */
 function PaymentStatusBox({ p, lang, d, justPaid }: { p: NonNullable<ConfirmationDTO["payment"]>; lang: string; d: StorefrontDictionary; justPaid: boolean }) {
-  const euro = (c: number) => formatCents(c, lang);
+  const head = paymentHeadline(p, d, lang);
   if (p.badge === "AWAITING") {
     const until = p.expiresAt
       ? new Intl.DateTimeFormat(lang === "el" ? "el-GR" : "en-GB", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit" }).format(new Date(p.expiresAt))
       : "";
     return (
       <div className="sf-pay-status is-wait" role="status">
-        <strong>{justPaid ? d.payChecking : d.payStatusAwaiting}</strong>
+        <strong>{justPaid ? d.payChecking : head.text}</strong>
         {!justPaid && until && <p>{fill(d.payStatusAwaitingText, { time: until })}</p>}
         {!justPaid && p.checkoutUrl && (
           <a className="sf-btn sf-btn--primary" href={p.checkoutUrl}>
-            {d.payComplete} · {euro(p.amountCents)}
+            {d.payContinue} · {formatCents(p.amountCents, lang)}
           </a>
         )}
-        {justPaid && <PaymentPoll />}
-      </div>
-    );
-  }
-  if (p.badge === "PAID") {
-    return (
-      <div className="sf-pay-status is-ok" role="status">
-        <strong>✓ {fill(d.payPaid, { amount: euro(p.amountCents) })}</strong>
-        {p.balanceCents > 0 && <p>{fill(d.payBalance, { amount: euro(p.balanceCents) })}</p>}
-      </div>
-    );
-  }
-  if (p.badge === "REFUNDED" || p.badge === "PARTIAL_REFUND") {
-    return (
-      <div className="sf-pay-status" role="status">
-        <strong>
-          {p.badge === "REFUNDED"
-            ? fill(d.payRefunded, { amount: euro(p.refundedCents) })
-            : fill(d.payPartRefunded, { amount: euro(p.refundedCents), total: euro(p.amountCents) })}
-        </strong>
+        {/* Ο server ρωτά και το Stripe σε κάθε ανανέωση (όριο 1/10΄΄) — το PAID ΠΟΤΕ από το URL. */}
+        <PaymentPoll everyMs={justPaid ? 3000 : 10000} maxTimes={justPaid ? 20 : 180} />
       </div>
     );
   }
   return (
-    <div className="sf-pay-status is-bad" role="status">
-      <strong>{d.payNotCompleted}</strong>
-      <p>{d.payNotCompletedText}</p>
+    <div className={`sf-pay-status is-${head.tone}`} role="status">
+      <strong>{head.text}</strong>
+      {head.tone === "bad" && <p>{d.payNotCompletedText}</p>}
     </div>
   );
 }
@@ -750,7 +733,8 @@ export function StorefrontConfirmation({
                 </ul>
               )}
             </div>
-            <p className="sf-bk-pay">{d.payAtPickup}</p>
+            {/* Online κράτηση: η πληρωμή φαίνεται πάνω (PaymentStatusBox) — ΠΟΤΕ «στην παραλαβή». */}
+            {!b.payment && <p className="sf-bk-pay">{d.payAtPickup}</p>}
           </div>
         </div>
 

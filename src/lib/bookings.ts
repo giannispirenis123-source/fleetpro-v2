@@ -143,6 +143,8 @@ export interface BookingPaymentDTO {
   status: string;
   amountCents: number;
   refundedCents: number;
+  /** Κρατήθηκε ως χρέωση ακύρωσης (SQL 28). */
+  retainedCents: number;
   paymentIntentId: string | null;
 }
 
@@ -150,7 +152,27 @@ export interface BookingPaymentDTO {
 export const BOOKING_PAYMENT_INCLUDE = {
   orderBy: { createdAt: "desc" as const },
   take: 1,
-  select: { status: true, amountCents: true, refundedCents: true, stripePaymentIntentId: true },
+  select: { status: true, amountCents: true, refundedCents: true, retainedCents: true, stripePaymentIntentId: true },
+};
+
+/** Ό,τι χρειάζεται το toBookingDTO (για τις απαντήσεις των ενεργειών πληρωμής). */
+export const BOOKING_DTO_INCLUDE = {
+  vehicle: { select: { brand: true, model: true, plate: true } },
+  customer: { select: { firstName: true, lastName: true } },
+  invoice: { select: { invoiceNumber: true, invoiceCode: true } },
+  partner: {
+    select: {
+      id: true,
+      name: true,
+      commissionRate: true,
+      commissionOnRental: true,
+      commissionOnExtras: true,
+      commissionOnInsurance: true,
+    },
+  },
+  createdBy: { select: { id: true, name: true } },
+  messages: { select: { kind: true, channel: true, result: true } },
+  payments: BOOKING_PAYMENT_INCLUDE,
 };
 
 type BookingWithRelations = Booking & {
@@ -171,7 +193,7 @@ type BookingWithRelations = Booking & {
   /** Προαιρετικό: οι αποστολές μηνυμάτων (μόνο είδος/κανάλι/αποτέλεσμα). */
   messages?: { kind: string; channel: string; result: string }[];
   /** Προαιρετικό: η πιο πρόσφατη online πληρωμή (BOOKING_PAYMENT_INCLUDE). */
-  payments?: { status: string; amountCents: number; refundedCents: number; stripePaymentIntentId: string | null }[];
+  payments?: { status: string; amountCents: number; refundedCents: number; retainedCents?: number; stripePaymentIntentId: string | null }[];
 };
 
 const toDateInput = (d: Date): string => d.toISOString().slice(0, 10);
@@ -245,6 +267,7 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
                 status: b.payments[0].status,
                 amountCents: b.payments[0].amountCents,
                 refundedCents: b.payments[0].refundedCents,
+                retainedCents: b.payments[0].retainedCents ?? 0,
                 paymentIntentId: b.payments[0].stripePaymentIntentId,
               }
             : null,

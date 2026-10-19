@@ -301,7 +301,14 @@ export interface ConfirmationSource {
   paymentStatus?: string | null;
   paymentExpiresAt?: Date | null;
   /** Η πιο πρόσφατη Checkout Session. */
-  payment?: { status: string; amountCents: number; refundedCents: number; checkoutUrl: string | null; expiresAt: Date | null } | null;
+  payment?: {
+    status: string;
+    amountCents: number;
+    refundedCents: number;
+    retainedCents?: number;
+    checkoutUrl: string | null;
+    expiresAt: Date | null;
+  } | null;
 }
 
 /** Η πληρωμή όπως τη βλέπει ο πελάτης — ΜΟΝΟ ποσά και κατάσταση. */
@@ -310,7 +317,9 @@ export interface ConfirmationPayment {
   /** Το ποσό της online χρέωσης (πληρωμένο ή αναμενόμενο). */
   amountCents: number;
   refundedCents: number;
-  /** Υπόλοιπο στην παραλαβή. */
+  /** Κρατήθηκε ως χρέωση ακύρωσης. */
+  retainedCents: number;
+  /** Υπόλοιπο στην παραλαβή (0 σε ακυρωμένη). */
   balanceCents: number;
   /** ΜΟΝΟ όσο η συνεδρία του Stripe δεν έχει λήξει. */
   checkoutUrl: string | null;
@@ -394,7 +403,8 @@ function confirmationPayment(b: ConfirmationSource, totalCents: number, nowMs: n
     badge,
     amountCents: amount,
     refundedCents: p?.refundedCents ?? 0,
-    balanceCents: badge === "PAID" ? Math.max(0, totalCents - amount) : 0,
+    retainedCents: p?.retainedCents ?? 0,
+    balanceCents: badge === "PAID" && b.status !== "CANCELLED" ? Math.max(0, totalCents - amount) : 0,
     checkoutUrl: live && p?.checkoutUrl && /^https:\/\/checkout\.stripe\.com\//.test(p.checkoutUrl) ? p.checkoutUrl : null,
     expiresAt: badge === "AWAITING" && expiresMs ? new Date(expiresMs).toISOString() : null,
   };

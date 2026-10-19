@@ -439,3 +439,4 @@
 .sf-pay-status.is-bad { background: #fef2f2; border-color: #fca5a5; }
 .sf-pay-status strong { font-size: 16px; }
 .sf-pay-status p { margin: 0; }
+.sf-pay-status.is-info { background: #eff6ff; border-color: #93c5fd; }

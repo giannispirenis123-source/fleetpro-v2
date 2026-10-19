@@ -17,11 +17,14 @@ import {
   checkoutLocale,
   effectivePaymentOptions,
   onlineAmountCents,
+  retainedAfterRefund,
   type PaymentOptions,
   type TenantPaymentSettings,
   type Transition,
 } from "./payments";
-import type { WebhookStore } from "./paymentWebhook";
+import { checkSessionNow, type WebhookOutcome, type WebhookStore } from "./paymentWebhook";
+import { hitLimit, LIMITS } from "./rateLimit";
+import { dbCounterStore } from "./rateLimitStore";
 
 type Tx = Prisma.TransactionClient;
 type Client = Tx | typeof db;
@@ -119,6 +122,9 @@ export async function createBookingCheckout(opts: {
     session = await stripe().checkout.sessions.create(
       {
         mode: "payment",
+        // ΜΟΝΟ κάρτα (Apple Pay / Google Pay περνούν ως κάρτα): καμία ασύγχρονη μέθοδος
+        // που θα ολοκληρωνόταν μετά τη λήξη της κράτησης.
+        payment_method_types: ["card"],
         line_items: [
           {
             quantity: 1,
@@ -188,6 +194,24 @@ export const holdUntil = (now: Date) => new Date(now.getTime() + CHECKOUT_TTL_MI
    Webhook → βάση
    ───────────────────────────────────────────── */
 
+const toWebhookPayment = (p: {
+  id: string;
+  tenantId: string;
+  bookingId: string;
+  status: string;
+  amountCents: number;
+  refundedCents: number;
+  retainedCents: number;
+}) => ({
+  id: p.id,
+  tenantId: p.tenantId,
+  bookingId: p.bookingId,
+  status: p.status,
+  amountCents: p.amountCents,
+  refundedCents: p.refundedCents,
+  retainedCents: p.retainedCents,
+});
+
 export function prismaWebhookStore(): WebhookStore<Tx> {
   return {
     run: (fn) => db.$transaction(fn, { timeout: 15_000, maxWait: 10_000 }),
@@ -196,13 +220,17 @@ export function prismaWebhookStore(): WebhookStore<Tx> {
       return r.count === 1;
     },
     tenantByAccount: (tx, accountId) => tx.tenant.findFirst({ where: { stripeAccountId: accountId }, select: { id: true, rentalMode: true } }),
+    // Η γραμμή πληρωμής ΚΛΕΙΔΩΝΕΤΑΙ (FOR UPDATE): webhook και εφεδρικός έλεγχος
+    // σειριοποιούνται, ο δεύτερος βρίσκει PAID → noop (καμία διπλή εγγραφή).
     paymentBySession: async (tx, tenantId, sessionId) => {
+      await tx.$queryRaw`SELECT "id" FROM "booking_payments" WHERE "tenantId" = ${tenantId} AND "stripeCheckoutSessionId" = ${sessionId} FOR UPDATE`;
       const p = await tx.bookingPayment.findFirst({ where: { tenantId, stripeCheckoutSessionId: sessionId } });
-      return p && { id: p.id, tenantId: p.tenantId, bookingId: p.bookingId, status: p.status, amountCents: p.amountCents, refundedCents: p.refundedCents };
+      return p && toWebhookPayment(p);
     },
     paymentByIntent: async (tx, tenantId, intent) => {
+      await tx.$queryRaw`SELECT "id" FROM "booking_payments" WHERE "tenantId" = ${tenantId} AND "stripePaymentIntentId" = ${intent} FOR UPDATE`;
       const p = await tx.bookingPayment.findFirst({ where: { tenantId, stripePaymentIntentId: intent } });
-      return p && { id: p.id, tenantId: p.tenantId, bookingId: p.bookingId, status: p.status, amountCents: p.amountCents, refundedCents: p.refundedCents };
+      return p && toWebhookPayment(p);
     },
     booking: (tx, tenantId, id) =>
       // rentalMode: από την εταιρία του event (το συμπληρώνει το handleConnectEvent).
@@ -224,6 +252,7 @@ export function prismaWebhookStore(): WebhookStore<Tx> {
         data: {
           status: t.payment.status,
           ...(t.payment.refundedCents !== undefined ? { refundedCents: t.payment.refundedCents } : {}),
+          ...(t.payment.retainedCents !== undefined ? { retainedCents: t.payment.retainedCents } : {}),
           ...(t.payment.paidAt ? { paidAt: new Date() } : {}),
           ...(t.payment.paymentIntentId ? { stripePaymentIntentId: t.payment.paymentIntentId } : {}),
         },
@@ -235,7 +264,7 @@ export function prismaWebhookStore(): WebhookStore<Tx> {
           data: {
             tenantId: b.tenantId,
             type: "BOOKING_NEW",
-            title: t.needsRefund ? "Πληρωμή σε ακυρωμένη κράτηση — θέλει επιστροφή" : "Πληρώθηκε online κράτηση",
+            title: t.needsRefund ? "Πληρωμή σε ακυρωμένη κράτηση — θέλει επιστροφή ή απόφαση" : "Πληρώθηκε online κράτηση",
             message: `${row?.publicCode ?? row?.bookingNumber ?? ""} · ${(p.amountCents / 100).toFixed(2).replace(".", ",")} €`,
             link: `/dashboard/bookings?booking=${b.id}`,
           },
@@ -281,6 +310,7 @@ export async function refundPayment(opts: {
     stripePaymentIntentId: string | null;
     amountCents: number;
     refundedCents: number;
+    retainedCents: number;
     applicationFeeCents: number;
     refunds: unknown;
     bookingId: string;
@@ -307,12 +337,15 @@ export async function refundPayment(opts: {
   }
   const refundedCents = Math.min(payment.amountCents, payment.refundedCents + opts.amountCents);
   const status = refundedCents >= payment.amountCents ? "REFUNDED" : "PARTIALLY_REFUNDED";
+  // Επιστροφή μετά από «κρατείται»: το κρατημένο μειώνεται αντίστοιχα.
+  const retainedCents = retainedAfterRefund({ status: "PAID", amountCents: payment.amountCents, refundedCents: payment.refundedCents, retainedCents: payment.retainedCents }, refundedCents);
   const history = Array.isArray(payment.refunds) ? payment.refunds : [];
   await db.$transaction([
     db.bookingPayment.update({
       where: { id: payment.id },
       data: {
         refundedCents,
+        retainedCents,
         status,
         refunds: [...history, { id: refund.id, amountCents: opts.amountCents, at: new Date().toISOString(), userId: opts.userId }],
       },
@@ -320,4 +353,72 @@ export async function refundPayment(opts: {
     db.booking.updateMany({ where: { id: payment.bookingId, tenantId: opts.tenantId }, data: { paymentStatus: status } }),
   ]);
   return { ok: true, status: 200 };
+}
+
+/* ─────────────────────────────────────────────
+   Εφεδρικός έλεγχος πληρωμής (χωρίς webhook)
+   ───────────────────────────────────────────── */
+
+export type PaymentCheckResult = WebhookOutcome | "rate_limited" | "not_checkable" | "not_ready" | "stripe_error";
+
+/**
+ * Ρωτά το Stripe για την πιο πρόσφατη session μιας online κράτησης ΤΗΣ ΕΤΑΙΡΙΑΣ
+ * και, αν πληρώθηκε, περνά από την ΙΔΙΑ μετάβαση με το webhook. Όριο 1 ανά 10΄΄
+ * ανά κράτηση. Η session ΜΟΝΟ από το booking_payments (ποτέ από URL).
+ */
+export async function checkBookingPayment(tenantId: string, bookingId: string, now = new Date()): Promise<PaymentCheckResult> {
+  if (!stripeReady()) return "not_ready";
+  const payment = await db.bookingPayment.findFirst({
+    where: { tenantId, bookingId },
+    orderBy: { createdAt: "desc" },
+    select: { stripeCheckoutSessionId: true, stripeAccountId: true, status: true },
+  });
+  if (!payment || payment.status === "PAID" || payment.status === "PARTIALLY_REFUNDED" || payment.status === "REFUNDED") return "not_checkable";
+  if (!(await hitLimit(dbCounterStore, LIMITS.paymentCheckPerBooking, `${tenantId}|${bookingId}`, now))) return "rate_limited";
+  try {
+    return await checkSessionNow(
+      {
+        tenantId,
+        payment,
+        retrieve: async (id, account) =>
+          (await stripe().checkout.sessions.retrieve(id, {}, { stripeAccount: account })) as unknown as Record<string, unknown>,
+      },
+      prismaWebhookStore()
+    );
+  } catch (e) {
+    console.error(`[FleetPro] Stripe payment check: ${stripeErrorCode(e)}`);
+    return "stripe_error";
+  }
+}
+
+/* ─────────────────────────────────────────────
+   «Το υπόλοιπο κρατείται» (χρέωση ακύρωσης)
+   ───────────────────────────────────────────── */
+
+export async function retainPayment(opts: {
+  tenantId: string;
+  userId: string;
+  paymentId: string;
+  bookingId: string;
+  retainedCents: number;
+  addedCents: number;
+  note: string | null;
+}): Promise<void> {
+  await db.$transaction([
+    db.bookingPayment.updateMany({
+      // Ίδια εταιρία, και ΜΟΝΟ αν ισχύει ακόμα το όριο (ταυτόχρονη επιστροφή → καμία αλλαγή).
+      where: { id: opts.paymentId, tenantId: opts.tenantId, bookingId: opts.bookingId },
+      data: { retainedCents: opts.retainedCents, retainedAt: new Date(), retainedNote: opts.note, retainedBy: opts.userId },
+    }),
+    db.activityLog.create({
+      data: {
+        tenantId: opts.tenantId,
+        userId: opts.userId,
+        action: "booking.retain",
+        entity: "Booking",
+        entityId: opts.bookingId,
+        newData: { retainedCents: opts.retainedCents, addedCents: opts.addedCents, note: opts.note },
+      },
+    }),
+  ]);
 }

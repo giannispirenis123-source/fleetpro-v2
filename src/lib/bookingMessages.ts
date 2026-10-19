@@ -66,7 +66,9 @@ export interface MessageData {
    * Online πληρωμή (SQL 27): ό,τι πληρώθηκε/επιστράφηκε. undefined/null =
    * πληρωμή στην παραλαβή (όπως πριν).
    */
-  payment?: { paidCents: number; refundedCents: number } | null;
+  payment?: { paidCents: number; refundedCents: number; retainedCents?: number } | null;
+  /** ONLINE = κράτηση με online πληρωμή: ΠΟΤΕ «Πληρωμή στην παραλαβή», ακόμα κι αν δεν πληρώθηκε. */
+  paymentMethod?: string | null;
 }
 
 export interface BookingMessage {
@@ -110,7 +112,7 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
   const euro = (cents: number) => formatEuro(Math.round(cents) / 100, lang);
   const paid = m.payment && m.payment.paidCents > 0 ? m.payment.paidCents : 0;
   const payLines = (): string[] => {
-    if (paid === 0) return [d.msgPayAtPickup];
+    if (paid === 0) return [m.paymentMethod === "ONLINE" ? d.msgOnlinePending : d.msgPayAtPickup];
     const balance = Math.max(0, Math.round(m.totalCents) - paid);
     return [fill(d.msgPaidOnline, { amount: euro(paid) }), ...(balance > 0 ? [fill(d.msgBalanceOnPickup, { amount: euro(balance) })] : [])];
   };
@@ -146,11 +148,13 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
     if (reason) blocks.push(fill(d.msgReason, { reason }));
     // Πληρωμένη online: τι γίνεται με τα χρήματα (η επιστροφή ΔΕΝ είναι αυτόματη).
     if (paid > 0) {
-      blocks.push(
-        m.payment!.refundedCents > 0
-          ? fill(d.msgRefunded, { amount: euro(m.payment!.refundedCents) })
-          : fill(d.msgRefundPending, { amount: euro(paid) })
-      );
+      const refunded = m.payment!.refundedCents;
+      const retained = m.payment!.retainedCents ?? 0;
+      const lines = [
+        ...(refunded > 0 ? [fill(d.msgRefunded, { amount: euro(refunded) })] : []),
+        ...(retained > 0 ? [fill(d.msgRetained, { amount: euro(retained) })] : []),
+      ];
+      blocks.push(lines.length ? lines.join("\n") : fill(d.msgRefundPending, { amount: euro(paid) }));
     }
     if (m.searchUrl) blocks.push(fill(d.msgNewSearch, { url: m.searchUrl }));
   }

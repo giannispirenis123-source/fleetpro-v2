@@ -122,31 +122,90 @@ export async function handleConnectEvent<Tx>(e: ConnectEvent, store: WebhookStor
       return "applied";
     }
 
-    let payment: WebhookPayment | null;
-    let ev: CheckoutEvent | null;
-    if (e.type === "charge.refunded") {
-      const pi = str(o.payment_intent) ?? str(obj(o.payment_intent).id);
-      const refunded = num(o.amount_refunded);
-      if (!pi || refunded === null) return "not_found";
-      payment = await store.paymentByIntent(tx, tenant.id, pi);
-      ev = { kind: "refunded", amountRefunded: refunded };
-    } else {
-      const sessionId = str(o.id);
-      const meta = obj(o.metadata);
-      // Τα metadata πρέπει να δείχνουν ΤΗΝ ΙΔΙΑ εταιρία με τον λογαριασμό του event.
-      if (!sessionId || str(meta.tenantId) !== tenant.id || !str(meta.bookingId)) return "mismatch";
-      payment = await store.paymentBySession(tx, tenant.id, sessionId);
-      if (payment && payment.bookingId !== meta.bookingId) return "mismatch";
-      ev = checkoutEventOf(e.type, o);
-      if (!ev) return payment ? "pending" : "not_found";
-    }
-    if (!payment) return "not_found";
+    if (e.type !== "charge.refunded") return applySession(tx, store, tenant, e.type, o);
 
-    const booking = await store.booking(tx, tenant.id, payment.bookingId);
-    if (!booking) return "not_found";
-    const r = transitionFor({ ...booking, rentalMode: tenant.rentalMode }, payment, ev);
-    if (!r.ok) return r.reason;
-    await store.applyTransition(tx, booking, payment, r.t);
-    return "applied";
+    const pi = str(o.payment_intent) ?? str(obj(o.payment_intent).id);
+    const refunded = num(o.amount_refunded);
+    if (!pi || refunded === null) return "not_found";
+    const payment = await store.paymentByIntent(tx, tenant.id, pi);
+    const ev: CheckoutEvent = { kind: "refunded", amountRefunded: refunded };
+    if (!payment) return "not_found";
+    return applyTo(tx, store, tenant, payment, ev);
+  });
+}
+
+/**
+ * Μία Checkout Session (από event ή από retrieve) → αλλαγή. ΙΔΙΟΙ έλεγχοι και
+ * για τις δύο οδούς: metadata της ΙΔΙΑΣ εταιρίας, session της ίδιας εταιρίας,
+ * ίδια κράτηση, ποσό/νόμισμα, idempotency (η γραμμή πληρωμής κλειδώνεται·
+ * δεύτερο «paid» = noop).
+ */
+async function applySession<Tx>(
+  tx: Tx,
+  store: WebhookStore<Tx>,
+  tenant: { id: string; rentalMode: string },
+  type: string,
+  o: Record<string, unknown>
+): Promise<WebhookOutcome> {
+  const sessionId = str(o.id);
+  const meta = obj(o.metadata);
+  // Τα metadata πρέπει να δείχνουν ΤΗΝ ΙΔΙΑ εταιρία με τον λογαριασμό.
+  if (!sessionId || str(meta.tenantId) !== tenant.id || !str(meta.bookingId)) return "mismatch";
+  const payment = await store.paymentBySession(tx, tenant.id, sessionId);
+  if (payment && payment.bookingId !== meta.bookingId) return "mismatch";
+  const ev = checkoutEventOf(type, o);
+  if (!ev) return payment ? "pending" : "not_found";
+  if (!payment) return "not_found";
+  return applyTo(tx, store, tenant, payment, ev);
+}
+
+async function applyTo<Tx>(
+  tx: Tx,
+  store: WebhookStore<Tx>,
+  tenant: { id: string; rentalMode: string },
+  payment: WebhookPayment,
+  ev: CheckoutEvent
+): Promise<WebhookOutcome> {
+  const booking = await store.booking(tx, tenant.id, payment.bookingId);
+  if (!booking) return "not_found";
+  const r = transitionFor({ ...booking, rentalMode: tenant.rentalMode }, payment, ev);
+  if (!r.ok) return r.reason;
+  await store.applyTransition(tx, booking, payment, r.t);
+  return "applied";
+}
+
+/* ─────────────────────────────────────────────
+   Εφεδρικός έλεγχος χωρίς webhook (retrieve της session)
+   ───────────────────────────────────────────── */
+
+/**
+ * Ρωτά το Stripe για τη session μιας κράτησης και περνά το αποτέλεσμα από την
+ * ΙΔΙΑ λογική με το webhook. Η session ΜΟΝΟ από το booking_payments της ΙΔΙΑΣ
+ * εταιρίας (ποτέ από URL) και μόνο με τον λογαριασμό που την έφτιαξε.
+ * Το webhook μένει η κύρια οδός· όποιο φτάσει δεύτερο βρίσκει PAID → noop.
+ */
+export async function checkSessionNow<Tx>(
+  opts: {
+    tenantId: string;
+    /** Από το booking_payments: η session και ο λογαριασμός που τη δημιούργησε. */
+    payment: { stripeCheckoutSessionId: string; stripeAccountId: string };
+    retrieve: (sessionId: string, account: string) => Promise<Record<string, unknown>>;
+  },
+  store: WebhookStore<Tx>
+): Promise<WebhookOutcome> {
+  const { payment } = opts;
+  const session = await opts.retrieve(payment.stripeCheckoutSessionId, payment.stripeAccountId);
+  // Η απάντηση πρέπει να είναι ΑΥΤΗ η session.
+  if (str(session.id) !== payment.stripeCheckoutSessionId) return "mismatch";
+  let type: string;
+  if (session.status === "complete" && session.payment_status === "paid") type = "checkout.session.completed";
+  else if (session.status === "expired") type = "checkout.session.expired";
+  else return "pending";
+
+  return store.run(async (tx) => {
+    // Ο λογαριασμός της session πρέπει να ανήκει ΣΤΗΝ ΙΔΙΑ εταιρία.
+    const tenant = await store.tenantByAccount(tx, payment.stripeAccountId);
+    if (!tenant || tenant.id !== opts.tenantId) return "unknown_account";
+    return applySession(tx, store, tenant, type, session);
   });
 }

@@ -344,9 +344,10 @@ export async function StorefrontConfirmationPage({
   // Όριο αιτημάτων ανά client (hash του IP, όχι IP) — κατά της μαντεψιάς κωδικών.
   const ip = (headers().get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
   if (!(await hitLimit(dbCounterStore, LIMITS.confirmationPerClient, ip))) notFound();
-  const b = await loadConfirmation(companyId, params.code, lang);
+  const justPaid = first(searchParams.paid) === "1";
+  const b = await loadConfirmation(companyId, params.code, lang, justPaid);
   if (!b) notFound();
-  return <StorefrontConfirmation company={company} lang={lang} b={b} justPaid={first(searchParams.paid) === "1"} />;
+  return <StorefrontConfirmation company={company} lang={lang} b={b} justPaid={justPaid} />;
 }
 
 /* ─────────────────────────────────────────────

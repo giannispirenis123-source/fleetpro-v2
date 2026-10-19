@@ -1,8 +1,8 @@
 # FleetPro v2 — Handoff
 
-**Ημερομηνία:** 17/10/2026 · **main:** `8d42225` (merge του PR #28 — μέρη/κριτικές, σειρά αρχικής, υποχρεωτική επιστροφή· SQL 26 έτρεξε). **Ανοιχτό:** `claude/stripe-connect-payments` — **online πληρωμές με Stripe Connect** (§5.10). **Θέλει SQL `27` ΠΡΙΝ τη δοκιμή στο preview** + env `STRIPE_SECRET_KEY`, `STRIPE_CONNECT_WEBHOOK_SECRET`. Επόμενος ελεύθερος αριθμός SQL: `28`.
+**Ημερομηνία:** 19/10/2026 · **main:** `8d42225` (merge του PR #28 — μέρη/κριτικές, σειρά αρχικής, υποχρεωτική επιστροφή· SQL 26 έτρεξε). **Ανοιχτό:** `claude/stripe-connect-payments` (PR #29) — **online πληρωμές με Stripe Connect** (§5.10, §5.10.1). SQL `27` έτρεξε (`8|3|2|10|0`)· **θέλει SQL `28` ΠΡΙΝ τη δοκιμή** της 2ης φάσης. Env `STRIPE_SECRET_KEY`, `STRIPE_CONNECT_WEBHOOK_SECRET` μπήκαν. Επόμενος ελεύθερος αριθμός SQL: `29`.
 
-> **Επόμενο βήμα:** SQL 27 → Stripe (Test mode, Connect, webhook) + env στο Vercel → δοκιμή online πληρωμών στο preview → merge. Μετά PR 4 (SEO/νομικά/FAQ). Μετά το domain: επαλήθευση domain στο Resend και email προς πελάτες. Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται **«Fleet-Pro Car Rental»**· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
+> **Επόμενο βήμα:** SQL 28 → δοκιμή (κράτηση υπολοίπου, «Έλεγχος πληρωμής στο Stripe», μόνο κάρτα) στο preview → merge → 2ο webhook endpoint (production) + secret στο Production + Redeploy. Μετά PR 4 (SEO/νομικά/FAQ). Μετά το domain: επαλήθευση domain στο Resend και email προς πελάτες. Παράλληλα εκκρεμούν Φάση Γ (§8.1) και μεταφορά υπογραφών σε Storage. Η εταιρία δοκιμών/demo λέγεται **«Fleet-Pro Car Rental»**· η πραγματική εταιρία θα φτιαχτεί ξεχωριστά.
 
 ---
 
@@ -594,11 +594,25 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 **Για αργότερα:** (1) Ασύγχρονες μέθοδοι (SEPA κ.λπ.) δεν ενεργοποιούνται ρητά — το Checkout δείχνει ό,τι έχει ενεργό η εταιρία· αν ολοκληρωθούν μετά τη λήξη των 31΄, η κράτηση έχει ήδη ακυρωθεί (PAID + «θέλει επιστροφή»). (2) Δεν στέλνεται email αυτόματα με την πληρωμή — η εταιρία επιβεβαιώνει/στέλνει μήνυμα όπως πριν. (3) Disputes/chargebacks δεν παρακολουθούνται (φαίνονται στον πίνακα Stripe). (4) Τιμολόγιο: δεν σημειώνεται αυτόματα το online ποσό.
 
+### 5.10.1 Πληρωμές — 2η φάση μετά τη δοκιμή 19/10 (ίδιο PR, SQL `28`)
+
+**Τι βρέθηκε:** (α) webhook 401 από το Vercel Authentication του preview· (β) BP-2026-013 πληρώθηκε στο Stripe χωρίς να φτάσει event → έμεινε «δεν ολοκληρώθηκε»· (γ) η σελίδα κράτησης έγραφε «Πληρωμή κατά την παραλαβή» και σε online (`StorefrontViews.tsx`, το `sf-bk-pay` χωρίς έλεγχο)· (δ) σε ακυρωμένη με μερική επιστροφή η προειδοποίηση έμενε για πάντα· (ε) η Checkout έδειχνε πολλές μεθόδους (bancontact, klarna…).
+
+**Αλλαγές:**
+- **«Το υπόλοιπο κρατείται» (χρέωση ακύρωσης):** `booking_payments.retainedCents/retainedAt/retainedNote/retainedBy` (SQL 28, CHECK `refunded + retained <= amount`). `POST /api/bookings/[id]/retain` (μόνο `COMPANY_ADMIN`· Staff βλέπει ανενεργό κουμπί, Partner 403), ιστορικό `booking.retain`. Η προειδοποίηση = `needsDecision` (ακυρωμένη + `amount − refunded − retained > 0`) — υπάρχει ΜΟΝΟ στην κάρτα (δεν υπήρχε σε Πίνακα/φίλτρα). Η «Επιστροφή χρημάτων» μένει για όλο το μη επιστραμμένο (και το κρατημένο)· επιστροφή μειώνει αντίστοιχα το κρατημένο (`retainedAfterRefund`, και στο webhook `charge.refunded`). Μήνυμα πελάτη: «Επιστράφηκαν X · Κρατήθηκαν Y ως χρέωση ακύρωσης».
+- **Εφεδρική επιβεβαίωση χωρίς webhook:** `checkSessionNow` (`paymentWebhook.ts`) = `stripe.checkout.sessions.retrieve(id, {}, {stripeAccount})` με session/λογαριασμό ΜΟΝΟ από το `booking_payments` της εταιρίας, μετά την ΙΔΙΑ `applySession` με το webhook (metadata/tenant/session/ποσό/νόμισμα, «πληρώθηκε σε ακυρωμένη» → PAID χωρίς επανενεργοποίηση). Η γραμμή πληρωμής κλειδώνεται `FOR UPDATE` → webhook + retrieve = μία εγγραφή. Όριο `pay-check` 1/10΄΄ ανά κράτηση (rate_limits). Τρέχει: στη σελίδα κράτησης όσο είναι AWAITING_PAYMENT (refresh κάθε 10΄΄) ή με `?paid=1` (κάθε 3΄΄, και για EXPIRED/FAILED)· και με κουμπί «Έλεγχος πληρωμής στο Stripe» στην κάρτα (Admin/Staff) για AWAITING_PAYMENT/EXPIRED/FAILED (`POST /api/bookings/[id]/payment-check`).
+- **Μόνο κάρτα:** `payment_method_types: ["card"]` (Apple Pay / Google Pay ως κάρτα).
+- **Κείμενα** (`src/lib/storefront/paymentText.ts`, `dashboardPaymentText` στο `payments.ts`): online ΠΟΤΕ «στην παραλαβή». Αναμονή «Αναμονή πληρωμής…» + «Συνέχεια στην πληρωμή»· «✓ Πληρώθηκε X € · Υπόλοιπο στην παραλαβή Y €» (χωρίς υπόλοιπο σε ακυρωμένη)· «Η πληρωμή δεν ολοκληρώθηκε»· «Επιστράφηκαν X · Κρατήθηκαν Y».
+- **API version:** διαβάζονται μόνο `id`, `status`, `payment_status`, `amount_total`, `currency`, `payment_intent`, `metadata` (session), `charges_enabled/payouts_enabled/details_submitted` (account), `payment_intent/amount_refunded` (charge) — ίδια σε `2023-10-16` (SDK) και `2026-09-30.endive` (webhook)· η BP-014 το επιβεβαίωσε.
+
+**Για αργότερα:** (1) **Accounts v2**: το Stripe ζήτησε «Accounts v1 support» για το `accounts.create({type:"express"})`. Η μετάβαση θέλει νέο SDK (≥ v18), `v2.core.accounts.create` με configuration `merchant`/`recipient`, νέα events (`v2.core.account[...].updated`, thin events) και αντιστοίχιση των flags — δεν έγινε. (2) Αναβάθμιση του SDK/apiVersion ώστε να ταιριάζει με το webhook endpoint. (3) Ένδειξη «θέλει απόφαση» και στον Πίνακα/φίλτρο κρατήσεων. (4) Τα ήδη ακυρωμένα-πληρωμένα δεν στέλνουν αυτόματα μήνυμα.
+
 ## 6. Migrations
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
-- **27-stripe-connect: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/stripe-connect-payments`). Σε transaction: 8 στήλες στο `tenants` (+ unique `stripeAccountId`), 3 στο `bookings` (+ index), πίνακες `booking_payments`, `stripe_events`, 10 constraints. Μόνο προσθήκες με προεπιλογές = σημερινή συμπεριφορά. Αναμενόμενο verification `8 | 3 | 2 | 10 | 0`. **Τρέχει πριν τη δοκιμή στο preview.** Επόμενος ελεύθερος αριθμός: `28`.
+- **28-payment-retained: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/stripe-connect-payments`). Σε transaction: `booking_payments` + `retainedCents` (default 0), `retainedAt`, `retainedNote`, `retainedBy` + CHECK `booking_payments_retained_check`. Αναμενόμενο verification `4 | 1 | 0`. **Τρέχει πριν τη δοκιμή.** Επόμενος ελεύθερος αριθμός: `29`.
+- **27-stripe-connect: έτρεξε** (`8|3|2|10|0`). Ιστορικό: (branch `claude/stripe-connect-payments`). Σε transaction: 8 στήλες στο `tenants` (+ unique `stripeAccountId`), 3 στο `bookings` (+ index), πίνακες `booking_payments`, `stripe_events`, 10 constraints. Μόνο προσθήκες με προεπιλογές = σημερινή συμπεριφορά. Αναμενόμενο verification `8 | 3 | 2 | 10 | 0`. **Τρέχει πριν τη δοκιμή στο preview.** Επόμενος ελεύθερος αριθμός: `28`.
 - **26-places-reviews: έτρεξε** (verification `3|1|5|3|1`, branch `claude/public-site-places-reviews`). Σε transaction: πίνακες `places`, `place_locations`, `reviews` (+ unique slug ανά tenant, 5 FK, 3 CHECK), `pickup_locations."googlePlaceId"`. Μόνο προσθήκες. Αναμενόμενο verification `3 | 1 | 5 | 3 | 1`. Επόμενος ελεύθερος αριθμός: `27`.
 - **25-optional-insurance: έτρεξε** (PR #27, merged).
 - **25-optional-insurance (ιστορικό):** (branch `claude/optional-insurance`, ΜΕΤΑ το 24). Σε transaction: `extras."coveragesI18n"` JSONB NOT NULL DEFAULT '[]' + CHECK `extras_coveragesI18n_array_check`. Καμία αλλαγή στα υπάρχοντα δεδομένα. Αναμενόμενο verification `1 | 1 | 0 | <πλήθος ασφαλειών>`. Επόμενος ελεύθερος αριθμός: `26`.
@@ -672,6 +686,7 @@ INSERT INTO "plans" ("key","name","modules","limits") VALUES ('pro_site','Pro + 
 
 | Commit | Τι |
 |---|---|
+| _(branch `claude/stripe-connect-payments`, 2η φάση)_ | «Το υπόλοιπο κρατείται» (χρέωση ακύρωσης), εφεδρικός έλεγχος πληρωμής με retrieve (ίδια μετάβαση με το webhook, κλείδωμα γραμμής, 1/10΄΄), «Έλεγχος πληρωμής στο Stripe», μόνο κάρτα, σωστά κείμενα online. Migration `28` |
 | _(branch `claude/stripe-connect-payments`)_ | Online πληρωμές με Stripe Connect Express: καρτέλα «Πληρωμές», επιλογή στη φόρμα, Checkout (direct charge, προκαταβολή), webhook με idempotency, αναμονή πληρωμής που κρατά/ελευθερώνει το όχημα, ένδειξη + επιστροφή χρημάτων στο dashboard, προμήθεια πλατφόρμας (Super Admin). Migration `27` |
 | `8d42225` | Merge PR #28 (μέρη/κριτικές, σειρά αρχικής, υποχρεωτική επιστροφή). SQL 26 έτρεξε |
 | _(branch `claude/public-site-places-reviews`)_ | «Μέρη για επίσκεψη» (carousel + σελίδα μέρους, φωτογραφίες Cloudinary, ανά τοποθεσία) και «Κριτικές πελατών» (χειροκίνητες + Google Places με cache 24ω, AggregateRating), καρτέλες «Μέρη»/«Κριτικές», Google Place ID στις τοποθεσίες. Migration `26` |

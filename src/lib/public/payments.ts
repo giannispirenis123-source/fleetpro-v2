@@ -171,6 +171,8 @@ export interface PaymentRowState {
   status: string;
   amountCents: number;
   refundedCents: number;
+  /** Κρατήθηκε ως χρέωση ακύρωσης (SQL 28). Πάντα refunded + retained <= amount. */
+  retainedCents?: number;
 }
 
 export interface BookingPaymentState {
@@ -181,7 +183,7 @@ export interface BookingPaymentState {
 
 export interface Transition {
   booking: { status?: "CONFIRMED" | "CANCELLED"; paymentStatus: PaymentStatus; cancelReasonCode?: string; clearExpiry?: boolean };
-  payment: { status: string; refundedCents?: number; paidAt?: boolean; paymentIntentId?: string | null };
+  payment: { status: string; refundedCents?: number; retainedCents?: number; paidAt?: boolean; paymentIntentId?: string | null };
   /** Πληρώθηκε κράτηση που είχε ήδη ακυρωθεί → θέλει επιστροφή από την εταιρία. */
   needsRefund?: boolean;
 }
@@ -227,8 +229,19 @@ export function transitionFor(b: BookingPaymentState, p: PaymentRowState, e: Che
   const refunded = Math.min(p.amountCents, Math.max(0, Math.round(e.amountRefunded)));
   if (refunded <= p.refundedCents) return { ok: false, reason: "noop" };
   const status = refunded >= p.amountCents ? "REFUNDED" : "PARTIALLY_REFUNDED";
-  return { ok: true, t: { booking: { paymentStatus: status }, payment: { status, refundedCents: refunded } } };
+  const retained = retainedAfterRefund(p, refunded);
+  return {
+    ok: true,
+    t: {
+      booking: { paymentStatus: status },
+      payment: { status, refundedCents: refunded, ...(retained !== (p.retainedCents ?? 0) ? { retainedCents: retained } : {}) },
+    },
+  };
 }
+
+/** Μετά από επιστροφή: ό,τι είχε κρατηθεί μειώνεται, ώστε refunded + retained <= amount. */
+export const retainedAfterRefund = (p: PaymentRowState, refundedCents: number): number =>
+  Math.max(0, Math.min(p.retainedCents ?? 0, p.amountCents - refundedCents));
 
 /* ─────────────────────────────────────────────
    Επιστροφή χρημάτων (dashboard)
@@ -246,6 +259,49 @@ export const REFUND_MSG = {
 
 /** Ο συνεργάτης ΜΟΝΟ βλέπει· επιστροφή ΜΟΝΟ από Διαχειριστή. */
 export const canRefund = (role: string): boolean => role === "COMPANY_ADMIN";
+
+/** Κράτηση υπολοίπου (χρέωση ακύρωσης): ΜΟΝΟ Διαχειριστής. */
+export const canRetain = (role: string): boolean => role === "COMPANY_ADMIN";
+
+/** «Έλεγχος πληρωμής στο Stripe»: Διαχειριστής και Υπάλληλος (ο συνεργάτης μόνο βλέπει). */
+export const canCheckPayment = (role: string): boolean => role === "COMPANY_ADMIN" || role === "STAFF";
+
+/** Ποιες online κρατήσεις έχει νόημα να ξαναρωτηθούν στο Stripe. */
+export const CHECKABLE_PAYMENT_STATUSES = ["AWAITING_PAYMENT", "EXPIRED", "FAILED"] as const;
+export const isCheckable = (b: { paymentMethod: string | null; paymentStatus: string }): boolean =>
+  b.paymentMethod === "ONLINE" && (CHECKABLE_PAYMENT_STATUSES as readonly string[]).includes(b.paymentStatus);
+
+/** Ό,τι ΔΕΝ έχει ούτε επιστραφεί ούτε κρατηθεί — αυτό θέλει απόφαση σε ακυρωμένη κράτηση. */
+export const outstandingCents = (p: PaymentRowState): number =>
+  p.status === "PAID" || p.status === "PARTIALLY_REFUNDED" ? Math.max(0, p.amountCents - p.refundedCents - (p.retainedCents ?? 0)) : 0;
+
+/** Ακυρωμένη, πληρωμένη, με ποσό χωρίς απόφαση (ούτε επιστροφή ούτε κράτηση) → προειδοποίηση. */
+export const needsDecision = (bookingStatus: string, p: PaymentRowState | null | undefined): boolean =>
+  bookingStatus === "CANCELLED" && !!p && outstandingCents(p) > 0;
+
+export const RETAIN_MSG = {
+  role: "Μόνο ο Διαχειριστής αποφασίζει για το υπόλοιπο της πληρωμής",
+  notFound: "Η κράτηση δεν βρέθηκε",
+  notCancelled: "Το υπόλοιπο κρατείται μόνο σε ακυρωμένη κράτηση.",
+  nothing: "Δεν υπάρχει υπόλοιπο πληρωμής χωρίς απόφαση.",
+} as const;
+
+export const RETAIN_NOTE_MAX = 300;
+
+/**
+ * «Το υπόλοιπο κρατείται»: ό,τι δεν επιστράφηκε γίνεται χρέωση ακύρωσης.
+ * Επιστρέφει το ΝΕΟ συνολικό retainedCents (= amount − refunded).
+ */
+export function checkRetain(
+  booking: { status: string } | null,
+  payment: PaymentRowState | null
+): { ok: true; retainedCents: number; addedCents: number } | { ok: false; status: 400 | 404; message: string } {
+  if (!booking) return { ok: false, status: 404, message: RETAIN_MSG.notFound };
+  if (booking.status !== "CANCELLED") return { ok: false, status: 400, message: RETAIN_MSG.notCancelled };
+  const add = payment ? outstandingCents(payment) : 0;
+  if (!payment || add <= 0) return { ok: false, status: 400, message: RETAIN_MSG.nothing };
+  return { ok: true, retainedCents: (payment.retainedCents ?? 0) + add, addedCents: add };
+}
 
 /** Πόσο μπορεί ακόμα να επιστραφεί από μια πληρωμή (cents). */
 export const refundableCents = (p: PaymentRowState): number =>
@@ -292,6 +348,40 @@ export function paymentBadge(b: { paymentMethod: string | null; paymentStatus: s
     default:
       return null;
   }
+}
+
+export interface DashboardPaymentText {
+  /** Κλειδί του λεξικού του dashboard (decision.*). */
+  key: "payPickup" | "payAwaiting" | "payPaid" | "payPaidFull" | "payRefunded" | "payPartRefund" | "payRetained" | "payRefundedRetained" | "payNotCompleted";
+  /** Ποσά σε cents για τα {placeholders}. */
+  vars: Record<string, number>;
+  tone: "muted" | "warn" | "ok" | "info" | "bad";
+}
+
+/**
+ * Το κείμενο πληρωμής στην κάρτα του dashboard. Σε online κράτηση ΠΟΤΕ
+ * «Πληρωμή στην παραλαβή». Επιστροφή/κράτηση ποσού έχουν προτεραιότητα.
+ */
+export function dashboardPaymentText(
+  b: { status: string; paymentMethod: string | null; paymentStatus: string; totalCents: number },
+  p: PaymentRowState | null,
+  nowMs: number,
+  expiresMs: number | null
+): DashboardPaymentText | null {
+  const badge = paymentBadge(b, nowMs, expiresMs);
+  if (!badge) return null;
+  if (badge === "PICKUP") return { key: "payPickup", vars: {}, tone: "muted" };
+  if (badge === "AWAITING") return { key: "payAwaiting", vars: {}, tone: "warn" };
+  const paid = p && (badge === "PAID" || badge === "PARTIAL_REFUND" || badge === "REFUNDED") ? p.amountCents : 0;
+  if (!p || paid === 0) return { key: "payNotCompleted", vars: {}, tone: "bad" };
+  const refunded = p.refundedCents;
+  const retained = p.retainedCents ?? 0;
+  if (refunded > 0 && retained > 0) return { key: "payRefundedRetained", vars: { refunded, retained }, tone: "info" };
+  if (retained > 0) return { key: "payRetained", vars: { amount: retained }, tone: "info" };
+  if (refunded >= paid) return { key: "payRefunded", vars: { amount: refunded }, tone: "info" };
+  if (refunded > 0) return { key: "payPartRefund", vars: { refunded, paid }, tone: "info" };
+  const balance = b.status === "CANCELLED" ? 0 : Math.max(0, b.totalCents - paid);
+  return balance > 0 ? { key: "payPaid", vars: { paid, balance }, tone: "ok" } : { key: "payPaidFull", vars: { paid }, tone: "ok" };
 }
 
 /** Link προς την πληρωμή στον πίνακα Stripe (η εταιρία βλέπει τον δικό της λογαριασμό). */

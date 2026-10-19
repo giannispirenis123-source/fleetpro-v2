@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CreditCard, ExternalLink, MessageCircle, Mail, X } from "lucide-react";
 import { centsToInput, formatCents, parseEuroInput } from "@/lib/public/money";
-import { paymentBadge, refundableCents, stripeDashboardPaymentUrl } from "@/lib/public/payments";
+import { RETAIN_NOTE_MAX, dashboardPaymentText, needsDecision, outstandingCents, refundableCents, stripeDashboardPaymentUrl } from "@/lib/public/payments";
 import type { BookingDTO } from "@/lib/bookings";
 import {
   CANCEL_NOTE_MAX,
@@ -435,42 +435,20 @@ const euroOf = (cents: number, locale: string) => formatCents(cents, locale === 
 
 /** Η ένδειξη πληρωμής μιας κράτησης (και link προς την πληρωμή στον πίνακα Stripe). */
 export function PaymentInfo({ booking: b, tr, locale, stripeLive }: { booking: BookingDTO; tr: Tr; locale: string; stripeLive: boolean }) {
-  const badge = paymentBadge(b, Date.now(), b.paymentExpiresAt ? Date.parse(b.paymentExpiresAt) : null);
-  if (!badge) return null;
   const p = b.payment ?? null;
-  const total = Math.round(b.total * 100);
-  const paid = p?.amountCents ?? 0;
-  let text: string;
-  let tone = "muted";
-  switch (badge) {
-    case "PICKUP":
-      text = tr("decision.payPickup");
-      break;
-    case "AWAITING":
-      text = tr("decision.payAwaiting");
-      tone = "warn";
-      break;
-    case "PAID":
-      text = paid >= total ? tr("decision.payPaidFull").replace("{paid}", euroOf(paid, locale)) : tr("decision.payPaid").replace("{paid}", euroOf(paid, locale)).replace("{total}", euroOf(total, locale));
-      tone = "ok";
-      break;
-    case "PARTIAL_REFUND":
-      text = tr("decision.payPartRefund").replace("{refunded}", euroOf(p?.refundedCents ?? 0, locale)).replace("{paid}", euroOf(paid, locale));
-      tone = "info";
-      break;
-    case "REFUNDED":
-      text = tr("decision.payRefunded").replace("{amount}", euroOf(p?.refundedCents ?? paid, locale));
-      tone = "info";
-      break;
-    default:
-      text = tr("decision.payNotCompleted");
-      tone = "bad";
-  }
+  const info = dashboardPaymentText(
+    { status: b.status, paymentMethod: b.paymentMethod, paymentStatus: b.paymentStatus, totalCents: Math.round(b.total * 100) },
+    p,
+    Date.now(),
+    b.paymentExpiresAt ? Date.parse(b.paymentExpiresAt) : null
+  );
+  if (!info) return null;
+  let text = tr(`decision.${info.key}`);
+  for (const [k, v] of Object.entries(info.vars)) text = text.replace(`{${k}}`, euroOf(v, locale));
   const url = stripeDashboardPaymentUrl(p?.paymentIntentId ?? null, stripeLive);
-  const needsRefund = b.status === "CANCELLED" && p !== null && refundableCents(p) > 0;
   return (
     <span className="dash-booking-pay">
-      <span className={`dash-badge dash-badge--${tone}`}>
+      <span className={`dash-badge dash-badge--${info.tone}`}>
         <CreditCard size={13} /> {text}
       </span>
       {url && (
@@ -478,8 +456,98 @@ export function PaymentInfo({ booking: b, tr, locale, stripeLive }: { booking: B
           {tr("decision.payStripeLink")} <ExternalLink size={12} />
         </a>
       )}
-      {needsRefund && <span className="dash-badge dash-badge--warn">{tr("decision.payNeedsRefund")}</span>}
+      {needsDecision(b.status, p) && <span className="dash-badge dash-badge--warn">{tr("decision.payNeedsRefund")}</span>}
     </span>
+  );
+}
+
+/** Υπόλοιπο πληρωμής χωρίς απόφαση (για «Το υπόλοιπο κρατείται»). */
+export const outstandingOf = (b: BookingDTO): number => (b.status === "CANCELLED" && b.payment ? outstandingCents(b.payment) : 0);
+
+export function RetainModal({
+  booking,
+  tr,
+  locale,
+  onClose,
+  onDone,
+}: {
+  booking: BookingDTO;
+  tr: Tr;
+  locale: string;
+  onClose: () => void;
+  onDone: (booking: BookingDTO | null) => void;
+}) {
+  const amount = outstandingOf(booking);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/retain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: note.trim() || null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) setError(body.message ?? tr("bookings.errorSave"));
+      else {
+        setDone(true);
+        onDone(body.data?.booking ?? null);
+      }
+    } catch {
+      setError(tr("bookings.errorConnection"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Shell
+      title={tr("decision.retainButton")}
+      onClose={onClose}
+      tr={tr}
+      footer={
+        done ? (
+          <button className="dash-btn dash-btn--primary" onClick={onClose}>
+            {tr("common.close")}
+          </button>
+        ) : (
+          <>
+            <button className="dash-btn" onClick={onClose} disabled={busy}>
+              {tr("bookings.back")}
+            </button>
+            <button className="dash-btn dash-btn--primary" onClick={submit} disabled={busy || amount <= 0}>
+              {tr("decision.retainConfirm").replace("{amount}", euroOf(amount, locale))}
+            </button>
+          </>
+        )
+      }
+    >
+      <p className="dash-confirm-vehicle">
+        {booking.bookingNumber} · {booking.customerName}
+        {booking.publicCode && <code className="dash-code"> {booking.publicCode}</code>}
+      </p>
+      {done ? (
+        <div className="dash-form-ok">{tr("decision.retainDone")}</div>
+      ) : (
+        <>
+          <p className="dash-form-note">{tr("decision.retainIntro")}</p>
+          <p>
+            <strong>{tr("decision.retainAmount").replace("{amount}", euroOf(amount, locale))}</strong>
+          </p>
+          <label className="dash-field">
+            {tr("decision.retainNote")}
+            <textarea rows={2} maxLength={RETAIN_NOTE_MAX} value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+          {error && <div className="dash-form-error">{error}</div>}
+        </>
+      )}
+    </Shell>
   );
 }
 

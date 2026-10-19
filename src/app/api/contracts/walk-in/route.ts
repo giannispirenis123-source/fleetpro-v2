@@ -20,7 +20,7 @@ import { ok, created, badRequest, conflict, forbidden, serverError } from "@/lib
 import { decidePriceOverride, type PriceOverride } from "@/lib/priceOverride";
 import { viewerCan, withPermission } from "@/lib/authz";
 import { TIME_RE } from "@/lib/bookings";
-import { prepareBooking, writeBooking } from "@/lib/bookingCreate";
+import { prepareBooking, writeBooking, BookingConflictError } from "@/lib/bookingCreate";
 import {
   createContractInTx,
   initialContractData,
@@ -247,6 +247,7 @@ export const POST = withPermission(
     } catch (error) {
       // Λείπει/λάθος κλειδί κάρτας: καθαρό μήνυμα, τίποτα δεν αποθηκεύτηκε.
       if (error instanceof CardKeyError) return serverError(error.message);
+      if (error instanceof BookingConflictError) return conflict(error.message, error.conflicts);
       console.error(error);
       return serverError();
     }

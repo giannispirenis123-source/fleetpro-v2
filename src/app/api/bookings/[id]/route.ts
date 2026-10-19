@@ -25,6 +25,8 @@ import {
   toBookingDTO,
 } from "@/lib/bookings";
 import { checkVehicleConflicts } from "@/lib/bookingConflicts";
+import { BookingConflictError } from "@/lib/bookingCreate";
+import { lockKeyFor } from "@/lib/public/bookingPlan";
 import { discountOfBooking, priceBooking } from "@/lib/bookingPricing";
 import { NO_PRICE_MESSAGE } from "@/lib/public/engine";
 import { manualRentalOfBooking, pricePartsOf } from "@/lib/contractForm";
@@ -147,13 +149,16 @@ export const PATCH = withPermission(
       const nextStatus = data.status ?? current.status;
       const claimsVehicle = nextStatus !== "CANCELLED" && nextStatus !== "COMPLETED";
 
+      // Ο ίδιος έλεγχος ξαναγίνεται μέσα στο κλείδωμα, πριν από την εγγραφή
+      // (εκτός αν η σύγκρουση εγκρίθηκε ρητά).
+      let recheck: Parameters<typeof checkVehicleConflicts>[0] | null = null;
       if (claimsVehicle) {
         const tenant = await db.tenant.findUnique({
           where: { id: session.tenantId! },
           select: { prepTimeMinutes: true },
         });
 
-        const conflicts = await checkVehicleConflicts({
+        recheck = {
           tenantId: session.tenantId!,
           vehicleId,
           excludeBookingId: current.id,
@@ -162,7 +167,9 @@ export const PATCH = withPermission(
           returnDate: ret,
           returnTime,
           prepMinutes: tenant?.prepTimeMinutes ?? 0,
-        });
+        };
+        const conflicts = await checkVehicleConflicts(recheck);
+        if (conflicts.length > 0) recheck = null;
 
         if (conflicts.length > 0) {
           if (!data.override) {
@@ -250,34 +257,44 @@ export const PATCH = withPermission(
       });
       if (!partner.ok) return badRequest(partner.message);
 
-      const booking = await db.booking.update({
-        where: { id: current.id },
-        data: {
-          partnerId: partner.partnerId,
-          ...(data.customerId !== undefined && { customerId: data.customerId }),
-          ...(data.vehicleId !== undefined && { vehicleId: data.vehicleId }),
-          ...(data.pickupDate !== undefined && { pickupDate: toDate(pickup) }),
-          ...(data.pickupTime !== undefined && { pickupTime: data.pickupTime }),
-          ...(data.returnDate !== undefined && { returnDate: toDate(ret) }),
-          ...(data.returnTime !== undefined && { returnTime: data.returnTime }),
-          ...(data.status !== undefined && { status: data.status }),
-          ...(data.notes !== undefined && { notes: data.notes?.trim() || null }),
-          ...(priced?.ok && {
-            dailyRate: priced.dailyRate,
-            totalDays: priced.breakdown.totalDays,
-            subtotal: priced.breakdown.subtotal,
-            extrasTotal: priced.breakdown.extrasTotal,
-            insuranceCost: priced.breakdown.insuranceCost,
-            discountAmount: priced.breakdown.discountAmount,
-            discountCode: priced.discountCode,
-            total: manualRental !== null ? totalWithRental(priced.breakdown, manualRental) : priced.breakdown.total,
-            extras: priced.snapshot as never,
-            priceQuote: priced.quote as never,
-            priceMode: manualRental !== null ? "MANUAL" : "AUTO",
-          }),
+      const booking = await db.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKeyFor(session.tenantId!)}))`;
+          if (recheck) {
+            const late = await checkVehicleConflicts({ ...recheck, client: tx });
+            if (late.length > 0) throw new BookingConflictError(late);
+          }
+          return tx.booking.update({
+            where: { id: current.id },
+            data: {
+              partnerId: partner.partnerId,
+              ...(data.customerId !== undefined && { customerId: data.customerId }),
+              ...(data.vehicleId !== undefined && { vehicleId: data.vehicleId }),
+              ...(data.pickupDate !== undefined && { pickupDate: toDate(pickup) }),
+              ...(data.pickupTime !== undefined && { pickupTime: data.pickupTime }),
+              ...(data.returnDate !== undefined && { returnDate: toDate(ret) }),
+              ...(data.returnTime !== undefined && { returnTime: data.returnTime }),
+              ...(data.status !== undefined && { status: data.status }),
+              ...(data.notes !== undefined && { notes: data.notes?.trim() || null }),
+              ...(priced?.ok && {
+                dailyRate: priced.dailyRate,
+                totalDays: priced.breakdown.totalDays,
+                subtotal: priced.breakdown.subtotal,
+                extrasTotal: priced.breakdown.extrasTotal,
+                insuranceCost: priced.breakdown.insuranceCost,
+                discountAmount: priced.breakdown.discountAmount,
+                discountCode: priced.discountCode,
+                total: manualRental !== null ? totalWithRental(priced.breakdown, manualRental) : priced.breakdown.total,
+                extras: priced.snapshot as never,
+                priceQuote: priced.quote as never,
+                priceMode: manualRental !== null ? "MANUAL" : "AUTO",
+              }),
+            },
+            include: withRelations,
+          });
         },
-        include: withRelations,
-      });
+        { timeout: 15_000, maxWait: 10_000 }
+      );
 
       // Μεταφορά χρήσης: μείωση του παλιού κωδικού, αύξηση του νέου. Αν
       // είναι ο ίδιος, δεν γίνεται τίποτα.
@@ -323,6 +340,7 @@ export const PATCH = withPermission(
 
       return ok({ booking: { ...toBookingDTO(booking), invoiceNumber } });
     } catch (error) {
+      if (error instanceof BookingConflictError) return conflict(error.message, error.conflicts);
       console.error(error);
       return serverError();
     }

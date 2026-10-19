@@ -8,13 +8,14 @@ export const dynamic = "force-dynamic";
 // ΔΕΝ γίνεται ακόμη: ΦΠΑ και αυτόματο τιμολόγιο — σελίδα Τιμολογίων.
 
 import { db } from "@/lib/db";
-import { ok, created, badRequest, serverError } from "@/lib/api";
+import { ok, created, badRequest, conflict, serverError } from "@/lib/api";
 import { withPermission, bookingScope } from "@/lib/authz";
 import { toBookingDTO } from "@/lib/bookings";
 import {
   createBookingSchema,
   prepareBooking,
   writeBooking,
+  BookingConflictError,
 } from "@/lib/bookingCreate";
 
 // GET /api/bookings
@@ -82,6 +83,7 @@ export const POST = withPermission(
 
       return created({ booking: toBookingDTO(booking) });
     } catch (error) {
+      if (error instanceof BookingConflictError) return conflict(error.message, error.conflicts);
       console.error(error);
       return serverError();
     }

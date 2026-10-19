@@ -6,14 +6,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { canChangeBookingStatus } from "@/lib/bookingStatusRule";
-import {
-  ok,
-  badRequest,
-  conflict,
-  forbidden,
-  notFound,
-  serverError,
-} from "@/lib/api";
+import { ok, badRequest, conflict, forbidden, notFound, serverError, logError } from "@/lib/api";
 import { withPermission, bookingScope, viewerCan } from "@/lib/authz";
 import { resolvePartnerId } from "@/lib/partners";
 import {
@@ -341,7 +334,7 @@ export const PATCH = withPermission(
       return ok({ booking: { ...toBookingDTO(booking), invoiceNumber } });
     } catch (error) {
       if (error instanceof BookingConflictError) return conflict(error.message, error.conflicts);
-      console.error(error);
+      logError("bookings/[id]", error);
       return serverError();
     }
   },
@@ -393,7 +386,7 @@ export const DELETE = withPermission(
 
       return ok({ booking: toBookingDTO(booking) });
     } catch (error) {
-      console.error(error);
+      logError("bookings/[id]", error);
       return serverError();
     }
   },

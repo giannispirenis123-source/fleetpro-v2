@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 // Σύνοψη διαστήματος: καθαρά έσοδα (χωρίς ΦΠΑ), έξοδα, κέρδος, κατανομή.
 // Όλα τα σύνολα υπολογίζονται εδώ από τη βάση — ο client δεν στέλνει ποσά.
 
-import { ok, badRequest, serverError } from "@/lib/api";
+import { ok, badRequest, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { loadSummary, parseRange } from "@/lib/financeForm";
 
@@ -16,7 +16,7 @@ export const GET = withPermission(
 
       return ok({ summary: await loadSummary(session.tenantId!, parsed.range) });
     } catch (error) {
-      console.error(error);
+      logError("finance/summary", error);
       return serverError();
     }
   },

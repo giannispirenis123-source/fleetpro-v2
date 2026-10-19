@@ -9,14 +9,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import {
-  withAuth,
-  ok,
-  badRequest,
-  forbidden,
-  notFound,
-  serverError,
-} from "@/lib/api";
+import { withAuth, ok, badRequest, forbidden, notFound, serverError, logError } from "@/lib/api";
 
 /** Ίδια rounds με prisma/seed.ts και POST /api/users. */
 const BCRYPT_ROUNDS = 12;
@@ -67,7 +60,7 @@ export const PATCH = withAuth(
       return ok({ id: user.id, email: user.email, name: user.name });
     } catch (error) {
       // Σκόπιμα δεν περνάμε το body στο log.
-      console.error("Password reset failed:", error);
+      logError("Password reset failed", error);
       return serverError();
     }
   },

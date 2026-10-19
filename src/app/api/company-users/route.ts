@@ -10,7 +10,7 @@ import { GRANT_MSG, permissionsBeyondActor } from "@/lib/adminRole";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { ok, created, badRequest, forbidden, serverError } from "@/lib/api";
+import { ok, created, badRequest, forbidden, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { checkWithinLimit } from "@/lib/entitlements";
 import { USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
@@ -46,7 +46,7 @@ export const GET = withPermission(
 
       return ok(users.map(toUserDTO));
     } catch (error) {
-      console.error(error);
+      logError("company-users", error);
       return serverError();
     }
   },
@@ -116,7 +116,7 @@ export const POST = withPermission(
       // Καμία επιστροφή κωδικού ή hash.
       return created({ user: toUserDTO(user) });
     } catch (error) {
-      console.error("Δημιουργία χρήστη:", error);
+      logError("Δημιουργία χρήστη", error);
       return serverError();
     }
   },

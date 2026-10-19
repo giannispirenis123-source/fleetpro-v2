@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 //  ?id=             → τα στοιχεία ενός πελάτη για τον κύριο οδηγό, αφού
 //                     τον διάλεξε ο χρήστης.
 
-import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { isCustomerSearchField } from "@/lib/customerMatch";
 import { customerAsDriver, findDuplicateCustomers, searchWalkInCustomers } from "@/lib/walkIn";
@@ -38,7 +38,7 @@ export const GET = withPermission(
       const email = sp.get("email")?.slice(0, 200) ?? "";
       return ok({ customers: await findDuplicateCustomers(tenantId, phone, email) });
     } catch (error) {
-      console.error(error);
+      logError("contracts/walk-in/customers", error);
       return serverError();
     }
   },

@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 // Μόνο ανάγνωση: οι τιμές (modules/limits) αλλάζουν στη βάση (SQL), χωρίς deploy.
 
 import { db } from "@/lib/db";
-import { ok, serverError, withAuth } from "@/lib/api";
+import { ok, serverError, withAuth, logError } from "@/lib/api";
 
 export const GET = withAuth(async () => {
   try {
@@ -14,7 +14,7 @@ export const GET = withAuth(async () => {
     });
     return ok({ plans });
   } catch (error) {
-    console.error(error);
+    logError("plans", error);
     return serverError();
   }
 }, ["SUPER_ADMIN"]);

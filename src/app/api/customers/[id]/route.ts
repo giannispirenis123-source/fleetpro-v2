@@ -7,12 +7,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import {
-  ok,
-  badRequest,
-  notFound,
-  serverError,
-} from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { toCustomerDTO } from "@/lib/customers";
 
@@ -111,7 +106,7 @@ export const PATCH = withPermission(
 
       return ok({ customer: toCustomerDTO(customer) });
     } catch (error) {
-      console.error(error);
+      logError("customers/[id]", error);
       return serverError();
     }
   },
@@ -151,7 +146,7 @@ export const DELETE = withPermission(
 
       return ok({ id: current.id });
     } catch (error) {
-      console.error(error);
+      logError("customers/[id]", error);
       return serverError();
     }
   },

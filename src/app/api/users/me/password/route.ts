@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { withAuth, ok, badRequest, notFound, serverError } from "@/lib/api";
+import { withAuth, ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 
 /** Ίδια rounds με το seed, το POST /api/users και το reset του Super Admin. */
 const BCRYPT_ROUNDS = 12;
@@ -58,7 +58,7 @@ export const PATCH = withAuth(async (req, session) => {
     return ok({ changed: true });
   } catch (error) {
     // Σκόπιμα δεν περνάμε το body στο log.
-    console.error("Own password change failed:", error);
+    logError("Own password change failed", error);
     return serverError();
   }
 });

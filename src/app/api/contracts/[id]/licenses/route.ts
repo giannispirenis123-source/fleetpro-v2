@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // Η απάντηση δίνει ΜΟΝΟ σύντομο signed URL — ποτέ τη διαδρομή.
 
 import { NextRequest } from "next/server";
-import { ok, created, badRequest, conflict, notFound, serverError } from "@/lib/api";
+import { ok, created, badRequest, conflict, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { MAX_LICENSE_PHOTOS, licenseLockOf, readDrivers } from "@/lib/contracts";
 import { PUBLIC_SIGNED_URL_SECONDS } from "@/lib/contractLink";
@@ -93,7 +93,7 @@ export const POST = withPermission(
       });
     } catch (error) {
       if (error instanceof StorageError) return storageErrorResponse(error);
-      console.error(error);
+      logError("contracts/[id]/licenses", error);
       return serverError();
     }
   },
@@ -117,7 +117,7 @@ export const DELETE = withPermission(
       if (result.removed) await removeObjects([result.removed]);
       return ok({ driverId, photoId });
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]/licenses", error);
       return serverError();
     }
   },

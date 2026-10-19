@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 // Κάθε ερώτημα φιλτράρει ΚΑΙ με tenantId από το session.
 
 import { db } from "@/lib/db";
-import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import {
@@ -90,7 +90,7 @@ export const PATCH = withPermission(
 
       return ok({ discount: toDiscountDTO(discount) });
     } catch (error) {
-      console.error(error);
+      logError("discounts/[id]", error);
       return serverError();
     }
   },
@@ -119,7 +119,7 @@ export const DELETE = withPermission(
 
       return ok({ discount: toDiscountDTO(discount) });
     } catch (error) {
-      console.error(error);
+      logError("discounts/[id]", error);
       return serverError();
     }
   },

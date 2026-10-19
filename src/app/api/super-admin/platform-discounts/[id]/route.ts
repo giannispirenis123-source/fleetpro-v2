@@ -3,15 +3,7 @@ export const dynamic = "force-dynamic";
 // Επεξεργασία / διακοπή / διαγραφή έκπτωσης συνδρομής — μόνο Super Admin.
 
 import { db } from "@/lib/db";
-import {
-  withAuth,
-  ok,
-  badRequest,
-  conflict,
-  notFound,
-  serverError,
-  noContent,
-} from "@/lib/api";
+import { withAuth, ok, badRequest, conflict, notFound, serverError, noContent, logError } from "@/lib/api";
 import { toPlatformDiscountDTO } from "@/lib/platformDiscounts";
 import {
   platformDiscountSchema,
@@ -78,7 +70,7 @@ export const PATCH = withAuth(
       });
       return ok(toPlatformDiscountDTO(row));
     } catch (error) {
-      console.error(error);
+      logError("super-admin/platform-discounts/[id]", error);
       return serverError();
     }
   },
@@ -98,7 +90,7 @@ export const DELETE = withAuth(
       await db.platformDiscount.delete({ where: { id: existing.id } });
       return noContent();
     } catch (error) {
-      console.error(error);
+      logError("super-admin/platform-discounts/[id]", error);
       return serverError();
     }
   },

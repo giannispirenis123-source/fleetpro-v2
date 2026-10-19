@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 // μόνο προς τα εμπρός) και ενεργοποιεί το αυτόματο τιμολόγιο, αν ισχύει.
 
 import { db } from "@/lib/db";
-import { ok, conflict, notFound, serverError } from "@/lib/api";
+import { ok, conflict, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import {
   advanceBookingWithContract,
@@ -61,7 +61,7 @@ export const POST = withPermission(
       });
       return ok({ contract: toContractDTO(fresh) });
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]/complete", error);
       return serverError();
     }
   },

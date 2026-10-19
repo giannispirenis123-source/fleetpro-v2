@@ -4,13 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import {
-  ok,
-  created,
-  badRequest,
-  serverError,
-  forbidden,
-} from "@/lib/api";
+import { ok, created, badRequest, serverError, forbidden, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { checkWithinLimit } from "@/lib/entitlements";
 import {
@@ -81,7 +75,7 @@ export const GET = withPermission(
 
       return ok(vehicles.map(toVehicleDTO));
     } catch (error) {
-      console.error(error);
+      logError("vehicles", error);
       return serverError();
     }
   },
@@ -153,7 +147,7 @@ export const POST = withPermission(
 
       return created({ vehicle: toVehicleDTO(vehicle) });
     } catch (error) {
-      console.error(error);
+      logError("vehicles", error);
       return serverError();
     }
   },

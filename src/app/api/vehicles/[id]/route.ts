@@ -8,13 +8,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import {
-  ok,
-  badRequest,
-  notFound,
-  serverError,
-  forbidden,
-} from "@/lib/api";
+import { ok, badRequest, notFound, serverError, forbidden, logError } from "@/lib/api";
 import { withPermission, viewerCan } from "@/lib/authz";
 import {
   FUEL_TYPES,
@@ -154,7 +148,7 @@ export const PATCH = withPermission(
 
       return ok({ vehicle: toVehicleDTO(vehicle) });
     } catch (error) {
-      console.error(error);
+      logError("vehicles/[id]", error);
       return serverError();
     }
   },
@@ -186,7 +180,7 @@ export const DELETE = withPermission(
 
       return ok({ vehicle: toVehicleDTO(vehicle) });
     } catch (error) {
-      console.error(error);
+      logError("vehicles/[id]", error);
       return serverError();
     }
   },

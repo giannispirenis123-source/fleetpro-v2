@@ -4,12 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import {
-  ok,
-  created,
-  badRequest,
-  serverError,
-} from "@/lib/api";
+import { ok, created, badRequest, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { CHARGE_TYPES, EXTRA_TYPES, toExtraDTO } from "@/lib/extras";
 
@@ -40,7 +35,7 @@ export const GET = withPermission(
 
       return ok(extras.map(toExtraDTO));
     } catch (error) {
-      console.error(error);
+      logError("extras", error);
       return serverError();
     }
   },
@@ -77,7 +72,7 @@ export const POST = withPermission(
 
       return created({ extra: toExtraDTO(extra) });
     } catch (error) {
-      console.error(error);
+      logError("extras", error);
       return serverError();
     }
   },

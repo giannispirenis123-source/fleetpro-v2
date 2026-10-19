@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 // Επεξεργασία και διαγραφή εξόδου.
 
 import { db } from "@/lib/db";
-import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { EXPENSE_INCLUDE, toExpenseDTO } from "@/lib/finance";
 import {
@@ -56,7 +56,7 @@ export const PATCH = withPermission(
 
       return ok({ expense: toExpenseDTO(expense) });
     } catch (error) {
-      console.error(error);
+      logError("expenses/[id]", error);
       return serverError();
     }
   },
@@ -78,7 +78,7 @@ export const DELETE = withPermission(
 
       return ok({ id: current.id });
     } catch (error) {
-      console.error(error);
+      logError("expenses/[id]", error);
       return serverError();
     }
   },

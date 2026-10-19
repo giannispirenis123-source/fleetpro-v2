@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { MAX_PREP_MINUTES } from "@/lib/prepTime";
 import { INVOICE_ISSUE_TRIGGERS, INVOICE_SEND_MODES } from "@/lib/invoices";
@@ -91,7 +91,7 @@ export const GET = withPermission(
 
       return ok(toSettingsDTO(tenant));
     } catch (error) {
-      console.error(error);
+      logError("settings", error);
       return serverError();
     }
   },
@@ -147,7 +147,7 @@ export const PATCH = withPermission(
 
       return ok(toSettingsDTO(tenant));
     } catch (error) {
-      console.error(error);
+      logError("settings", error);
       return serverError();
     }
   },

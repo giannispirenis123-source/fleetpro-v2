@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 // μπορεί να βρεθεί στο πάρκινγκ, χωρίς κανείς να την έχει νοικιάσει.
 
 import { db } from "@/lib/db";
-import { ok, created, badRequest, serverError } from "@/lib/api";
+import { ok, created, badRequest, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { DAMAGE_INCLUDE, toDamageDTO } from "@/lib/service";
 import {
@@ -37,7 +37,7 @@ export const GET = withPermission(
 
       return ok(damages.map(toDamageDTO));
     } catch (error) {
-      console.error(error);
+      logError("damages", error);
       return serverError();
     }
   },
@@ -89,7 +89,7 @@ export const POST = withPermission(
 
       return created({ damage: toDamageDTO(damage) });
     } catch (error) {
-      console.error(error);
+      logError("damages", error);
       return serverError();
     }
   },

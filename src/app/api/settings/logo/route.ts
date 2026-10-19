@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ok, created, notFound, serverError } from "@/lib/api";
+import { ok, created, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import {
   StorageError,
@@ -67,7 +67,7 @@ export const POST = withPermission(
       return created({ url: urls.get(stored.path) ?? null });
     } catch (error) {
       if (error instanceof StorageError) return storageErrorResponse(error);
-      console.error(error);
+      logError("settings/logo", error);
       return serverError();
     }
   },
@@ -85,7 +85,7 @@ export const DELETE = withPermission(
       if (swap.previous) await removeObjects([swap.previous]);
       return ok({ url: null });
     } catch (error) {
-      console.error(error);
+      logError("settings/logo", error);
       return serverError();
     }
   },

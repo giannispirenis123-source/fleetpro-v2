@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 // Ετήσια αναφορά: έσοδα ανά μήνα (χωρίς ΦΠΑ), top οχήματα, κατηγορίες, KPIs.
 // Όλα τα σύνολα υπολογίζονται εδώ από τη βάση — ο client δεν στέλνει ποσά.
 
-import { ok, badRequest, forbidden, serverError } from "@/lib/api";
+import { ok, badRequest, forbidden, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { loadReport, parseYear } from "@/lib/reportsQuery";
 
@@ -20,7 +20,7 @@ export const GET = withPermission(
 
       return ok({ report: await loadReport(session.tenantId!, parsed.year) });
     } catch (error) {
-      console.error(error);
+      logError("reports", error);
       return serverError();
     }
   },

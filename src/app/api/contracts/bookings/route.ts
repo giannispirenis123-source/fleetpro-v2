@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 // Κρατήσεις ΧΩΡΙΣ συμβόλαιο (όχι ακυρωμένες) για το «+ Νέο συμβόλαιο».
 // Στεγανότητα συνεργάτη μέσω bookingScope.
 
-import { ok, serverError } from "@/lib/api";
+import { ok, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { loadBookingsWithoutContract } from "@/lib/contractForm";
 
@@ -14,7 +14,7 @@ export const GET = withPermission(
       const q = new URL(req.url).searchParams.get("q")?.slice(0, 100) ?? null;
       return ok({ bookings: await loadBookingsWithoutContract(viewer!, q) });
     } catch (error) {
-      console.error(error);
+      logError("contracts/bookings", error);
       return serverError();
     }
   },

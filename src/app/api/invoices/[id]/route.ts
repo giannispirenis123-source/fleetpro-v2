@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { INVOICE_RELATIONS, toInvoiceDTO } from "@/lib/invoices";
 
@@ -59,7 +59,7 @@ export const PATCH = withPermission(
 
       return ok({ invoice: toInvoiceDTO(invoice) });
     } catch (error) {
-      console.error(error);
+      logError("invoices/[id]", error);
       return serverError();
     }
   },

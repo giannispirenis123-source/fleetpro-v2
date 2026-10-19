@@ -4,14 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import {
-  withAuth,
-  ok,
-  notFound,
-  badRequest,
-  serverError,
-  noContent,
-} from "@/lib/api";
+import { withAuth, ok, notFound, badRequest, serverError, noContent, logError } from "@/lib/api";
 
 const updateTenantSchema = z.object({
   name: z.string().min(2).optional(),
@@ -63,7 +56,7 @@ export const GET = withAuth(
       if (!tenant) return notFound("Εταιρία δεν βρέθηκε");
       return ok(tenant);
     } catch (error) {
-      console.error(error);
+      logError("tenants/[id]", error);
       return serverError();
     }
   },
@@ -96,7 +89,7 @@ export const PATCH = withAuth(
 
       return ok(tenant);
     } catch (error) {
-      console.error(error);
+      logError("tenants/[id]", error);
       return serverError();
     }
   },
@@ -110,7 +103,7 @@ export const DELETE = withAuth(
       await db.tenant.delete({ where: { id: params!.id } });
       return noContent();
     } catch (error) {
-      console.error(error);
+      logError("tenants/[id]", error);
       return serverError();
     }
   },

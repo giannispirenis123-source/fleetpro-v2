@@ -17,13 +17,7 @@ import { GRANT_MSG, canSetOthersPassword, permissionsBeyondActor } from "@/lib/a
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import {
-  ok,
-  badRequest,
-  forbidden,
-  notFound,
-  serverError,
-} from "@/lib/api";
+import { ok, badRequest, forbidden, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { checkWithinLimit } from "@/lib/entitlements";
 import { Prisma } from "@prisma/client";
@@ -232,7 +226,7 @@ export const PATCH = withPermission(
 
       return ok({ user: toUserDTO(user) });
     } catch (error) {
-      console.error("Ενημέρωση χρήστη:", error);
+      logError("Ενημέρωση χρήστη", error);
       return serverError();
     }
   },
@@ -271,7 +265,7 @@ export const DELETE = withPermission(
 
       return ok({ user: toUserDTO(user) });
     } catch (error) {
-      console.error("Απενεργοποίηση χρήστη:", error);
+      logError("Απενεργοποίηση χρήστη", error);
       return serverError();
     }
   },

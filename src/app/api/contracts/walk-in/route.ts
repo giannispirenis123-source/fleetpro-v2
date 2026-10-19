@@ -16,7 +16,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { CardKeyError } from "@/lib/cardCrypto";
 import { Prisma } from "@prisma/client";
-import { ok, created, badRequest, conflict, forbidden, serverError } from "@/lib/api";
+import { ok, created, badRequest, conflict, forbidden, serverError, logError } from "@/lib/api";
 import { decidePriceOverride, type PriceOverride } from "@/lib/priceOverride";
 import { viewerCan, withPermission } from "@/lib/authz";
 import { TIME_RE } from "@/lib/bookings";
@@ -57,7 +57,7 @@ export const GET = withPermission(
       const vehicles = await loadWalkInVehicles(viewer!.tenantId!, parsed.data, all);
       return ok({ vehicles });
     } catch (error) {
-      console.error(error);
+      logError("contracts/walk-in", error);
       return serverError();
     }
   },
@@ -248,7 +248,7 @@ export const POST = withPermission(
       // Λείπει/λάθος κλειδί κάρτας: καθαρό μήνυμα, τίποτα δεν αποθηκεύτηκε.
       if (error instanceof CardKeyError) return serverError(error.message);
       if (error instanceof BookingConflictError) return conflict(error.message, error.conflicts);
-      console.error(error);
+      logError("contracts/walk-in", error);
       return serverError();
     }
   },

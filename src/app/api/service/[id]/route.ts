@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 // Επεξεργασία και διαγραφή εγγραφής service.
 
 import { db } from "@/lib/db";
-import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { SERVICE_INCLUDE, toServiceDTO } from "@/lib/service";
 import {
@@ -62,7 +62,7 @@ export const PATCH = withPermission(
 
       return ok({ record: toServiceDTO(record) });
     } catch (error) {
-      console.error(error);
+      logError("service/[id]", error);
       return serverError();
     }
   },
@@ -85,7 +85,7 @@ export const DELETE = withPermission(
 
       return ok({ id: current.id });
     } catch (error) {
-      console.error(error);
+      logError("service/[id]", error);
       return serverError();
     }
   },

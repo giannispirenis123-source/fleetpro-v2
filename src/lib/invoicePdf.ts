@@ -186,7 +186,9 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   const ON_BRAND = darkOnBrand ? INK : WHITE;
   const ON_BRAND_EN = darkOnBrand ? MUTED : rgb(0.86, 0.89, 0.93);
 
-  const pdf = await PDFDocument.create();
+  // updateMetadata: false — αλλιώς το pdf-lib γράφει ModDate με το ρολόι της
+  // στιγμής και το ίδιο τιμολόγιο δεν βγαίνει ποτέ ίδιο byte-προς-byte.
+  const pdf = await PDFDocument.create({ updateMetadata: false });
   pdf.registerFontkit(fontkit);
   const [font, bold] = await Promise.all([
     pdf.embedFont(Buffer.from(DEJAVU_SANS_B64, "base64"), { subset: true }),
@@ -197,6 +199,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   pdf.setCreator("FleetPro");
   pdf.setProducer("FleetPro");
   pdf.setCreationDate(input.now ?? new Date());
+  pdf.setModificationDate(input.now ?? new Date());
 
   const logo = await embedLogo(pdf, input.logo);
   const c = new Canvas(pdf, font, bold);

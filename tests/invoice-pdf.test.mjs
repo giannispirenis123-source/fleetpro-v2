@@ -251,6 +251,10 @@ test("PDF: ΠΑΝΤΑ δίγλωσσο, έγκυρο αρχείο μίας σε�
   const pdf = await PDFDocument.load(bytes);
   assert.equal(pdf.getPageCount(), 1);
   assert.equal(pdf.getTitle(), "Τιμολόγιο / Invoice K7M2-X9PQ");
+  // ModDate από το now, όχι από το ρολόι: αλλιώς δύο builds σε διαφορετικό
+  // δευτερόλεπτο έβγαιναν διαφορετικά και το test αποτύγχανε τυχαία.
+  const raw = await PDFDocument.load(bytes, { updateMetadata: false });
+  assert.equal(raw.getModificationDate()?.toISOString(), "2026-10-11T10:00:00.000Z");
   // Ίδια είσοδος → ίδιο αρχείο: η γλώσσα δεν επηρεάζει πια το PDF.
   const again = await buildInvoicePdf({ doc: makeDoc(), lang: "en", now: new Date("2026-10-11T10:00:00Z") });
   assert.equal(Buffer.compare(Buffer.from(bytes), Buffer.from(again)), 0);

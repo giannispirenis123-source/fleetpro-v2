@@ -109,3 +109,12 @@ test("raw SQL: μόνο tagged templates (καμία *Unsafe παραλλαγή)
 test.todo("AUDIT: /api/discounts/validate — σύνδεση ή εταιρία από το slug + rate limit (σήμερα: χωρίς σύνδεση, tenantId από το body)");
 test.todo("AUDIT: security headers (CSP frame-ancestors, HSTS, nosniff) στο next.config.js");
 test.todo("AUDIT: καταγραφή (activity_logs) + όριο στην «Εμφάνιση» πλήρους αριθμού κάρτας");
+
+// Ανοιχτά ευρήματα του audit (19/10/2026) — να γίνουν πραγματικά tests με τη διόρθωση.
+test.todo("AUDIT: εταιρία SUSPENDED/CANCELLED μπλοκάρεται και ΜΕΤΑ το login (loadViewer → tenant.status)");
+test.todo("AUDIT: /api/users/me/locale δεν ανανεώνει token ανενεργού χρήστη");
+test.todo("AUDIT: όριο προσπαθειών στο /api/auth/login");
+test.todo("AUDIT: CONFIRMED κράτηση με ληγμένη αναμονή πληρωμής ΣΥΝΕΧΙΖΕΙ να δεσμεύει το όχημα (notExpiredHold μόνο για PENDING)");
+test.todo("AUDIT: κρατήσεις dashboard (POST/PATCH, walk-in) μέσα στο ίδιο advisory lock με το site");
+test.todo("AUDIT: nextBookingNumber αριθμητικά (μετά το BP-YYYY-999) + UNIQUE (tenantId, bookingNumber)");
+test.todo("AUDIT: η ποσότητα των πρόσθετων κρατιέται στην επανατιμολόγηση (requestFromBooking qty)");

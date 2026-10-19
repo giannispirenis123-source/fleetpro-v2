@@ -37,7 +37,9 @@ export const POST = withPublicSite(async (req, companyId) => {
           },
           metadata: { tenantId: companyId },
         },
-        { idempotencyKey: `fleetpro-account-${companyId}` }
+        // Κλειδί ανά 10΄: προστατεύει από διπλό πάτημα, αλλά δεν «κολλάει» για 24 ώρες
+        // σε μια παλιά αποτυχημένη απάντηση του Stripe (replay ίδιου κλειδιού).
+        { idempotencyKey: `fleetpro-account-${companyId}-${Math.floor(Date.now() / 600_000)}` }
       );
       accountId = account.id;
       // Μόνο αν δεν γράφτηκε στο μεταξύ άλλος (διπλό πάτημα).

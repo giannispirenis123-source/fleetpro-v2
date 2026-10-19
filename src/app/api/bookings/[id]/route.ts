@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { canChangeBookingStatus } from "@/lib/bookingStatusRule";
 import {
   ok,
   badRequest,
@@ -13,7 +14,7 @@ import {
   notFound,
   serverError,
 } from "@/lib/api";
-import { withPermission, sessionCan, bookingScope } from "@/lib/authz";
+import { withPermission, bookingScope, viewerCan } from "@/lib/authz";
 import { resolvePartnerId } from "@/lib/partners";
 import {
   BOOKING_STATUSES,
@@ -106,7 +107,9 @@ export const PATCH = withPermission(
         // Η αλλαγή κατάστασης είναι ξεχωριστό δικαίωμα από την απλή
         // επεξεργασία στοιχείων: άλλο να διορθώσεις μια ώρα και άλλο να
         // ενεργοποιήσεις ή να ολοκληρώσεις μια ενοικίαση.
-        if (!(await sessionCan(session, "bookings.status"))) {
+        // Ο συνεργάτης ΜΟΝΟ βλέπει την κατάσταση (όπως στο DELETE και στην
+        // επιβεβαίωση/ακύρωση)· η ακύρωση θέλει ΚΑΙ το δικαίωμα ακύρωσης.
+        if (!canChangeBookingStatus(viewer!, data.status)) {
           return forbidden("Δεν έχετε δικαίωμα αλλαγής κατάστασης κράτησης");
         }
 
@@ -168,7 +171,7 @@ export const PATCH = withPermission(
               conflicts
             );
           }
-          if (!(await sessionCan(session, "bookings.override"))) {
+          if (!viewerCan(viewer!, "bookings.override")) {
             return forbidden("Η παράκαμψη απαιτεί έγκριση διαχειριστή");
           }
         }

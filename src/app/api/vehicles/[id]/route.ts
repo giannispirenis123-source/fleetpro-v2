@@ -15,7 +15,7 @@ import {
   serverError,
   forbidden,
 } from "@/lib/api";
-import { withPermission, sessionCan } from "@/lib/authz";
+import { withPermission, viewerCan } from "@/lib/authz";
 import {
   FUEL_TYPES,
   VEHICLE_CATEGORIES,
@@ -66,7 +66,7 @@ const updateVehicleSchema = z.object({
 
 // PATCH /api/vehicles/[id]
 export const PATCH = withPermission(
-  async (req, session, params) => {
+  async (req, session, params, viewer) => {
     try {
       const current = await db.vehicle.findFirst({
         where: { id: params!.id, tenantId: session.tenantId! },
@@ -85,7 +85,7 @@ export const PATCH = withPermission(
       // Η αλλαγή κατάστασης οχήματος (διαθέσιμο / συντήρηση / ανενεργό)
       // είναι ξεχωριστό δικαίωμα από την επεξεργασία των στοιχείων του.
       if (data.status !== undefined && data.status !== current.status) {
-        if (!(await sessionCan(session, "fleet.status"))) {
+        if (!viewerCan(viewer!, "fleet.status")) {
           return forbidden("Δεν έχετε δικαίωμα αλλαγής κατάστασης οχήματος");
         }
       }

@@ -6,7 +6,7 @@
 import { register } from "node:module";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 
 register(
   "data:text/javascript," +
@@ -217,4 +217,48 @@ test("κρατήσεις dashboard/walk-in/αλλαγή: κλείδωμα ετα
 
 test("Stripe checkout: σύντομο όριο χρόνου μέσα στο αίτημα του πελάτη", () => {
   assert.match(read("src/lib/public/paymentServer.ts"), /fleetpro-checkout-\$\{b\.id\}`, timeout: 8_000, maxNetworkRetries: 1/);
+});
+
+/* ── Ασταθές test: invoice-pdf ── */
+
+test("PDF τιμολογίου: ModDate από το now (όχι από το ρολόι) — ίδια είσοδος, ίδια bytes", async () => {
+  const src = read("src/lib/invoicePdf.ts");
+  assert.match(src, /PDFDocument\.create\(\{ updateMetadata: false \}\)/);
+  assert.match(src, /setModificationDate\(input\.now/);
+});
+
+/* ── Bugs / απόδοση ── */
+
+const walk = (dir) =>
+  readdirSync(new URL(`../${dir}`, import.meta.url)).flatMap((n) => {
+    const p = `${dir}/${n}`;
+    return statSync(new URL(`../${p}`, import.meta.url)).isDirectory() ? walk(p) : [p];
+  });
+
+test("logs: κανένα API route δεν γράφει ολόκληρο το σφάλμα (μπορεί να έχει στοιχεία πελάτη)", () => {
+  const raw = walk("src/app/api").filter((f) => f.endsWith(".ts") && /console\.error\((?:"[^"]*",\s*)?(?:error|e|err)\)/.test(read(f)));
+  assert.deepEqual(raw, []);
+});
+
+test("GET /api/bookings: άγνωστη κατάσταση → 400, όχι 500", () => {
+  assert.match(read("src/app/api/bookings/route.ts"), /BOOKING_STATUSES as readonly string\[\]\)\.includes\(status\)/);
+});
+
+test("login/super-admin: <style> χωρίς παιδί-κείμενο (hydration)", () => {
+  assert.doesNotMatch(read("src/app/(auth)/login/page.tsx"), /<style>\{/);
+  assert.doesNotMatch(read("src/app/(super-admin)/super-admin/page.tsx"), /<style>\{/);
+});
+
+test("λίστα συμβολαίων: χωρίς τις υπογραφές base64 (πλήθη από τη βάση)", () => {
+  const src = read("src/lib/contractForm.ts");
+  const list = src.slice(src.indexOf("CONTRACTS_PAGE_SIZE,\n      select:"), src.indexOf("contractDriverCounts(\n"));
+  assert.ok(list.length > 0);
+  assert.doesNotMatch(list, /drivers: true/);
+  assert.match(src, /jsonb_array_elements/);
+});
+
+test("walk-in: πλήθος κρατήσεων με ένα ερώτημα, μόνο για όσους εμφανίζονται", () => {
+  const src = read("src/lib/walkIn.ts");
+  assert.doesNotMatch(src, /SELECT count\(\*\) FROM "bookings" b WHERE b\."customerId" = c\."id"/);
+  assert.match(src, /groupBy\(\{\s*by: \["customerId"\],\s*where: \{ tenantId/);
 });

@@ -26,8 +26,7 @@ export const LIMITS = {
   bookingPerEmail: { scope: "book-email", max: 5, windowMinutes: 60 },
   bookingPerTenant: { scope: "book-tenant", max: 30, windowMinutes: 60 },
   confirmationPerClient: { scope: "booking-view", max: 60, windowMinutes: 10 },
-  /** Σύνδεση στο dashboard: ανά email και ανά IP (hash). */
-  loginPerEmail: { scope: "login-email", max: 10, windowMinutes: 15 },
+  /** Σύνδεση στο dashboard: όλες οι προσπάθειες ανά IP (hash). Τα λάθη ανά email: loginLock.ts. */
   loginPerIp: { scope: "login-ip", max: 30, windowMinutes: 15 },
   /** Δημόσια τιμή (/api/public/quote) ανά IP (hash). */
   quotePerClient: { scope: "quote-ip", max: 120, windowMinutes: 10 },

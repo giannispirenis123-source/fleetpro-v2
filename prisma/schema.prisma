@@ -530,6 +530,11 @@ model Booking {
   @@index([tenantId, partnerId])
   @@index([tenantId, paymentStatus])
   @@index([tenantId, createdById])
+  // SQL 30 (audit): μοναδικός αριθμός ανά εταιρία + indexes για συγκρούσεις/λίστες.
+  @@unique([tenantId, bookingNumber])
+  @@index([tenantId, vehicleId, status])
+  @@index([tenantId, status, pickupDate])
+  @@index([tenantId, createdAt(sort: Desc)])
   @@map("bookings")
 }
 
@@ -656,6 +661,7 @@ model Contract {
 
   @@unique([tenantId, contractNumber])
   @@index([tenantId, status])
+  @@index([tenantId, createdAt(sort: Desc)])
   @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin, map: "contracts_searchText_trgm_idx")
   @@map("contracts")
 }
@@ -922,6 +928,7 @@ model ActivityLog {
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User    @relation(fields: [userId], references: [id])
 
+  @@index([tenantId, entity, entityId, createdAt(sort: Desc)])
   @@map("activity_logs")
 }
 
@@ -1189,6 +1196,7 @@ model RateLimit {
   count       Int      @default(0)
 
   @@id([key, windowStart])
+  @@index([windowStart])
   @@map("rate_limits")
 }
 

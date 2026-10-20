@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { ok, created, badRequest, conflict, serverError, logError } from "@/lib/api";
 import { withPermission, bookingScope } from "@/lib/authz";
 import { BOOKING_STATUSES, toBookingDTO } from "@/lib/bookings";
+import { withBookingNumberRetry } from "@/lib/bookingNumberRetry";
 import {
   createBookingSchema,
   prepareBooking,
@@ -81,8 +82,9 @@ export const POST = withPermission(
       if (!prepared.ok) return prepared.response;
 
       const { plan } = prepared;
-      const booking = await db.$transaction((tx) =>
-        writeBooking(tx, plan, plan.customerId!)
+      // Σύγκρουση στο UNIQUE αριθμού κράτησης → ξανά (όχι 500).
+      const booking = await withBookingNumberRetry(() =>
+        db.$transaction((tx) => writeBooking(tx, plan, plan.customerId!))
       );
 
       return created({ booking: toBookingDTO(booking) });

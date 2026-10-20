@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 // Ίδιοι κανόνες με το PATCH (checkSlugAvailability). Απαντά μόνο
 // «διαθέσιμο / όχι + γιατί» — ποτέ ΠΟΙΑ εταιρία έχει το slug.
 
-import { ok, forbidden, serverError } from "@/lib/api";
+import { ok, forbidden, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { slugOwner, storefrontAccess } from "@/lib/storefront/admin";
 import { checkSlugAvailability, normalizeSlug, validateSlug } from "@/lib/storefront/slug";
@@ -22,7 +22,7 @@ export const GET = withPermission(
         : format;
       return ok(check.ok ? { available: true, slug: check.slug } : { available: false, message: check.message });
     } catch (error) {
-      console.error("Storefront slug:", error);
+      logError("Storefront slug", error);
       return serverError();
     }
   },

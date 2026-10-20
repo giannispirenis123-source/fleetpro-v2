@@ -94,3 +94,30 @@ export function canDeactivate(actor: RoleActor, target: RoleTarget | null, other
   }
   return canChangeRole(actor, target, { isActive: false }, otherActiveAdmins);
 }
+
+/* ─────────────────────────────────────────────
+   Δικαιώματα που δίνονται σε άλλους (audit 10/2026)
+   ───────────────────────────────────────────── */
+
+export const GRANT_MSG = {
+  beyondOwn: "Δεν μπορείτε να δώσετε δικαίωμα που δεν έχετε εσείς",
+  password: "Κωδικό άλλου χρήστη αλλάζει μόνο ο Διαχειριστής",
+} as const;
+
+/**
+ * Ο Διαχειριστής δίνει ό,τι θέλει. Οποιοσδήποτε άλλος (με users.*) δίνει ΜΟΝΟ
+ * δικαιώματα που έχει ο ίδιος — εκτός από όσα είχε ήδη ο στόχος (για να μη
+ * μπλοκάρει μια απλή επεξεργασία). Επιστρέφει τα κλειδιά που δεν επιτρέπονται.
+ */
+export function permissionsBeyondActor(
+  actor: { role: string; permissions: Record<string, boolean> },
+  requested: Record<string, boolean>,
+  targetHad: Record<string, boolean> = {}
+): string[] {
+  if (actor.role === ADMIN_ROLE) return [];
+  return Object.keys(requested).filter((k) => requested[k] === true && actor.permissions[k] !== true && targetHad[k] !== true);
+}
+
+/** Κωδικός ΑΛΛΟΥ χρήστη: μόνο Διαχειριστής εταιρίας. */
+export const canSetOthersPassword = (actor: { role: string; id: string }, targetId: string): boolean =>
+  actor.id === targetId || actor.role === ADMIN_ROLE;

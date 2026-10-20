@@ -7,7 +7,13 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { signToken } from "@/lib/auth";
 import { normalizeLocale } from "@/lib/i18n/locale";
-import { badRequest, serverError } from "@/lib/api";
+import { badRequest, logError, serverError } from "@/lib/api";
+import { LOGIN_MSG, loginDecision } from "@/lib/loginCore";
+import { hitLimit, LIMITS } from "@/lib/public/rateLimit";
+import { dbCounterStore } from "@/lib/public/rateLimitStore";
+
+// bcrypt και για άγνωστο email: ίδιος χρόνος απάντησης (δεν μαρτυρά ποια email υπάρχουν).
+const DUMMY_HASH = bcrypt.hashSync("fleetpro-not-a-password", 10);
 
 const loginSchema = z.object({
   email: z.string().email("Μη έγκυρο email"),
@@ -24,6 +30,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { email, password } = parsed.data;
+
+    // Όριο προσπαθειών ανά email και ανά IP (hash, στη βάση — όχι στη μνήμη).
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+    const okEmail = await hitLimit(dbCounterStore, LIMITS.loginPerEmail, email.toLowerCase());
+    const okIp = await hitLimit(dbCounterStore, LIMITS.loginPerIp, ip);
+    if (!okEmail || !okIp) {
+      return NextResponse.json({ success: false, message: LOGIN_MSG.tooMany }, { status: 429 });
+    }
 
     // Αναζήτηση χρήστη
     const user = await db.user.findUnique({
@@ -42,25 +56,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (!user) {
-      return badRequest("Λάθος email ή κωδικός");
-    }
-
-    if (!user.isActive) {
-      return badRequest("Ο λογαριασμός σας έχει απενεργοποιηθεί");
-    }
-
-    // Έλεγχος κατάστασης tenant
-    if (user.tenant && user.tenant.status === "SUSPENDED") {
-      return badRequest(
-        "Η εταιρία σας έχει ανασταλεί. Επικοινωνήστε με την υποστήριξη."
-      );
-    }
-
-    // Επαλήθευση κωδικού
-    const isValidPassword = await bcrypt.compare(password, user.passwordHash);
-    if (!isValidPassword) {
-      return badRequest("Λάθος email ή κωδικός");
+    // Κωδικός ΠΡΩΤΑ (και για άγνωστο email), μετά κατάσταση λογαριασμού/εταιρίας.
+    const passwordOk = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
+    const decision = loginDecision(user, passwordOk);
+    if (!decision.ok || !user) {
+      return badRequest(decision.ok ? LOGIN_MSG.wrong : decision.message);
     }
 
     // Δημιουργία token
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("Login error:", error);
+    logError("login", error);
     return serverError("Σφάλμα κατά τη σύνδεση");
   }
 }

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ok, created, badRequest, serverError } from "@/lib/api";
+import { ok, created, badRequest, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { INVOICE_RELATIONS, toInvoiceDTO } from "@/lib/invoices";
 import { issueInvoiceForBooking } from "@/lib/invoiceIssue";
@@ -30,7 +30,7 @@ export const GET = withPermission(
 
       return ok(invoices.map(toInvoiceDTO));
     } catch (error) {
-      console.error(error);
+      logError("invoices", error);
       return serverError();
     }
   },
@@ -69,7 +69,7 @@ export const POST = withPermission(
 
       return outcome.created ? created(payload) : ok(payload);
     } catch (error) {
-      console.error(error);
+      logError("invoices", error);
       return serverError();
     }
   },

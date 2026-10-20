@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ok, badRequest, conflict, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, conflict, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { advanceBookingWithContract, syncVehicleStatus } from "@/lib/bookingLifecycle";
 import { allSigned, anySigned, readDrivers } from "@/lib/contracts";
@@ -118,7 +118,7 @@ export const POST = withPermission(
       });
       return ok({ contract: toContractDTO(fresh) });
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]/sign", error);
       return serverError();
     }
   },

@@ -3,6 +3,7 @@
 // υπολογισμό συγκρούσεων. Ζει χωριστά από το bookings.ts γιατί αυτό το
 // τελευταίο το φορτώνουν και client components — δεν πρέπει να τραβά Prisma.
 
+import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { notExpiredHold } from "./public/payments";
 import {
@@ -12,6 +13,8 @@ import {
 } from "./bookings";
 
 export async function checkVehicleConflicts(opts: {
+  /** Μέσα σε transaction (με το κλείδωμα της εταιρίας) — αλλιώς η κοινή σύνδεση. */
+  client?: Prisma.TransactionClient;
   tenantId: string;
   vehicleId: string;
   /** Η ίδια η κράτηση που επεξεργαζόμαστε δεν συγκρούεται με τον εαυτό της. */
@@ -22,7 +25,7 @@ export async function checkVehicleConflicts(opts: {
   returnTime: string | null;
   prepMinutes: number;
 }): Promise<BookingConflict[]> {
-  const rows = await db.booking.findMany({
+  const rows = await (opts.client ?? db).booking.findMany({
     where: {
       tenantId: opts.tenantId,
       vehicleId: opts.vehicleId,

@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/auth";
-import { pageGuard, bookingScope } from "@/lib/authz";
+import { pageGuard, bookingScope, viewerCan } from "@/lib/authz";
 import { db } from "@/lib/db";
 import { translator } from "@/lib/i18n";
 import {
@@ -68,6 +68,10 @@ export default async function DashboardPage() {
   // Ο Πίνακας δείχνει και κρατήσεις. Ο συνεργάτης βλέπει μόνο τις δικές
   // του, με το ίδιο φίλτρο που χρησιμοποιούν η λίστα και το ημερολόγιο.
   const scope = bookingScope(viewer);
+  // Έσοδα/τιμολόγια/ζημιές μόνο με το αντίστοιχο δικαίωμα — αλλιώς ο
+  // συνεργάτης θα έβλεπε τα οικονομικά όλης της εταιρίας.
+  const seeInvoices = viewerCan(viewer, "invoices.view");
+  const seeDamages = viewerCan(viewer, "damages.view");
 
   const tenantId = session.tenantId;
   const locale = session.locale;
@@ -97,10 +101,12 @@ export default async function DashboardPage() {
       where: { tenantId, isActive: true },
       _count: true,
     }),
-    db.invoice.aggregate({
-      where: { tenantId, status: "PAID", paidAt: { gte: monthStart } },
-      _sum: { total: true },
-    }),
+    seeInvoices
+      ? db.invoice.aggregate({
+          where: { tenantId, status: "PAID", paidAt: { gte: monthStart } },
+          _sum: { total: true },
+        })
+      : null,
     // Επικείμενο service — από το ίδιο το όχημα…
     db.vehicle.findMany({
       where: { tenantId, isActive: true, nextServiceDate: { lte: in30 } },
@@ -127,10 +133,12 @@ export default async function DashboardPage() {
         contractSigned: false,
       },
     }),
-    db.damage.count({ where: { tenantId, status: "PENDING" } }),
-    db.invoice.count({
-      where: { tenantId, status: { in: ["UNPAID", "OVERDUE"] } },
-    }),
+    seeDamages ? db.damage.count({ where: { tenantId, status: "PENDING" } }) : 0,
+    seeInvoices
+      ? db.invoice.count({
+          where: { tenantId, status: { in: ["UNPAID", "OVERDUE"] } },
+        })
+      : 0,
     db.booking.count({ where: { ...scope, status: "ACTIVE" } }),
     db.booking.findMany({
       where: scope,
@@ -159,7 +167,7 @@ export default async function DashboardPage() {
   const maintenance = vc["MAINTENANCE"] ?? 0;
   const totalVehicles = available + rented + maintenance + (vc["INACTIVE"] ?? 0);
 
-  const monthRevenue = Number(revenueAgg._sum.total ?? 0);
+  const monthRevenue = Number(revenueAgg?._sum.total ?? 0);
   const occupancy =
     totalVehicles > 0 ? Math.round((rented / totalVehicles) * 100) : 0;
 
@@ -207,13 +215,15 @@ export default async function DashboardPage() {
             <span className="dash-card-label">{tr("dashboard.inMaintenance")}</span>
           </div>
         </div>
-        <div className="dash-card dash-card--emerald">
-          <div className="dash-card-icon"><Euro size={22} /></div>
-          <div>
-            <span className="dash-card-value">{eur(monthRevenue, locale)}</span>
-            <span className="dash-card-label">{tr("dashboard.monthRevenue")}</span>
+        {seeInvoices && (
+          <div className="dash-card dash-card--emerald">
+            <div className="dash-card-icon"><Euro size={22} /></div>
+            <div>
+              <span className="dash-card-value">{eur(monthRevenue, locale)}</span>
+              <span className="dash-card-label">{tr("dashboard.monthRevenue")}</span>
+            </div>
           </div>
-        </div>
+        )}
         <div className="dash-card dash-card--violet">
           <div className="dash-card-icon"><Gauge size={22} /></div>
           <div>
@@ -324,29 +334,33 @@ export default async function DashboardPage() {
           <h2 className="dash-section-title">
             <Gauge size={17} /> {tr("dashboard.pendingItems")}
           </h2>
-          <div className="dash-ministat">
-            <span className="dash-ministat-label">
-              <AlertTriangle size={17} color="var(--warn-icon)" />{" "}
-              {tr("dashboard.pendingDamages")}
-            </span>
-            <span
-              className="dash-ministat-value"
-              style={{ color: pendingDamages > 0 ? "var(--warn-fg)" : "var(--text-4)" }}
-            >
-              {pendingDamages}
-            </span>
-          </div>
-          <div className="dash-ministat">
-            <span className="dash-ministat-label">
-              <Receipt size={17} color="var(--bad-icon)" /> {tr("dashboard.unpaidInvoices")}
-            </span>
-            <span
-              className="dash-ministat-value"
-              style={{ color: unpaidInvoices > 0 ? "var(--bad-fg)" : "var(--text-4)" }}
-            >
-              {unpaidInvoices}
-            </span>
-          </div>
+          {seeDamages && (
+            <div className="dash-ministat">
+              <span className="dash-ministat-label">
+                <AlertTriangle size={17} color="var(--warn-icon)" />{" "}
+                {tr("dashboard.pendingDamages")}
+              </span>
+              <span
+                className="dash-ministat-value"
+                style={{ color: pendingDamages > 0 ? "var(--warn-fg)" : "var(--text-4)" }}
+              >
+                {pendingDamages}
+              </span>
+            </div>
+          )}
+          {seeInvoices && (
+            <div className="dash-ministat">
+              <span className="dash-ministat-label">
+                <Receipt size={17} color="var(--bad-icon)" /> {tr("dashboard.unpaidInvoices")}
+              </span>
+              <span
+                className="dash-ministat-value"
+                style={{ color: unpaidInvoices > 0 ? "var(--bad-fg)" : "var(--text-4)" }}
+              >
+                {unpaidInvoices}
+              </span>
+            </div>
+          )}
           <div className="dash-ministat">
             <span className="dash-ministat-label">
               <Car size={17} color="var(--primary)" /> {tr("dashboard.totalFleet")}

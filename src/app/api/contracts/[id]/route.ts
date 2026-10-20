@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ok, badRequest, conflict, forbidden, notFound, noContent, serverError } from "@/lib/api";
+import { ok, badRequest, conflict, forbidden, notFound, noContent, serverError, logError } from "@/lib/api";
 import { viewerCan, withPermission } from "@/lib/authz";
 import {
   decidePriceOverride,
@@ -52,7 +52,7 @@ export const GET = withPermission(
       if (!contract) return notFound("Το συμβόλαιο δεν βρέθηκε");
       return ok({ contract });
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]", error);
       return serverError();
     }
   },
@@ -287,7 +287,7 @@ export const PATCH = withPermission(
     } catch (error) {
       // Λείπει/λάθος κλειδί κάρτας: καθαρό μήνυμα, τίποτα δεν αποθηκεύτηκε.
       if (error instanceof CardKeyError) return serverError(error.message);
-      console.error(error);
+      logError("contracts/[id]", error);
       return serverError();
     }
   },
@@ -316,7 +316,7 @@ export const DELETE = withPermission(
       ]);
       return noContent();
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]", error);
       return serverError();
     }
   },

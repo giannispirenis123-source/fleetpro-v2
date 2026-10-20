@@ -13,21 +13,16 @@ export const dynamic = "force-dynamic";
 //     και μόνο διαχειριστής αγγίζει λογαριασμό διαχειριστή (στοιχεία,
 //     κωδικό, απενεργοποίηση). Κανόνες: src/lib/adminRole.ts.
 
+import { GRANT_MSG, canSetOthersPassword, permissionsBeyondActor } from "@/lib/adminRole";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import {
-  ok,
-  badRequest,
-  forbidden,
-  notFound,
-  serverError,
-} from "@/lib/api";
+import { ok, badRequest, forbidden, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { checkWithinLimit } from "@/lib/entitlements";
 import { Prisma } from "@prisma/client";
 import { USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
-import { defaultsForRole, permissionsFromKeys } from "@/lib/permissions";
+import { defaultsForRole, normalizePermissions, permissionsFromKeys } from "@/lib/permissions";
 import {
   ASSIGNABLE_ROLES,
   MSG,
@@ -148,6 +143,9 @@ export const PATCH = withPermission(
         if (!limit.ok) return forbidden(limit.message);
       }
 
+      // Κωδικό άλλου χρήστη αλλάζει μόνο ο Διαχειριστής.
+      if (data.password !== undefined && !canSetOthersPassword(actor, target.id)) return forbidden(GRANT_MSG.password);
+
       const passwordHash =
         data.password !== undefined ? await bcrypt.hash(data.password, BCRYPT_ROUNDS) : undefined;
 
@@ -174,6 +172,14 @@ export const PATCH = withPermission(
                 // νέου ρόλου — αλλιώς θα έμενε χωρίς καμία πρόσβαση.
                 defaultsForRole(nextRole)
               : undefined;
+
+      // Κανείς (εκτός Διαχειριστή) δεν δίνει δικαιώματα που δεν έχει ο ίδιος.
+      if (
+        nextPermissions !== undefined &&
+        permissionsBeyondActor(viewer, nextPermissions, normalizePermissions(target.permissions)).length > 0
+      ) {
+        return forbidden(GRANT_MSG.beyondOwn);
+      }
 
       const touchesAdmin =
         target.role === "COMPANY_ADMIN" || nextRole === "COMPANY_ADMIN";
@@ -220,7 +226,7 @@ export const PATCH = withPermission(
 
       return ok({ user: toUserDTO(user) });
     } catch (error) {
-      console.error("Ενημέρωση χρήστη:", error);
+      logError("Ενημέρωση χρήστη", error);
       return serverError();
     }
   },
@@ -259,7 +265,7 @@ export const DELETE = withPermission(
 
       return ok({ user: toUserDTO(user) });
     } catch (error) {
-      console.error("Απενεργοποίηση χρήστη:", error);
+      logError("Απενεργοποίηση χρήστη", error);
       return serverError();
     }
   },

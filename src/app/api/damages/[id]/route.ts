@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 // Επεξεργασία, επίλυση και διαγραφή ζημιάς.
 
 import { db } from "@/lib/db";
-import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { removeObjects } from "@/lib/storage";
 import { DAMAGE_INCLUDE, toDamageDTO } from "@/lib/service";
@@ -77,7 +77,7 @@ export const PATCH = withPermission(
 
       return ok({ damage: toDamageDTO(damage) });
     } catch (error) {
-      console.error(error);
+      logError("damages/[id]", error);
       return serverError();
     }
   },
@@ -100,7 +100,7 @@ export const DELETE = withPermission(
 
       return ok({ id: current.id });
     } catch (error) {
-      console.error(error);
+      logError("damages/[id]", error);
       return serverError();
     }
   },

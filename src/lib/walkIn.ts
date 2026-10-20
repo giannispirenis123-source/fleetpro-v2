@@ -77,16 +77,30 @@ export interface WalkInCustomer {
 type CustomerRow = MatchableCustomer & {
   id: string;
   isBlacklisted: boolean;
-  bookings: number;
 };
 
-const toWalkInCustomer = (c: CustomerRow): WalkInCustomer => ({
+const toWalkInCustomer = (c: CustomerRow, bookings: number): WalkInCustomer => ({
   id: c.id,
   name: `${c.firstName} ${c.lastName}`.trim(),
   phone: c.phone,
-  bookings: Number(c.bookings),
+  bookings,
   isBlacklisted: c.isBlacklisted,
 });
+
+/**
+ * Το πλήθος κρατήσεων ΜΟΝΟ για όσους θα εμφανιστούν (έως 8), με ένα
+ * ερώτημα — όχι υποερώτημα για κάθε έναν από τους έως 200 υποψήφιους.
+ */
+async function withBookingCounts(tenantId: string, rows: CustomerRow[]): Promise<WalkInCustomer[]> {
+  if (rows.length === 0) return [];
+  const counts = await db.booking.groupBy({
+    by: ["customerId"],
+    where: { tenantId, customerId: { in: rows.map((r) => r.id) } },
+    _count: { _all: true },
+  });
+  const byId = new Map(counts.map((c) => [c.customerId, c._count._all]));
+  return rows.map((r) => toWalkInCustomer(r, byId.get(r.id) ?? 0));
+}
 
 /** LIKE με ασφαλή χαρακτήρες: τα % _ \ του χρήστη μετρούν κυριολεκτικά. */
 const like = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -123,8 +137,7 @@ function prefilter(field: CustomerSearchField, q: SearchQuery): Prisma.Sql {
 async function customerRows(tenantId: string, where: Prisma.Sql, limit: number) {
   return db.$queryRaw<CustomerRow[]>(Prisma.sql`
     SELECT c."id", c."firstName", c."lastName", c."phone", c."phone2", c."email",
-           c."idNumber", c."licenseNumber", c."address", c."city", c."isBlacklisted",
-           (SELECT count(*) FROM "bookings" b WHERE b."customerId" = c."id")::int AS "bookings"
+           c."idNumber", c."licenseNumber", c."address", c."city", c."isBlacklisted"
     FROM "customers" c
     WHERE c."tenantId" = ${tenantId} AND ${where}
     ORDER BY c."lastName" ASC, c."firstName" ASC
@@ -144,10 +157,10 @@ export async function searchWalkInCustomers(
   const q = searchQueryFor(field, raw);
   if (!q) return [];
   const rows = await customerRows(tenantId, prefilter(field, q), 200);
-  return rows
-    .filter((r) => customerMatches(r, field, q))
-    .slice(0, 8)
-    .map(toWalkInCustomer);
+  return withBookingCounts(
+    tenantId,
+    rows.filter((r) => customerMatches(r, field, q)).slice(0, 8)
+  );
 }
 
 /** Υπάρχοντες πελάτες με το ίδιο τηλέφωνο ή email — υποψήφιοι διπλότυποι. */
@@ -169,10 +182,10 @@ export async function findDuplicateCustomers(
   if (keys.email) conditions.push(Prisma.sql`lower(trim(c."email")) = ${keys.email}`);
 
   const rows = await customerRows(tenantId, Prisma.sql`(${Prisma.join(conditions, " OR ")})`, 20);
-  return rows
-    .filter((r) => isDuplicateOf(r, { phone, email }))
-    .slice(0, 5)
-    .map(toWalkInCustomer);
+  return withBookingCounts(
+    tenantId,
+    rows.filter((r) => isDuplicateOf(r, { phone, email })).slice(0, 5)
+  );
 }
 
 /** Όλα τα στοιχεία ενός πελάτη για τον κύριο οδηγό (μετά από επιλογή). */

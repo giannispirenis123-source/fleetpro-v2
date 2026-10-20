@@ -8,13 +8,14 @@ export const dynamic = "force-dynamic";
 // ΔΕΝ γίνεται ακόμη: ΦΠΑ και αυτόματο τιμολόγιο — σελίδα Τιμολογίων.
 
 import { db } from "@/lib/db";
-import { ok, created, badRequest, serverError } from "@/lib/api";
+import { ok, created, badRequest, conflict, serverError, logError } from "@/lib/api";
 import { withPermission, bookingScope } from "@/lib/authz";
-import { toBookingDTO } from "@/lib/bookings";
+import { BOOKING_STATUSES, toBookingDTO } from "@/lib/bookings";
 import {
   createBookingSchema,
   prepareBooking,
   writeBooking,
+  BookingConflictError,
 } from "@/lib/bookingCreate";
 
 // GET /api/bookings
@@ -23,6 +24,10 @@ export const GET = withPermission(
     try {
       const url = new URL(req.url);
       const status = url.searchParams.get("status");
+      // Άγνωστη κατάσταση: καθαρό 400, όχι σφάλμα της βάσης (500).
+      if (status && !(BOOKING_STATUSES as readonly string[]).includes(status)) {
+        return badRequest("Μη έγκυρη κατάσταση κράτησης");
+      }
 
       const bookings = await db.booking.findMany({
         where: {
@@ -52,7 +57,7 @@ export const GET = withPermission(
 
       return ok(bookings.map(toBookingDTO));
     } catch (error) {
-      console.error(error);
+      logError("bookings", error);
       return serverError();
     }
   },
@@ -82,7 +87,8 @@ export const POST = withPermission(
 
       return created({ booking: toBookingDTO(booking) });
     } catch (error) {
-      console.error(error);
+      if (error instanceof BookingConflictError) return conflict(error.message, error.conflicts);
+      logError("bookings", error);
       return serverError();
     }
   },

@@ -6,10 +6,11 @@ export const dynamic = "force-dynamic";
 // όλες τις εταιρίες. Εδώ το tenantId έρχεται ΠΑΝΤΑ από το session και ο
 // Super Admin δεν έχει δουλειά — δεν είναι δικοί του χρήστες.
 
+import { GRANT_MSG, permissionsBeyondActor } from "@/lib/adminRole";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { ok, created, badRequest, forbidden, serverError } from "@/lib/api";
+import { ok, created, badRequest, forbidden, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { checkWithinLimit } from "@/lib/entitlements";
 import { USER_SELECT, BCRYPT_ROUNDS, toUserDTO } from "@/lib/users";
@@ -45,7 +46,7 @@ export const GET = withPermission(
 
       return ok(users.map(toUserDTO));
     } catch (error) {
-      console.error(error);
+      logError("company-users", error);
       return serverError();
     }
   },
@@ -90,6 +91,8 @@ export const POST = withPermission(
           : data.permissions
             ? permissionsFromKeys(data.permissions)
             : defaultsForRole(data.role);
+      // Κανείς (εκτός Διαχειριστή) δεν δίνει δικαιώματα που δεν έχει ο ίδιος.
+      if (permissionsBeyondActor(viewer, permissions).length > 0) return forbidden(GRANT_MSG.beyondOwn);
 
       const user = await db.user.create({
         data: {
@@ -113,7 +116,7 @@ export const POST = withPermission(
       // Καμία επιστροφή κωδικού ή hash.
       return created({ user: toUserDTO(user) });
     } catch (error) {
-      console.error("Δημιουργία χρήστη:", error);
+      logError("Δημιουργία χρήστη", error);
       return serverError();
     }
   },

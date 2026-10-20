@@ -13,6 +13,8 @@ import { ADMIN_ROLE } from "@/lib/adminRole";
 import { contractScope } from "@/lib/contractForm";
 import { CardKeyError, decryptCardNumber, readCardNumbersEnc } from "@/lib/cardCrypto";
 import { CARD_KINDS, type CardKind } from "@/lib/cardNumber";
+import { hitLimit, LIMITS } from "@/lib/public/rateLimit";
+import { dbCounterStore } from "@/lib/public/rateLimitStore";
 
 export const GET = withPermission(
   async (req, _session, params, viewer) => {
@@ -25,11 +27,22 @@ export const GET = withPermission(
     try {
       const c = await db.contract.findFirst({
         where: { ...contractScope(viewer!), id: params!.id },
-        select: { cardNumberEnc: true },
+        select: { id: true, tenantId: true, cardNumberEnc: true },
       });
       if (!c) return notFound("Το συμβόλαιο δεν βρέθηκε");
       const token = readCardNumbersEnc(c.cardNumberEnc)[kind];
       if (!token) return notFound("Δεν υπάρχει αποθηκευμένος πλήρης αριθμός");
+
+      // Όριο ανά χρήστη και ΙΧΝΟΣ κάθε εμφάνισης (ποιος, πότε, ποια κάρτα — ποτέ ο αριθμός).
+      if (!(await hitLimit(dbCounterStore, LIMITS.cardRevealPerUser, viewer!.userId))) {
+        return NextResponse.json(
+          { success: false, message: "Πολλές εμφανίσεις κάρτας. Δοκιμάστε ξανά αργότερα." },
+          { status: 429, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      await db.activityLog.create({
+        data: { tenantId: c.tenantId, userId: viewer!.userId, action: "contract.card_reveal", entity: "Contract", entityId: c.id, newData: { kind } },
+      });
 
       return NextResponse.json(
         { success: true, data: { number: decryptCardNumber(token) } },

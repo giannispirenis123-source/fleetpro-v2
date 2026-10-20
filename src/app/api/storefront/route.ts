@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ok, badRequest, forbidden, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, forbidden, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { loadStorefrontAdmin, slugOwner, storefrontAccess } from "@/lib/storefront/admin";
 import { mergeStorefrontSettings, storefrontUpdateSchema } from "@/lib/storefront/settings";
@@ -21,7 +21,7 @@ export const GET = withPermission(
       const dto = await loadStorefrontAdmin(access.companyId);
       return dto ? ok(dto) : notFound();
     } catch (error) {
-      console.error("Storefront GET:", error);
+      logError("Storefront GET", error);
       return serverError();
     }
   },
@@ -81,7 +81,7 @@ export const PATCH = withPermission(
 
       return ok({ enabled, slug, settings });
     } catch (error) {
-      console.error("Storefront PATCH:", error);
+      logError("Storefront PATCH", error);
       return serverError();
     }
   },

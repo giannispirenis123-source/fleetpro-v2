@@ -4,15 +4,7 @@ export const dynamic = "force-dynamic";
 // Άσχετο με τις εκπτώσεις κρατήσεων (/api/discounts).
 
 import { db } from "@/lib/db";
-import {
-  withAuth,
-  ok,
-  created,
-  badRequest,
-  conflict,
-  notFound,
-  serverError,
-} from "@/lib/api";
+import { withAuth, ok, created, badRequest, conflict, notFound, serverError, logError } from "@/lib/api";
 import { toPlatformDiscountDTO } from "@/lib/platformDiscounts";
 import {
   platformDiscountSchema,
@@ -31,7 +23,7 @@ export const GET = withAuth(async () => {
     });
     return ok({ discounts: rows.map(toPlatformDiscountDTO) });
   } catch (error) {
-    console.error(error);
+    logError("super-admin/platform-discounts", error);
     return serverError();
   }
 }, ["SUPER_ADMIN"]);
@@ -68,7 +60,7 @@ export const POST = withAuth(async (req) => {
     });
     return created(toPlatformDiscountDTO(row));
   } catch (error) {
-    console.error(error);
+    logError("super-admin/platform-discounts", error);
     return serverError();
   }
 }, ["SUPER_ADMIN"]);

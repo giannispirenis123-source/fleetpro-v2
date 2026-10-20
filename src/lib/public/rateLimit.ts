@@ -26,6 +26,13 @@ export const LIMITS = {
   bookingPerEmail: { scope: "book-email", max: 5, windowMinutes: 60 },
   bookingPerTenant: { scope: "book-tenant", max: 30, windowMinutes: 60 },
   confirmationPerClient: { scope: "booking-view", max: 60, windowMinutes: 10 },
+  /** Σύνδεση στο dashboard: ανά email και ανά IP (hash). */
+  loginPerEmail: { scope: "login-email", max: 10, windowMinutes: 15 },
+  loginPerIp: { scope: "login-ip", max: 30, windowMinutes: 15 },
+  /** Δημόσια τιμή (/api/public/quote) ανά IP (hash). */
+  quotePerClient: { scope: "quote-ip", max: 120, windowMinutes: 10 },
+  /** «Εμφάνιση» πλήρους αριθμού κάρτας ανά χρήστη. */
+  cardRevealPerUser: { scope: "card-reveal", max: 20, windowMinutes: 60 },
   /** Δημιουργία Stripe Checkout Session ανά εταιρία. */
   checkoutPerTenant: { scope: "checkout-tenant", max: 30, windowMinutes: 60 },
   /** Εφεδρικός έλεγχος πληρωμής στο Stripe (retrieve): 1 ανά 10΄΄ ανά κράτηση. */

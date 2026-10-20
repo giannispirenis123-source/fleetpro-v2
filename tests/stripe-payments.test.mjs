@@ -327,7 +327,7 @@ test("όλα τα ερωτήματα συγκρούσεων εξαιρούν τ�
   for (const f of ["../src/lib/public/availability.ts", "../src/lib/bookingConflicts.ts", "../src/lib/walkIn.ts"]) {
     assert.match(readFileSync(new URL(f, import.meta.url), "utf8"), /notExpiredHold\(/, f);
   }
-  assert.deepEqual(P.notExpiredHold(new Date(0)), { NOT: { paymentStatus: "AWAITING_PAYMENT", paymentExpiresAt: { lte: new Date(0) } } });
+  assert.deepEqual(P.notExpiredHold(new Date(0)), { NOT: { status: "PENDING", paymentStatus: "AWAITING_PAYMENT", paymentExpiresAt: { lte: new Date(0) } } });
 });
 
 /* ─────────────────────────────────────────────

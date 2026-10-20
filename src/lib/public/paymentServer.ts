@@ -17,7 +17,8 @@ import {
   checkoutLocale,
   effectivePaymentOptions,
   onlineAmountCents,
-  retainedAfterRefund,
+  refundRowAfter,
+  retainWhere,
   type PaymentOptions,
   type TenantPaymentSettings,
   type Transition,
@@ -151,7 +152,9 @@ export async function createBookingCheckout(opts: {
           ...(fee > 0 ? { application_fee_amount: fee } : {}),
         },
       },
-      { stripeAccount: b.tenant.stripeAccountId, idempotencyKey: `fleetpro-checkout-${b.id}` }
+      // Ο πελάτης περιμένει: σύντομο όριο, ώστε σε αργό Stripe να δει μήνυμα
+      // (και να ελευθερωθεί το όχημα) πριν κοπεί η function.
+      { stripeAccount: b.tenant.stripeAccountId, idempotencyKey: `fleetpro-checkout-${b.id}`, timeout: 8_000, maxNetworkRetries: 1 }
     );
   } catch (e) {
     console.error(`[FleetPro] Stripe checkout: ${stripeErrorCode(e)}`);
@@ -335,23 +338,26 @@ export async function refundPayment(opts: {
     console.error(`[FleetPro] Stripe refund: ${stripeErrorCode(e)}`);
     return { ok: false, status: 502 };
   }
-  const refundedCents = Math.min(payment.amountCents, payment.refundedCents + opts.amountCents);
-  const status = refundedCents >= payment.amountCents ? "REFUNDED" : "PARTIALLY_REFUNDED";
-  // Επιστροφή μετά από «κρατείται»: το κρατημένο μειώνεται αντίστοιχα.
-  const retainedCents = retainedAfterRefund({ status: "PAID", amountCents: payment.amountCents, refundedCents: payment.refundedCents, retainedCents: payment.retainedCents }, refundedCents);
-  const history = Array.isArray(payment.refunds) ? payment.refunds : [];
-  await db.$transaction([
-    db.bookingPayment.update({
+  // Η εγγραφή από την ΤΡΕΧΟΥΣΑ γραμμή, κλειδωμένη: ταυτόχρονη επιστροφή (ή το
+  // webhook charge.refunded) δεν χάνεται.
+  await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "booking_payments" WHERE "id" = ${payment.id} AND "tenantId" = ${opts.tenantId} FOR UPDATE`;
+    const fresh = await tx.bookingPayment.findFirst({
+      where: { id: payment.id, tenantId: opts.tenantId },
+      select: { status: true, amountCents: true, refundedCents: true, retainedCents: true, refunds: true },
+    });
+    if (!fresh) return;
+    const next = refundRowAfter(fresh, opts.amountCents);
+    const history = Array.isArray(fresh.refunds) ? fresh.refunds : [];
+    await tx.bookingPayment.update({
       where: { id: payment.id },
       data: {
-        refundedCents,
-        retainedCents,
-        status,
+        ...next,
         refunds: [...history, { id: refund.id, amountCents: opts.amountCents, at: new Date().toISOString(), userId: opts.userId }],
       },
-    }),
-    db.booking.updateMany({ where: { id: payment.bookingId, tenantId: opts.tenantId }, data: { paymentStatus: status } }),
-  ]);
+    });
+    await tx.booking.updateMany({ where: { id: payment.bookingId, tenantId: opts.tenantId }, data: { paymentStatus: next.status } });
+  });
   return { ok: true, status: 200 };
 }
 
@@ -403,14 +409,24 @@ export async function retainPayment(opts: {
   retainedCents: number;
   addedCents: number;
   note: string | null;
-}): Promise<void> {
-  await db.$transaction([
-    db.bookingPayment.updateMany({
-      // Ίδια εταιρία, και ΜΟΝΟ αν ισχύει ακόμα το όριο (ταυτόχρονη επιστροφή → καμία αλλαγή).
-      where: { id: opts.paymentId, tenantId: opts.tenantId, bookingId: opts.bookingId },
+  /** Όπως διαβάστηκαν — η εγγραφή γίνεται ΜΟΝΟ αν δεν άλλαξαν στο μεταξύ. */
+  readRefundedCents: number;
+  readRetainedCents: number;
+}): Promise<boolean> {
+  return db.$transaction(async (tx) => {
+    const r = await tx.bookingPayment.updateMany({
+      // Ίδια εταιρία, και ΜΟΝΟ αν η πληρωμή είναι όπως τη διαβάσαμε (ταυτόχρονη επιστροφή → καμία αλλαγή).
+      where: retainWhere({
+        id: opts.paymentId,
+        tenantId: opts.tenantId,
+        bookingId: opts.bookingId,
+        refundedCents: opts.readRefundedCents,
+        retainedCents: opts.readRetainedCents,
+      }),
       data: { retainedCents: opts.retainedCents, retainedAt: new Date(), retainedNote: opts.note, retainedBy: opts.userId },
-    }),
-    db.activityLog.create({
+    });
+    if (r.count === 0) return false;
+    await tx.activityLog.create({
       data: {
         tenantId: opts.tenantId,
         userId: opts.userId,
@@ -419,6 +435,7 @@ export async function retainPayment(opts: {
         entityId: opts.bookingId,
         newData: { retainedCents: opts.retainedCents, addedCents: opts.addedCents, note: opts.note },
       },
-    }),
-  ]);
+    });
+    return true;
+  });
 }

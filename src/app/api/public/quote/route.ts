@@ -9,6 +9,8 @@ import { resolveStorefrontCompany } from "@/lib/storefront/resolve";
 import { loadSiteCatalog } from "@/lib/public/site";
 import { publicFormQuote } from "@/lib/public/bookingSubmit";
 import { toPublicQuote } from "@/lib/public/bookingView";
+import { hitLimit, LIMITS } from "@/lib/public/rateLimit";
+import { dbCounterStore } from "@/lib/public/rateLimitStore";
 
 const schema = z.object({
   slug: z.string().min(1).max(64),
@@ -29,6 +31,11 @@ const NO_STORE = { "Cache-Control": "no-store" };
 // POST /api/public/quote
 export async function POST(req: NextRequest) {
   try {
+    // Όριο ανά IP: η τιμή υπολογίζεται χωρίς σύνδεση, άρα χωρίς φρένο θα φόρτωνε τη βάση.
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+    if (!(await hitLimit(dbCounterStore, LIMITS.quotePerClient, ip))) {
+      return NextResponse.json({ success: false }, { status: 429, headers: NO_STORE });
+    }
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ success: false }, { status: 400, headers: NO_STORE });
     const d = parsed.data;

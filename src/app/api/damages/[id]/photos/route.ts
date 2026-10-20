@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 // Φωτογραφίες ζημιάς: GET (damages.view) με προσωρινά URLs, POST
 // (damages.edit) multipart { file }. Ίδιος κώδικας με τα συμβόλαια.
 
-import { ok, created, conflict, notFound, serverError } from "@/lib/api";
+import { ok, created, conflict, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { MAX_DAMAGE_PHOTOS } from "@/lib/photoShared";
 import {
@@ -24,7 +24,7 @@ export const GET = withPermission(
       if (!damage) return notFound("Η ζημιά δεν βρέθηκε");
       return ok({ photos: await signDamagePhotos(damage.photos) });
     } catch (error) {
-      console.error(error);
+      logError("damages/[id]/photos", error);
       return serverError();
     }
   },
@@ -59,7 +59,7 @@ export const POST = withPermission(
       return created({ photo });
     } catch (error) {
       if (error instanceof StorageError) return storageErrorResponse(error);
-      console.error(error);
+      logError("damages/[id]/photos", error);
       return serverError();
     }
   },

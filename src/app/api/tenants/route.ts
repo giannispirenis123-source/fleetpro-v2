@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { withAuth, ok, created, badRequest, serverError, getPagination, getSearch } from "@/lib/api";
+import { withAuth, ok, created, badRequest, serverError, getPagination, getSearch, logError } from "@/lib/api";
 
 const createTenantSchema = z.object({
   name: z.string().min(2, "Απαιτείται επωνυμία"),
@@ -64,7 +64,7 @@ export const GET = withAuth(async (req) => {
 
     return ok({ tenants, total, page: Math.ceil(skip / limit) + 1, limit });
   } catch (error) {
-    console.error(error);
+    logError("tenants", error);
     return serverError();
   }
 }, ["SUPER_ADMIN"]);
@@ -162,7 +162,7 @@ export const POST = withAuth(async (req) => {
 
     return created({ tenant });
   } catch (error) {
-    console.error(error);
+    logError("tenants", error);
     return serverError();
   }
 }, ["SUPER_ADMIN"]);

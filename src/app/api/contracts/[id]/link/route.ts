@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ok, badRequest, conflict, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, conflict, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { contractScope } from "@/lib/contractForm";
 import { newPublicToken, publicLinkDTO } from "@/lib/contractLink";
@@ -54,7 +54,7 @@ export const POST = withPermission(
         }),
       });
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]/link", error);
       return serverError();
     }
   },

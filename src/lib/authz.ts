@@ -12,47 +12,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "./db";
 import { getSession, type JWTPayload } from "./auth";
 import { forbidden, unauthorized, serverError, withAuth } from "./api";
-import {
-  can,
-  normalizePermissions,
-  roleHasAll,
-  type PermissionKey,
-  type PermissionMap,
-} from "./permissions";
+import { can, type PermissionKey } from "./permissions";
+import { loadViewer, type Viewer } from "./viewer";
 
-export interface Viewer {
-  userId: string;
-  role: string;
-  tenantId: string | null;
-  permissions: PermissionMap;
-}
+export type { Viewer };
 
-/** Ο χρήστης όπως είναι ΤΩΡΑ στη βάση — όχι όπως ήταν όταν συνδέθηκε. */
-export async function loadViewer(
-  session: JWTPayload
-): Promise<Viewer | null> {
-  const user = await db.user.findUnique({
-    where: { id: session.userId },
-    select: {
-      id: true,
-      role: true,
-      tenantId: true,
-      isActive: true,
-      permissions: true,
-    },
-  });
-
-  if (!user || !user.isActive) return null;
-
-  return {
-    userId: user.id,
-    role: user.role,
-    tenantId: user.tenantId,
-    permissions: roleHasAll(user.role)
-      ? {}
-      : normalizePermissions(user.permissions),
-  };
-}
+export { loadViewer } from "./viewer";
 
 export const viewerCan = (viewer: Viewer, key: PermissionKey): boolean =>
   can(viewer.role, viewer.permissions, key);
@@ -83,8 +48,8 @@ export function withPermission(
 ) {
   const required = Array.isArray(keys) ? keys : [keys];
 
-  return withAuth(async (req, session, params) => {
-    const viewer = await loadViewer(session);
+  // Ο χρήστης διαβάζεται ΜΙΑ φορά (στο withAuth) και περνά εδώ.
+  return withAuth(async (req, session, params, viewer) => {
     if (!viewer) return unauthorized();
 
     // Χρήστης πλατφόρμας δεν έχει θέση στα δεδομένα εταιρίας.

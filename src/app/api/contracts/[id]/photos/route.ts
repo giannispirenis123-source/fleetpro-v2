@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // Tenant + στεγανότητα συνεργάτη μέσω contractScope.
 
 import { db } from "@/lib/db";
-import { ok, created, badRequest, conflict, notFound, serverError } from "@/lib/api";
+import { ok, created, badRequest, conflict, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { contractScope } from "@/lib/contractForm";
 import { PHOTO_GROUPS, photoLockOf, readDrivers, readPhotos, type PhotoGroup } from "@/lib/contracts";
@@ -38,7 +38,7 @@ export const GET = withPermission(
       if (!c) return notFound("Το συμβόλαιο δεν βρέθηκε");
       return ok({ photos: await signContractPhotos(readPhotos(c.damagePhotos)) });
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]/photos", error);
       return serverError();
     }
   },
@@ -108,7 +108,7 @@ export const POST = withPermission(
       return created({ photo: toPhotoDTO(photo, urls.get(photo.path) ?? null) });
     } catch (error) {
       if (error instanceof StorageError) return storageErrorResponse(error);
-      console.error(error);
+      logError("contracts/[id]/photos", error);
       return serverError();
     }
   },

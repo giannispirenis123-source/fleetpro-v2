@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ok, created, badRequest, forbidden, notFound, conflict, serverError } from "@/lib/api";
+import { ok, created, badRequest, forbidden, notFound, conflict, serverError, logError } from "@/lib/api";
 import { bookingScope, viewerCan, withPermission } from "@/lib/authz";
 import { contractScope, createContract, loadContractList } from "@/lib/contractForm";
 
@@ -22,7 +22,7 @@ export const GET = withPermission(
       });
       return ok(page);
     } catch (error) {
-      console.error(error);
+      logError("contracts", error);
       return serverError();
     }
   },
@@ -83,7 +83,7 @@ export const POST = withPermission(
         throw error;
       }
     } catch (error) {
-      console.error(error);
+      logError("contracts", error);
       return serverError();
     }
   },

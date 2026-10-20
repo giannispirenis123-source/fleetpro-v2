@@ -34,6 +34,7 @@ import { priceBooking } from "./bookingPricing";
 import { applyDiscountUsage } from "./discounts";
 import { DISCOUNT_MODES, type PriceBreakdown } from "./pricing";
 import { NO_PRICE_MESSAGE } from "./public/engine";
+import { lockKeyFor } from "./public/bookingPlan";
 import type { QuoteLine } from "./public/pricing";
 import type { PriceMode, StoredQuote } from "./pricingBridge";
 
@@ -110,6 +111,20 @@ export interface BookingPlan {
   autoPrice: boolean;
   warnings: string[];
   priceMode: PriceMode;
+  /** Για τον επανέλεγχο σύγκρουσης μέσα στο κλείδωμα. */
+  prepMinutes: number;
+  /** Η σύγκρουση εγκρίθηκε ρητά (override) — ο επανέλεγχος δεν τη σταματά. */
+  conflictsAccepted: boolean;
+}
+
+export const CONFLICT_MESSAGE = "Το όχημα δεν είναι διαθέσιμο σε αυτό το διάστημα";
+
+/** Ταυτόχρονη κράτηση πήρε το όχημα ανάμεσα στον έλεγχο και την εγγραφή. */
+export class BookingConflictError extends Error {
+  constructor(public conflicts: BookingConflict[]) {
+    super(CONFLICT_MESSAGE);
+    this.name = "BookingConflictError";
+  }
 }
 
 export type PrepareOutcome =
@@ -184,7 +199,7 @@ export async function prepareBooking(opts: {
 
   if (conflicts.length > 0 && !opts.preview) {
     if (!data.override) {
-      return fail(conflict("Το όχημα δεν είναι διαθέσιμο σε αυτό το διάστημα", conflicts));
+      return fail(conflict(CONFLICT_MESSAGE, conflicts));
     }
     if (!viewerCan(viewer, "bookings.override")) {
       return fail(forbidden("Η παράκαμψη απαιτεί έγκριση διαχειριστή"));
@@ -256,25 +271,31 @@ export async function prepareBooking(opts: {
       autoPrice: priced.autoPrice,
       warnings: priced.warnings,
       priceMode: "AUTO",
+      prepMinutes: tenant.prepTimeMinutes,
+      conflictsAccepted: conflicts.length > 0,
     },
   };
+}
+
+/** Ο επόμενος αριθμός μετά από τον μεγαλύτερο ΑΡΙΘΜΗΤΙΚΑ (όχι αλφαβητικά: 1000 > 999). */
+export function bookingNumberAfter(prefix: string, lastSeq: number | null): string {
+  const next = (lastSeq !== null && Number.isFinite(lastSeq) ? lastSeq : 0) + 1;
+  return `${prefix}${String(next).padStart(3, "0")}`;
 }
 
 /** BP-2025-001, αυξανόμενο ανά εταιρία και έτος. */
 export async function nextBookingNumber(client: Client, tenantId: string): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `BP-${year}-`;
-
-  const last = await client.booking.findFirst({
-    where: { tenantId, bookingNumber: { startsWith: prefix } },
-    orderBy: { bookingNumber: "desc" },
-    select: { bookingNumber: true },
-  });
-
-  const lastSeq = last ? parseInt(last.bookingNumber.slice(prefix.length), 10) : 0;
-  const next = (Number.isNaN(lastSeq) ? 0 : lastSeq) + 1;
-
-  return `${prefix}${String(next).padStart(3, "0")}`;
+  // Αριθμητικό max: με ταξινόμηση κειμένου το «BP-2026-999» έβγαινε μετά το
+  // «BP-2026-1000» και ο 1000 ξαναδινόταν.
+  const rows = await client.$queryRaw<{ seq: number | null }[]>`
+    SELECT MAX(CAST(substring("bookingNumber" FROM ${prefix.length + 1}::int) AS integer)) AS "seq"
+    FROM "bookings"
+    WHERE "tenantId" = ${tenantId}
+      AND "bookingNumber" LIKE ${prefix + "%"}
+      AND substring("bookingNumber" FROM ${prefix.length + 1}::int) ~ '^[0-9]{1,9}$'`;
+  return bookingNumberAfter(prefix, rows[0]?.seq ?? null);
 }
 
 export const BOOKING_INCLUDE = {
@@ -298,8 +319,26 @@ export const BOOKING_INCLUDE = {
  * Οι εγγραφές της νέας κράτησης. Ο καλών δίνει την transaction, ώστε
  * μαζί της να γράφονται (ή να μη γράφεται τίποτα) πελάτης και συμβόλαιο.
  */
-export async function writeBooking(tx: Client, plan: BookingPlan, customerId: string) {
+export async function writeBooking(tx: Prisma.TransactionClient, plan: BookingPlan, customerId: string) {
   const { breakdown } = plan;
+
+  // Ίδιο κλείδωμα με το site και τις αποφάσεις: δύο ταυτόχρονες κρατήσεις
+  // δεν παίρνουν το ίδιο όχημα, ούτε τον ίδιο αριθμό. Ο έλεγχος σύγκρουσης
+  // ξαναγίνεται ΜΕΣΑ στο κλείδωμα (ο πρώτος έγινε πριν από αυτό).
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKeyFor(plan.tenantId)}))`;
+  if (!plan.conflictsAccepted) {
+    const conflicts = await checkVehicleConflicts({
+      client: tx,
+      tenantId: plan.tenantId,
+      vehicleId: plan.vehicleId,
+      pickupDate: plan.pickupDate,
+      pickupTime: plan.pickupTime,
+      returnDate: plan.returnDate,
+      returnTime: plan.returnTime,
+      prepMinutes: plan.prepMinutes,
+    });
+    if (conflicts.length > 0) throw new BookingConflictError(conflicts);
+  }
 
   const booking = await tx.booking.create({
     data: {

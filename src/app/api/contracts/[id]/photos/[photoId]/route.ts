@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 // κανόνα κλειδώματος με το ανέβασμα.
 
 import { z } from "zod";
-import { ok, badRequest, conflict, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, conflict, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { PHOTO_NOTE_MAX } from "@/lib/photoShared";
 import { removeObjects } from "@/lib/storage";
@@ -35,7 +35,7 @@ export const PATCH = withPermission(
       if (!result.ok) return fail(result);
       return ok({ note: parsed.data.note });
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]/photos/[photoId]", error);
       return serverError();
     }
   },
@@ -59,7 +59,7 @@ export const DELETE = withPermission(
       if (removed) await removeObjects([removed.path]);
       return ok({ id: params!.photoId });
     } catch (error) {
-      console.error(error);
+      logError("contracts/[id]/photos/[photoId]", error);
       return serverError();
     }
   },

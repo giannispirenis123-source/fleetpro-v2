@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { readLocalized } from "@/lib/public/text";
-import { ok, badRequest, notFound, serverError } from "@/lib/api";
+import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { CHARGE_TYPES, EXTRA_TYPES, toExtraDTO } from "@/lib/extras";
 
@@ -57,7 +57,7 @@ export const PATCH = withPermission(
 
       return ok({ extra: toExtraDTO(extra) });
     } catch (error) {
-      console.error(error);
+      logError("extras/[id]", error);
       return serverError();
     }
   },
@@ -82,7 +82,7 @@ export const DELETE = withPermission(
 
       return ok({ extra: toExtraDTO(extra) });
     } catch (error) {
-      console.error(error);
+      logError("extras/[id]", error);
       return serverError();
     }
   },

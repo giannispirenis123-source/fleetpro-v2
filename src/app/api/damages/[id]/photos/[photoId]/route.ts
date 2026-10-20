@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 // src/app/api/damages/[id]/photos/[photoId]/route.ts
 // Διαγραφή φωτογραφίας ζημιάς (damages.edit).
 
-import { ok, notFound, serverError } from "@/lib/api";
+import { ok, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { photoIdOf } from "@/lib/photoShared";
 import { removeObjects } from "@/lib/storage";
@@ -22,7 +22,7 @@ export const DELETE = withPermission(
       await removeObjects([path]);
       return ok({ id: params!.photoId });
     } catch (error) {
-      console.error(error);
+      logError("damages/[id]/photos/[photoId]", error);
       return serverError();
     }
   },

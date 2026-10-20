@@ -7,15 +7,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { checkWithinLimit } from "@/lib/entitlements";
-import {
-  withAuth,
-  ok,
-  created,
-  badRequest,
-  forbidden,
-  serverError,
-  getPagination,
-} from "@/lib/api";
+import { withAuth, ok, created, badRequest, forbidden, serverError, getPagination, logError } from "@/lib/api";
 
 /**
  * Ο ρόλος στο JWT μένει ίδιος μέχρι τη λήξη του (7 ημέρες). Αφού πλέον
@@ -108,7 +100,7 @@ export const GET = withAuth(
 
       return ok({ users, total });
     } catch (error) {
-      console.error(error);
+      logError("users", error);
       return serverError();
     }
   },
@@ -179,7 +171,7 @@ export const POST = withAuth(
 
       return created({ user });
     } catch (error) {
-      console.error(error);
+      logError("users", error);
       return serverError();
     }
   },

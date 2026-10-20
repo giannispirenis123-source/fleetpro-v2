@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { pageGuard, viewerCan } from "@/lib/authz";
+import { pageGuard, viewerCan, bookingScope } from "@/lib/authz";
 import { db } from "@/lib/db";
 import {
   SERVICE_INCLUDE,
@@ -41,8 +41,9 @@ export default async function ServicePage() {
     }),
     // Οι κρατήσεις για το dropdown της ζημιάς. Φιλτράρονται στον client
     // ανά όχημα, ώστε να μη χρειάζεται δεύτερη κλήση σε κάθε επιλογή.
+    // Ίδιο φίλτρο με τη λίστα κρατήσεων (ο συνεργάτης μόνο τις δικές του).
     db.booking.findMany({
-      where: { tenantId },
+      where: bookingScope(viewer),
       orderBy: { pickupDate: "desc" },
       take: 300,
       select: {

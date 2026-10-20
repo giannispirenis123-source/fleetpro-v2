@@ -7,7 +7,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getSessionFromRequest, signToken } from "@/lib/auth";
-import { badRequest, serverError, unauthorized } from "@/lib/api";
+import { badRequest, logError, serverError, unauthorized } from "@/lib/api";
+import { loadViewer } from "@/lib/viewer";
 import { LOCALES } from "@/lib/i18n/locale";
 
 const localeSchema = z.object({
@@ -18,6 +19,10 @@ export async function PATCH(req: NextRequest) {
   try {
     const session = await getSessionFromRequest(req);
     if (!session) return unauthorized();
+    // Νέο token ΜΟΝΟ για ενεργό χρήστη ενεργής εταιρίας — αλλιώς η αλλαγή
+    // γλώσσας θα ανανέωνε επ' αόριστον τη σύνδεση απενεργοποιημένου χρήστη.
+    const viewer = await loadViewer(session);
+    if (!viewer) return unauthorized();
 
     const parsed = localeSchema.safeParse(await req.json());
     if (!parsed.success) {
@@ -38,8 +43,8 @@ export async function PATCH(req: NextRequest) {
     const token = await signToken({
       userId: session.userId,
       email: session.email,
-      role: session.role,
-      tenantId: session.tenantId,
+      role: viewer.role,
+      tenantId: viewer.tenantId,
       tenantSlug: session.tenantSlug,
       name: session.name,
       locale,
@@ -57,7 +62,7 @@ export async function PATCH(req: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error("Locale update error:", error);
+    logError("locale", error);
     return serverError();
   }
 }

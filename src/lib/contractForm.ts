@@ -1045,7 +1045,7 @@ export async function loadContractList(
         contractNumber: true,
         status: true,
         bookingId: true,
-        drivers: true,
+        // ΟΧΙ drivers: περιέχει τις υπογραφές (base64) — η λίστα θέλει μόνο πλήθη.
         createdByName: true,
         createdAt: true,
         customer: { select: { firstName: true, lastName: true } },
@@ -1061,12 +1061,17 @@ export async function loadContractList(
     }),
   ]);
 
+  const counts = await contractDriverCounts(
+    viewer.tenantId!,
+    rows.map((r) => r.id)
+  );
+
   return {
     total,
     page,
     pageSize: CONTRACTS_PAGE_SIZE,
     contracts: rows.map((r) => {
-      const drivers = readDrivers(r.drivers);
+      const c = counts.get(r.id) ?? { drivers: 0, signed: 0 };
       return {
         id: r.id,
         contractNumber: r.contractNumber,
@@ -1077,13 +1082,40 @@ export async function loadContractList(
         vehicleLabel: `${r.booking.vehicle.brand} ${r.booking.vehicle.model} · ${r.booking.vehicle.plate}`,
         pickupDate: dateOnly(r.booking.pickupDate),
         returnDate: dateOnly(r.booking.returnDate),
-        drivers: drivers.length,
-        signedDrivers: drivers.filter((d) => d.signature).length,
+        drivers: c.drivers,
+        signedDrivers: c.signed,
         createdByName: r.createdByName,
         createdAt: r.createdAt.toISOString(),
       };
     }),
   };
+}
+
+/**
+ * Οδηγοί και υπογεγραμμένοι οδηγοί ανά συμβόλαιο, μετρημένοι ΣΤΗ ΒΑΣΗ — οι
+ * υπογραφές (base64) δεν μεταφέρονται. Ίδιοι κανόνες με το readDrivers:
+ * οδηγός = αντικείμενο με id κείμενο· υπογεγραμμένος = μη κενό signature.
+ */
+async function contractDriverCounts(
+  tenantId: string,
+  ids: string[]
+): Promise<Map<string, { drivers: number; signed: number }>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db.$queryRaw<{ id: string; drivers: number; signed: number }[]>`
+    SELECT c."id",
+      COUNT(d.v)::int AS "drivers",
+      COUNT(d.v) FILTER (
+        WHERE jsonb_typeof(d.v->'signature') = 'string' AND d.v->>'signature' <> ''
+      )::int AS "signed"
+    FROM "contracts" c
+    LEFT JOIN LATERAL (
+      SELECT e AS v
+      FROM jsonb_array_elements(CASE WHEN jsonb_typeof(c."drivers") = 'array' THEN c."drivers" ELSE '[]'::jsonb END) e
+      WHERE jsonb_typeof(e) = 'object' AND jsonb_typeof(e->'id') = 'string'
+    ) d ON true
+    WHERE c."tenantId" = ${tenantId} AND c."id" = ANY(${ids})
+    GROUP BY c."id"`;
+  return new Map(rows.map((r) => [r.id, { drivers: r.drivers, signed: r.signed }]));
 }
 
 /* ─────────────────────────────────────────────

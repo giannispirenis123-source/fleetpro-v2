@@ -39,7 +39,7 @@ export const POST = withPermission(
       const check = checkRetain(booking, payment);
       if (!check.ok) return NextResponse.json({ success: false, message: check.message }, { status: check.status });
 
-      await retainPayment({
+      const done = await retainPayment({
         tenantId,
         userId: viewer.userId,
         paymentId: payment!.id,
@@ -47,7 +47,10 @@ export const POST = withPermission(
         retainedCents: check.retainedCents,
         addedCents: check.addedCents,
         note: cleanNote(parsed.data.note),
+        readRefundedCents: payment!.refundedCents,
+        readRetainedCents: payment!.retainedCents,
       });
+      if (!done) return NextResponse.json({ success: false, message: RETAIN_MSG.changed }, { status: 409 });
       const row = await db.booking.findFirst({ where: { id, tenantId }, include: BOOKING_DTO_INCLUDE });
       return ok({ retainedCents: check.retainedCents, booking: row ? toBookingDTO(row) : null });
     } catch (error) {

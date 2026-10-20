@@ -2073,6 +2073,12 @@
 .dash-sign-preview img { display: block; max-width: 100%; max-height: 80px; object-fit: contain; }
 .dash-sign-card-actions { display: flex; gap: 8px; }
 .dash-contract-complete { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+/* Πληρωμή με κάρτα μέσω Stripe (link + QR) */
+.dash-contract-cardpay { margin-top: 16px; padding: 14px; border: 1px solid var(--border, #e5e7eb); border-radius: 12px; display: grid; gap: 10px; }
+.dash-contract-cardpay .dash-section-title { display: flex; align-items: center; gap: 6px; margin: 0; }
+.dash-contract-cardpay-url { word-break: break-all; font-family: ui-monospace, monospace; font-size: 12px; }
+.dash-contract-cardpay-qr { display: grid; justify-items: center; gap: 6px; padding: 12px; background: #fff; border-radius: 10px; }
+.dash-contract-cardpay-qr svg { width: min(240px, 70vw); height: auto; display: block; }
 
 .dash-sign { display: flex; flex-direction: column; gap: 10px; }
 .dash-sign-canvas {

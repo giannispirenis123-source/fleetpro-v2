@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { loadContract, refreshDraftSnapshot, tenantLocations, tenantLogoUrl } from "@/lib/contractForm";
 import { toExtraDTO } from "@/lib/extras";
 import { canSendContractEmail } from "@/lib/contractEmailSend";
+import { loadContractPaymentContext } from "@/lib/contractPayment";
 import ContractEditor from "./ContractEditor";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export default async function ContractPage({ params }: { params: { id: string } 
 
   await refreshDraftSnapshot(viewer, params.id);
 
-  const [contract, vehicles, extras, tenant, logoUrl, locations, emailSent] = await Promise.all([
+  const [contract, vehicles, extras, tenant, logoUrl, locations, emailSent, pay] = await Promise.all([
     loadContract(viewer, params.id),
     // Για την αλλαγή οχήματος: μόνο τα ενεργά οχήματα του στόλου.
     db.vehicle.findMany({
@@ -40,6 +41,8 @@ export default async function ContractPage({ params }: { params: { id: string } 
       where: { id: params.id, tenantId: session.tenantId },
       select: { emailSentAt: true, emailSentTo: true },
     }),
+    // Κάρτα μέσω Stripe (ίδιος φύλακας εταιρίας: contractScope).
+    loadContractPaymentContext(viewer, params.id),
   ]);
   if (!contract) notFound();
 
@@ -63,6 +66,11 @@ export default async function ContractPage({ params }: { params: { id: string } 
           ? { sentAt: emailSent.emailSentAt.toISOString(), sentTo: emailSent.emailSentTo ?? "" }
           : null
       }
+      cardPayment={{
+        stripeActive: pay?.stripeActive ?? false,
+        hasContractPayment: (pay?.contractPayments.length ?? 0) > 0,
+        canRefund: viewer.role === ADMIN_ROLE,
+      }}
       can={{
         edit: viewerCan(viewer, "contracts.edit"),
         delete: viewerCan(viewer, "contracts.delete"),

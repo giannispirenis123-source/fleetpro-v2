@@ -26,8 +26,19 @@ const ADMIN_ROUTES = [
 // link που φτιάχνει η εφαρμογή (contractLink.ts).
 const PUBLIC_CONTRACT_RE = PUBLIC_CONTRACT_PATH_RE;
 
+// Επιστροφή από το Stripe μετά την πληρωμή του συμβολαίου: στατικό «ευχαριστώ»
+// χωρίς κανένα στοιχείο (ο πελάτης δεν έχει login). Δεν επιβεβαιώνει τίποτα.
+const PUBLIC_PAY_RE = /^\/pay\/(done|cancelled)\/?$/;
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (PUBLIC_PAY_RE.test(pathname)) {
+    const res = NextResponse.next();
+    res.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+    res.headers.set("Referrer-Policy", "no-referrer");
+    return res;
+  }
 
   if (PUBLIC_CONTRACT_RE.test(pathname)) {
     const res = NextResponse.next();

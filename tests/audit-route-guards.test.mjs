@@ -36,9 +36,6 @@ const NO_WRAPPER = {
   "/public/booking": "δημόσια κράτηση: εταιρία ΜΟΝΟ από το slug, rate limits",
   "/public/quote": "δημόσια τιμή: εταιρία ΜΟΝΟ από το slug",
   "/stripe/connect/webhook": "υπογραφή Stripe (STRIPE_CONNECT_WEBHOOK_SECRET)",
-  // ΓΝΩΣΤΟ ΕΥΡΗΜΑ του audit: χωρίς σύνδεση, tenantId από το body, χωρίς όριο.
-  // Επιτρέπει μάντεμα κωδικών έκπτωσης οποιασδήποτε εταιρίας. Να διορθωθεί.
-  "/discounts/validate": "AUDIT: ΑΝΟΙΧΤΟ — βλ. test.todo παρακάτω",
 };
 
 const ALL = routes();
@@ -54,6 +51,9 @@ test("κάθε API route: όλα τα handlers έχουν φύλακα στον 
   }
   assert.deepEqual(unguarded, [], "routes χωρίς φύλακα");
   assert.ok(ALL.length >= 90, `βρέθηκαν ${ALL.length} routes`);
+  // Η λίστα δεν κρατά routes που δεν υπάρχουν πια.
+  const stale = Object.keys(NO_WRAPPER).filter((r) => !ALL.some((f) => rel(f) === r));
+  assert.deepEqual(stale, [], "NO_WRAPPER με routes που σβήστηκαν");
 });
 
 test("routes χωρίς wrapper που θέλουν σύνδεση ελέγχουν session ΜΕΣΑ στο handler", () => {
@@ -106,15 +106,56 @@ test("raw SQL: μόνο tagged templates (καμία *Unsafe παραλλαγή)
   assert.deepEqual(unsafe, []);
 });
 
-test.todo("AUDIT: /api/discounts/validate — σύνδεση ή εταιρία από το slug + rate limit (σήμερα: χωρίς σύνδεση, tenantId από το body)");
-test.todo("AUDIT: security headers (CSP frame-ancestors, HSTS, nosniff) στο next.config.js");
-test.todo("AUDIT: καταγραφή (activity_logs) + όριο στην «Εμφάνιση» πλήρους αριθμού κάρτας");
+/* ── Ευρήματα του audit (19/10/2026) που διορθώθηκαν στο PR #31 ──
+   Η λογική ελέγχεται αναλυτικά στο tests/audit-fixes.test.mjs· εδώ μένει ο
+   φύλακας σε επίπεδο routes, ώστε να μην ξαναγυρίσουν. */
 
-// Ανοιχτά ευρήματα του audit (19/10/2026) — να γίνουν πραγματικά tests με τη διόρθωση.
-test.todo("AUDIT: εταιρία SUSPENDED/CANCELLED μπλοκάρεται και ΜΕΤΑ το login (loadViewer → tenant.status)");
-test.todo("AUDIT: /api/users/me/locale δεν ανανεώνει token ανενεργού χρήστη");
-test.todo("AUDIT: όριο προσπαθειών στο /api/auth/login");
-test.todo("AUDIT: CONFIRMED κράτηση με ληγμένη αναμονή πληρωμής ΣΥΝΕΧΙΖΕΙ να δεσμεύει το όχημα (notExpiredHold μόνο για PENDING)");
-test.todo("AUDIT: κρατήσεις dashboard (POST/PATCH, walk-in) μέσα στο ίδιο advisory lock με το site");
-test.todo("AUDIT: nextBookingNumber αριθμητικά (μετά το BP-YYYY-999) + UNIQUE (tenantId, bookingNumber)");
-test.todo("AUDIT: η ποσότητα των πρόσθετων κρατιέται στην επανατιμολόγηση (requestFromBooking qty)");
+const read = (r) => readFileSync(join(ROOT, r), "utf8");
+
+test("AUDIT ✓: το ανοιχτό /api/discounts/validate δεν υπάρχει πια", () => {
+  assert.equal(ALL.some((f) => rel(f) === "/discounts/validate"), false);
+});
+
+test("AUDIT ✓: security headers (nosniff, HSTS, frame-ancestors) στο next.config.js", () => {
+  const cfg = read("next.config.js");
+  for (const h of ["X-Content-Type-Options", "Strict-Transport-Security", "X-Frame-Options", "frame-ancestors"]) assert.match(cfg, new RegExp(h), h);
+});
+
+test("AUDIT ✓: «Εμφάνιση» αριθμού κάρτας με όριο και καταγραφή στο ιστορικό", () => {
+  const src = read("src/app/api/contracts/[id]/card-number/route.ts");
+  assert.match(src, /hitLimit\(/);
+  assert.match(src, /activityLog\.create\(/);
+});
+
+test("AUDIT ✓: εταιρία SUSPENDED/CANCELLED μπλοκάρεται σε κάθε αίτημα (withAuth → loadViewer)", () => {
+  assert.match(read("src/lib/api.ts"), /await loadViewer\(/);
+  assert.match(read("src/lib/viewerCore.ts"), /"SUSPENDED", "CANCELLED"/);
+});
+
+test("AUDIT ✓: /api/users/me/locale ελέγχει τον χρήστη πριν ανανεώσει το token", () => {
+  const src = read("src/app/api/users/me/locale/route.ts");
+  assert.ok(src.indexOf("loadViewer(") > -1 && src.indexOf("loadViewer(") < src.indexOf("signToken("), "loadViewer πριν το signToken");
+});
+
+test("AUDIT ✓: όριο προσπαθειών στο /api/auth/login", () => {
+  const src = read("src/app/api/auth/login/route.ts");
+  assert.match(src, /LIMITS\.loginPerEmail/);
+  assert.match(src, /LIMITS\.loginPerIp/);
+});
+
+test("AUDIT ✓: ληγμένη αναμονή πληρωμής αποδεσμεύει μόνο κράτηση PENDING", () => {
+  assert.match(read("src/lib/public/payments.ts"), /NOT: \{ status: "PENDING"/);
+});
+
+test("AUDIT ✓: κρατήσεις dashboard (POST/PATCH, walk-in) στο ίδιο advisory lock με το site", () => {
+  assert.match(read("src/lib/bookingCreate.ts"), /pg_advisory_xact_lock\(hashtext\(\$\{lockKeyFor\(/);
+  assert.match(read("src/app/api/bookings/[id]/route.ts"), /pg_advisory_xact_lock\(hashtext\(\$\{lockKeyFor\(/);
+});
+
+test("AUDIT ✓: nextBookingNumber με αριθμητικό max", () => {
+  assert.match(read("src/lib/bookingCreate.ts"), /MAX\(CAST\(substring\("bookingNumber"/);
+});
+
+// Ανοιχτά — θέλουν SQL ή απόφαση (βλ. docs/HANDOFF.md → «Audit 10/2026»).
+test.todo("AUDIT: UNIQUE (tenantId, bookingNumber) — χρειάζεται SQL");
+test.todo("AUDIT: η ποσότητα των πρόσθετων κρατιέται στην επανατιμολόγηση (requestFromBooking qty) — αλλάζει τιμές, θέλει απόφαση");

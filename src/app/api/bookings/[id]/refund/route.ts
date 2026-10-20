@@ -15,7 +15,11 @@ import { refundPayment } from "@/lib/public/paymentServer";
 import { stripeReady } from "@/lib/stripeConnect";
 import { NextResponse } from "next/server";
 
-const schema = z.object({ amountCents: z.number().int().positive().nullable() });
+const schema = z.object({
+  amountCents: z.number().int().positive().nullable(),
+  /** booking = online πληρωμή του site (προεπιλογή) · contract = ενοίκιο από το συμβόλαιο. */
+  scope: z.enum(["booking", "contract"]).optional(),
+});
 
 export const POST = withPermission(
   async (req, session, params, viewer) => {
@@ -31,7 +35,8 @@ export const POST = withPermission(
       const [booking, payment, tenant] = await Promise.all([
         db.booking.findFirst({ where: { id, tenantId }, select: { id: true, status: true } }),
         db.bookingPayment.findFirst({
-          where: { tenantId, bookingId: id, status: { in: ["PAID", "PARTIALLY_REFUNDED"] } },
+          // Πληρωμή του site (προεπιλογή) ή του συμβολαίου — πάντα της ίδιας εταιρίας.
+          where: { tenantId, bookingId: id, purpose: parsed.data.scope === "contract" ? "CONTRACT" : "BOOKING", status: { in: ["PAID", "PARTIALLY_REFUNDED"] } },
           orderBy: { createdAt: "desc" },
         }),
         db.tenant.findUnique({ where: { id: tenantId }, select: { stripeAccountId: true } }),
@@ -52,7 +57,7 @@ export const POST = withPermission(
           action: "booking.refund",
           entity: "Booking",
           entityId: id,
-          newData: { amountCents: check.amountCents },
+          newData: { amountCents: check.amountCents, purpose: payment.purpose },
         },
       });
       const row = await db.booking.findFirst({

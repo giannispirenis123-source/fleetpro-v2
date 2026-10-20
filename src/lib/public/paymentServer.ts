@@ -61,7 +61,7 @@ export async function expireStaleHolds(client: Client, tenantId: string, now = n
     data: { status: "CANCELLED", paymentStatus: "EXPIRED", cancelReasonCode: PAYMENT_CANCEL_REASON },
   });
   await client.bookingPayment.updateMany({
-    where: { tenantId, bookingId: { in: ids }, status: "OPEN" },
+    where: { tenantId, bookingId: { in: ids }, status: "OPEN", purpose: "BOOKING" },
     data: { status: "EXPIRED" },
   });
   return ids.length;
@@ -205,6 +205,7 @@ const toWebhookPayment = (p: {
   amountCents: number;
   refundedCents: number;
   retainedCents: number;
+  purpose: string;
 }) => ({
   id: p.id,
   tenantId: p.tenantId,
@@ -213,6 +214,7 @@ const toWebhookPayment = (p: {
   amountCents: p.amountCents,
   refundedCents: p.refundedCents,
   retainedCents: p.retainedCents,
+  purpose: p.purpose,
 });
 
 export function prismaWebhookStore(): WebhookStore<Tx> {
@@ -261,7 +263,18 @@ export function prismaWebhookStore(): WebhookStore<Tx> {
         },
       });
       if (t.booking.status === "CONFIRMED") await syncVehicleStatus(b.vehicleId, b.tenantId, tx);
-      if (t.payment.status === "PAID") {
+      if (t.payment.status === "PAID" && p.purpose === "CONTRACT") {
+        const c = await tx.contract.findFirst({ where: { bookingId: b.id, tenantId: b.tenantId }, select: { id: true, contractNumber: true } });
+        await tx.notification.create({
+          data: {
+            tenantId: b.tenantId,
+            type: "BOOKING_NEW",
+            title: "Πληρώθηκε με κάρτα το συμβόλαιο",
+            message: `${c?.contractNumber ?? ""} · ${(p.amountCents / 100).toFixed(2).replace(".", ",")} €`,
+            link: c ? `/dashboard/contracts/${c.id}` : `/dashboard/bookings?booking=${b.id}`,
+          },
+        });
+      } else if (t.payment.status === "PAID") {
         const row = await tx.booking.findUnique({ where: { id: b.id }, select: { publicCode: true, bookingNumber: true } });
         await tx.notification.create({
           data: {
@@ -375,7 +388,7 @@ export type PaymentCheckResult = WebhookOutcome | "rate_limited" | "not_checkabl
 export async function checkBookingPayment(tenantId: string, bookingId: string, now = new Date()): Promise<PaymentCheckResult> {
   if (!stripeReady()) return "not_ready";
   const payment = await db.bookingPayment.findFirst({
-    where: { tenantId, bookingId },
+    where: { tenantId, bookingId, purpose: "BOOKING" },
     orderBy: { createdAt: "desc" },
     select: { stripeCheckoutSessionId: true, stripeAccountId: true, status: true },
   });

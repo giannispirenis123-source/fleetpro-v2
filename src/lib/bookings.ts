@@ -150,6 +150,8 @@ export interface BookingPaymentDTO {
 
 /** Το include του Prisma για την online πληρωμή στο DTO (η πιο πρόσφατη). */
 export const BOOKING_PAYMENT_INCLUDE = {
+  // Μόνο οι online πληρωμές του site· του συμβολαίου φαίνονται στο συμβόλαιο.
+  where: { purpose: "BOOKING" },
   orderBy: { createdAt: "desc" as const },
   take: 1,
   select: { status: true, amountCents: true, refundedCents: true, retainedCents: true, stripePaymentIntentId: true },

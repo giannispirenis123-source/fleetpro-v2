@@ -181,7 +181,7 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
       cancelReasonCode: true,
       cancelNote: true,
       paymentMethod: true,
-      payments: { where: { status: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] } }, select: { amountCents: true, refundedCents: true, retainedCents: true } },
+      payments: { where: { purpose: "BOOKING", status: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] } }, select: { amountCents: true, refundedCents: true, retainedCents: true } },
       customer: { select: { firstName: true, email: true, phone: true } },
       rentalGroup: { select: { name: true, similarModels: true } },
       vehicle: { select: { brand: true, model: true, rentalGroup: { select: { name: true, similarModels: true } } } },

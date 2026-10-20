@@ -95,16 +95,27 @@ export const publicContractUrl = (origin: string, token: string) =>
  * όχι στο template: εσωτερικά ids → αύξοντες αριθμοί, κανένα δίπλωμα,
  * καμία πληρωμή/κάρτα/εγγύηση, καμία εσωτερική παρατήρηση ή κράτηση.
  */
+/**
+ * Αριθμός ΑΔΤ/διαβατηρίου/διπλώματος για τη σελίδα πελάτη: ΜΟΝΟ τα 4
+ * τελευταία (π.χ. «••••1234»). Μέχρι 4 χαρακτήρες → μόνο «••••» (ολόκληρος
+ * θα φαινόταν). Γίνεται στον server — ο πλήρης αριθμός δεν φτάνει στον browser.
+ */
+export function maskDocNumber(value: string | null | undefined): string {
+  const clean = (value ?? "").replace(/[^0-9A-Za-zΑ-Ωα-ωΆ-Ώά-ώ]/g, "");
+  if (!clean) return "";
+  return clean.length <= 4 ? "••••" : `••••${clean.slice(-4)}`;
+}
+
 export function toPublicContract(c: ContractDTO): ContractDTO {
   const drivers: ContractDriver[] = c.drivers.map((d, i) => ({
     id: `d${i + 1}`,
     fullName: d.fullName,
     country: d.country,
-    licenseNumber: d.licenseNumber,
+    licenseNumber: maskDocNumber(d.licenseNumber),
     licenseExpiry: d.licenseExpiry,
     birthDate: d.birthDate,
     idType: d.idType,
-    idNumber: d.idNumber,
+    idNumber: maskDocNumber(d.idNumber),
     phone: d.phone,
     email: d.email,
     address: d.address,

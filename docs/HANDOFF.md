@@ -651,11 +651,20 @@ Branch `claude/audit-fixes` (από το audit του PR #30). **Χωρίς SQL,
 
 **Για αργότερα:** αποστολή του link με email (περιμένει το domain στο Resend)· ένδειξη «Πληρώθηκε με κάρτα (Stripe)» στο Α4/PDF/σελίδα πελάτη (σήμερα δείχνει μόνο «Κάρτα / Card»)· πληρωμή εγγύησης/προέγκρισης μέσω Stripe.
 
+### Κλείσιμο audit 10/2026 (branch `claude/audit-close`, SQL 30)
+
+- **Σελίδα πελάτη `/c/`:** αριθμός ΑΔΤ/διαβατηρίου και διπλώματος ΜΟΝΟ με μάσκα `••••1234` (`maskDocNumber` στο `toPublicContract`, στον server — ο πλήρης αριθμός δεν φτάνει στον browser). Dashboard/Α4 υπαλλήλου/PDF: πλήρης, όπως πριν.
+- **Login:** κλείδωμα 15΄ μετά από 10 ΛΑΘΟΣ κωδικούς για ίδιο email από ίδια IP (κυλιόμενο παράθυρο 15΄, `src/lib/loginLock.ts`, store στο `rate_limits` — κανένα νέο SQL)· δίχτυ 100 λάθη/ώρα ανά email από όλες τις IP· 30 προσπάθειες/15΄ ανά IP (όπως πριν). Ίδιο 429 και μήνυμα για άγνωστο και υπαρκτό email· κλειδωμένο ακόμη και με σωστό κωδικό· σωστό login μηδενίζει τα λάθη· ένδειξη `auth.login_locked` στο activity log (χωρίς IP/κωδικό). Ο Διαχειριστής από άλλη IP δεν κλειδώνεται.
+- **Αριθμός κράτησης:** UNIQUE `(tenantId, bookingNumber)` (SQL 30, μόνο αν δεν υπάρχουν διπλότυπα)· σε σύγκρουση η transaction ξανατρέχει έως 3 φορές (`withBookingNumberRetry`: site, dashboard, walk-in) — όχι 500.
+- **jspdf / jspdf-autotable αφαιρέθηκαν** (κανένα import· τα PDF συμβολαίου/τιμολογίου είναι pdf-lib).
+- **Next 14.2.x:** ξεχωριστό PR, μετά από αυτό.
+
 ## 6. Migrations
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.
 
-- **29-contract-payment: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/contract-card-stripe`). Σε transaction: `booking_payments."purpose"` TEXT NOT NULL DEFAULT 'BOOKING' + CHECK `booking_payments_purpose_check` (BOOKING/CONTRACT) + index `(tenantId, bookingId, purpose)`. Μόνο προσθήκη με προεπιλογή — η παραγωγή δουλεύει κανονικά μαζί του. Αναμενόμενο verification `1 | 1 | 1 | 0`. **Τρέχει πριν τη δοκιμή στο preview.** Τοπικά: δύο εκτελέσεις, `prisma migrate diff` → «empty migration». Επόμενος ελεύθερος αριθμός: `30` (το UNIQUE αριθμού κράτησης του audit παίρνει πλέον το 30).
+- **30-booking-number-unique: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/audit-close`). Πρώτα η ερώτηση ελέγχου διπλότυπων (στην κορυφή του αρχείου, αναμένεται 0 γραμμές). Σε transaction: UNIQUE index `bookings_tenantId_bookingNumber_key` ΜΟΝΟ αν δεν υπάρχουν διπλότυπα (αλλιώς NOTICE, χωρίς αποτυχία) + 6 indexes (`bookings` ×3, `contracts`, `activity_logs`, `rate_limits`). Αναμενόμενο verification `0 | 1 | 6`. Τοπικά: δύο εκτελέσεις, σενάριο με διπλότυπο (NOTICE, χωρίς UNIQUE), `prisma migrate diff` → «empty migration». Επόμενος ελεύθερος αριθμός: `31`.
+- **29-contract-payment: έτρεξε.** (ιστορικό:) **ΔΕΝ έχει τρέξει ακόμη** (branch `claude/contract-card-stripe`). Σε transaction: `booking_payments."purpose"` TEXT NOT NULL DEFAULT 'BOOKING' + CHECK `booking_payments_purpose_check` (BOOKING/CONTRACT) + index `(tenantId, bookingId, purpose)`. Μόνο προσθήκη με προεπιλογή — η παραγωγή δουλεύει κανονικά μαζί του. Αναμενόμενο verification `1 | 1 | 1 | 0`. **Τρέχει πριν τη δοκιμή στο preview.** Τοπικά: δύο εκτελέσεις, `prisma migrate diff` → «empty migration». Επόμενος ελεύθερος αριθμός: `30` (το UNIQUE αριθμού κράτησης του audit παίρνει πλέον το 30).
 - **Audit 10/2026 (branch `claude/audit-fixes`): κανένα νέο SQL.** Επόμενος ελεύθερος αριθμός: `29`.
 
 - **28-payment-retained: ΔΕΝ έχει τρέξει ακόμη** (branch `claude/stripe-connect-payments`). Σε transaction: `booking_payments` + `retainedCents` (default 0), `retainedAt`, `retainedNote`, `retainedBy` + CHECK `booking_payments_retained_check`. Αναμενόμενο verification `4 | 1 | 0`. **Τρέχει πριν τη δοκιμή.** Επόμενος ελεύθερος αριθμός: `29`.
@@ -712,6 +721,7 @@ Branch `claude/audit-fixes` (από το audit του PR #30). **Χωρίς SQL,
 | 🟡 Χαμηλή | Παλιό branch `claude/graphify-setup-install-hwt5im` στο GitHub — να σβηστεί. |
 | 🟠 PCI DSS | Με αποθήκευση πλήρους αριθμού κάρτας η εταιρία μπαίνει σε πλήρες πεδίο PCI DSS (κρυπτογράφηση ✅, ρόλος ✅· απομένουν: διαχείριση/εναλλαγή κλειδιού, πολιτική διαγραφής μετά το τέλος της ενοικίασης). |
 | ✅ Ολοκληρώθηκε | ~~Εκπτώσεις Super Admin ήταν MOCK~~ → πραγματικές εκπτώσεις συνδρομών (βλ. §5). Απομένει μόνο η σύνδεση με Stripe (§8.7). Ξεχωριστές από τις εκπτώσεις κρατήσεων του `/dashboard/discounts`. |
+| ✅ Ολοκληρώθηκε | ~~Μάσκα ΑΔΤ/διπλώματος στη σελίδα πελάτη, κλείδωμα login, UNIQUE αριθμός κράτησης, αφαίρεση jspdf~~ → κλείσιμο audit (§5, SQL 30). |
 | ✅ Ολοκληρώθηκε | ~~Σφάλματα hydration στο `/login`~~ → διορθώθηκαν στο Audit 10/2026 (§5). |
 | 🟡 Χαμηλή | Το `09-platform-discounts` να επιβεβαιωθεί ότι έτρεξε (§6). |
 | 🟡 Χαμηλή | Το `08` να επιβεβαιωθεί ότι έτρεξε (§6). |

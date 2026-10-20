@@ -21,6 +21,8 @@ import { decidePriceOverride, type PriceOverride } from "@/lib/priceOverride";
 import { viewerCan, withPermission } from "@/lib/authz";
 import { TIME_RE } from "@/lib/bookings";
 import { prepareBooking, writeBooking, BookingConflictError } from "@/lib/bookingCreate";
+import { cardModeFor } from "@/lib/contractPayment";
+import { CONTRACT_PAY_MSG, sendsPaymentCardData } from "@/lib/contractPaymentCore";
 import {
   createContractInTx,
   initialContractData,
@@ -138,6 +140,11 @@ export const POST = withPermission(
           breakdown: { ...b, total: decision.total, roundingAdjustment: 0 },
           priceMode: decision.override ? "MANUAL" : "AUTO",
         };
+      }
+
+      // Κάρτα μέσω Stripe (ενεργός λογαριασμός): κανένα στοιχείο κάρτας πληρωμής.
+      if ((await cardModeFor(tenantId, { paymentMethod: form.paymentMethod ?? null })) === "STRIPE" && sendsPaymentCardData(form)) {
+        return badRequest(CONTRACT_PAY_MSG.noCardData);
       }
 
       // Αλλαγές οχήματος: μοντέλο/πινακίδα από τον Στόλο, ποτέ από τον client.

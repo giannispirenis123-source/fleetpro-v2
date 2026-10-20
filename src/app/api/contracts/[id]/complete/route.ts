@@ -13,6 +13,7 @@ import {
   syncVehicleStatus,
 } from "@/lib/bookingLifecycle";
 import { CONTRACT_INCLUDE, contractScope, refreshSearchText, toContractDTO } from "@/lib/contractForm";
+import { completionBlockOf, loadContractPaymentContext } from "@/lib/contractPayment";
 
 // POST /api/contracts/[id]/complete
 export const POST = withPermission(
@@ -26,6 +27,12 @@ export const POST = withPermission(
       if (current.status !== "SIGNED") {
         return conflict("Ολοκληρώνεται μόνο υπογεγραμμένο συμβόλαιο");
       }
+
+      // Κάρτα μέσω Stripe: ΜΟΝΟ με πληρωμή επιβεβαιωμένη από το webhook (ή τον
+      // έλεγχο του server στο Stripe) — ποτέ από το redirect της επιστροφής.
+      const pay = await loadContractPaymentContext(viewer!, current.id);
+      const blocked = pay ? completionBlockOf(pay) : null;
+      if (blocked) return conflict(blocked);
 
       const tenantId = viewer!.tenantId!;
       const STALE = "STALE";

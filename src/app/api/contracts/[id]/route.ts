@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { cardModeFor } from "@/lib/contractPayment";
+import { CONTRACT_PAY_MSG, sendsPaymentCardData } from "@/lib/contractPaymentCore";
 import { ok, badRequest, conflict, forbidden, notFound, noContent, serverError, logError } from "@/lib/api";
 import { viewerCan, withPermission } from "@/lib/authz";
 import {
@@ -87,6 +89,16 @@ export const PATCH = withPermission(
       const parsed = contractPatchSchema.safeParse(await req.json());
       if (!parsed.success) return badRequest("Μη έγκυρα δεδομένα", parsed.error.errors);
       const patch = parsed.data;
+
+      // Κάρτα μέσω Stripe: ο πελάτης πληρώνει στο Stripe — κανένα στοιχείο
+      // κάρτας πληρωμής δεν γράφεται (ούτε μάρκα/λήξη/αριθμός).
+      const cardMode = await cardModeFor(viewer!.tenantId!, {
+        bookingId: current.bookingId,
+        paymentMethod: patch.paymentMethod !== undefined ? patch.paymentMethod : current.paymentMethod,
+        paymentCard: current.paymentCard,
+        cardNumberEnc: current.cardNumberEnc,
+      });
+      if (cardMode === "STRIPE" && sendsPaymentCardData(patch)) return badRequest(CONTRACT_PAY_MSG.noCardData);
 
       const locked = current.status === "SIGNED";
       const changed = pickupChanged(current, patch);

@@ -139,7 +139,9 @@ test("AUDIT ✓: /api/users/me/locale ελέγχει τον χρήστη πρι�
 
 test("AUDIT ✓: όριο προσπαθειών στο /api/auth/login", () => {
   const src = read("src/app/api/auth/login/route.ts");
-  assert.match(src, /LIMITS\.loginPerEmail/);
+  // Τα λάθη ανά email: κλείδωμα μετά από 10 λάθος κωδικούς (loginLock.ts).
+  assert.match(src, /isLoginLocked\(/);
+  assert.match(src, /recordLoginFailure\(/);
   assert.match(src, /LIMITS\.loginPerIp/);
 });
 
@@ -157,5 +159,9 @@ test("AUDIT ✓: nextBookingNumber με αριθμητικό max", () => {
 });
 
 // Ανοιχτά — θέλουν SQL ή απόφαση (βλ. docs/HANDOFF.md → «Audit 10/2026»).
-test.todo("AUDIT: UNIQUE (tenantId, bookingNumber) — χρειάζεται SQL");
+test("AUDIT ✓: UNIQUE (tenantId, bookingNumber) — SQL 30, με επανάληψη σε σύγκρουση", () => {
+  assert.match(read("prisma/sql/30-booking-number-unique.sql"), /CREATE UNIQUE INDEX IF NOT EXISTS "bookings_tenantId_bookingNumber_key"/);
+  assert.match(read("prisma/schema.prisma"), /@@unique\(\[tenantId, bookingNumber\]\)/);
+  assert.match(read("src/lib/bookingNumberRetry.ts"), /export async function withBookingNumberRetry/);
+});
 test.todo("AUDIT: η ποσότητα των πρόσθετων κρατιέται στην επανατιμολόγηση (requestFromBooking qty) — αλλάζει τιμές, θέλει απόφαση");

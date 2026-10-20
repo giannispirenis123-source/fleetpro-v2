@@ -74,7 +74,7 @@ test("Super Admin routes: μόνο SUPER_ADMIN", () => {
 });
 
 test("routes με [id]: σε όλα υπάρχει περιορισμός στην εταιρία της συνεδρίας (tenantId / scope / φύλακας με companyId)", () => {
-  const scoped = /tenantId|contractScope\(|bookingScope\(|withPublicSite\(|companyId|loadPhotoVehicle\(|mutateContractPhotos\(|\["SUPER_ADMIN"\]/;
+  const scoped = /tenantId|contractScope\(|bookingScope\(|withPublicSite\(|companyId|loadPhotoVehicle\(|mutateContractPhotos\(|loadContractPaymentContext\(|\["SUPER_ADMIN"\]/;
   const unscoped = ALL.filter((f) => f.includes("[")).filter((f) => !scoped.test(readFileSync(f, "utf8"))).map(rel);
   assert.deepEqual(unscoped, [], "routes με [id] χωρίς ορατό περιορισμό εταιρίας");
 });

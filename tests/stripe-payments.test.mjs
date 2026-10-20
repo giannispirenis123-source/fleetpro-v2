@@ -704,7 +704,8 @@ test("έλεγχος πληρωμής: Διαχειριστής/Υπάλληλο
   const route = src("../src/app/api/bookings/[id]/payment-check/route.ts");
   assert.ok(route.indexOf("canCheckPayment(viewer.role)") < route.indexOf("db."));
   const server = src("../src/lib/public/paymentServer.ts");
-  assert.match(server, /bookingPayment\.findFirst\(\{\s*where: \{ tenantId, bookingId \}/);
+  // Μόνο οι πληρωμές του site (του συμβολαίου έχουν δικό τους έλεγχο, SQL 29).
+  assert.match(server, /bookingPayment\.findFirst\(\{\s*where: \{ tenantId, bookingId, purpose: "BOOKING" \}/);
   assert.doesNotMatch(src("../src/lib/public/bookingLookup.ts"), /searchParams|session_id/);
 });
 

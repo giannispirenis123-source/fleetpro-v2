@@ -50,6 +50,7 @@ export async function loadConfirmation(
       paymentStatus: true,
       paymentExpiresAt: true,
       payments: {
+        where: { purpose: "BOOKING" },
         orderBy: { createdAt: "desc" },
         take: 1,
         select: { status: true, amountCents: true, refundedCents: true, retainedCents: true, checkoutUrl: true, expiresAt: true },

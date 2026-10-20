@@ -180,6 +180,8 @@ export interface PaymentRowState {
   refundedCents: number;
   /** Κρατήθηκε ως χρέωση ακύρωσης (SQL 28). Πάντα refunded + retained <= amount. */
   retainedCents?: number;
+  /** BOOKING (site) | CONTRACT (ενοίκιο από το συμβόλαιο, SQL 29). */
+  purpose?: string;
 }
 
 export interface BookingPaymentState {
@@ -198,6 +200,14 @@ export interface Transition {
 export type TransitionResult = { ok: true; t: Transition } | { ok: false; reason: "noop" | "amount_mismatch" };
 
 export function transitionFor(b: BookingPaymentState, p: PaymentRowState, e: CheckoutEvent): TransitionResult {
+  const r = bookingTransitionFor(b, p, e);
+  // Πληρωμή ΣΥΜΒΟΛΑΙΟΥ: αλλάζει ΜΟΝΟ η γραμμή πληρωμής — η κράτηση (κατάσταση,
+  // αναμονή, ένδειξη πληρωμής του site) μένει όπως είναι.
+  if (!r.ok || p.purpose !== "CONTRACT") return r;
+  return { ok: true, t: { booking: { paymentStatus: b.paymentStatus as PaymentStatus }, payment: r.t.payment } };
+}
+
+function bookingTransitionFor(b: BookingPaymentState, p: PaymentRowState, e: CheckoutEvent): TransitionResult {
   if (e.kind === "paid") {
     if (p.status === "PAID" || p.status === "REFUNDED" || p.status === "PARTIALLY_REFUNDED") return { ok: false, reason: "noop" };
     if (e.amountTotal !== p.amountCents || (e.currency ?? "").toLowerCase() !== "eur") return { ok: false, reason: "amount_mismatch" };
@@ -351,7 +361,9 @@ export function checkRefund(
   amountCents: number | null
 ): { ok: true; amountCents: number } | { ok: false; status: 400 | 404; message: string } {
   if (!booking) return { ok: false, status: 404, message: REFUND_MSG.notFound };
-  if (booking.status !== "CANCELLED") return { ok: false, status: 400, message: REFUND_MSG.notCancelled };
+  // Πληρωμή κράτησης (site): μόνο σε ακυρωμένη. Πληρωμή ΣΥΜΒΟΛΑΙΟΥ (ενοίκιο):
+  // σε οποιαδήποτε κατάσταση — π.χ. διόρθωση ποσού μετά την ενοικίαση.
+  if (payment?.purpose !== "CONTRACT" && booking.status !== "CANCELLED") return { ok: false, status: 400, message: REFUND_MSG.notCancelled };
   const max = payment ? refundableCents(payment) : 0;
   if (!payment || max <= 0) return { ok: false, status: 400, message: REFUND_MSG.notPaid };
   const amount = amountCents === null ? max : Math.round(amountCents);

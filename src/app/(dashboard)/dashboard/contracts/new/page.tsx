@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { toExtraDTO } from "@/lib/extras";
 import { listPartners } from "@/lib/partners";
 import { tenantLocations, tenantLogoUrl } from "@/lib/contractForm";
+import { tenantStripeActive } from "@/lib/contractPayment";
 import ContractEditor from "../[id]/ContractEditor";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export default async function NewContractPage() {
   const { session, viewer } = guard;
   const isPartner = viewer.role === "PARTNER";
 
-  const [extras, partners, vehicles, tenant, logoUrl, locations] = await Promise.all([
+  const [extras, partners, vehicles, tenant, logoUrl, locations, stripeActive] = await Promise.all([
     // Μόνο τα ενεργά πρόσθετα προσφέρονται σε νέα κράτηση.
     db.extra.findMany({
       where: { tenantId: session.tenantId, isActive: true },
@@ -38,6 +39,7 @@ export default async function NewContractPage() {
     }),
     tenantLogoUrl(session.tenantId!),
     tenantLocations(session.tenantId!),
+    tenantStripeActive(session.tenantId!),
   ]);
 
   return (
@@ -55,6 +57,7 @@ export default async function NewContractPage() {
       roundUpTotal={tenant?.roundUpTotal ?? false}
       logoUrl={logoUrl}
       locations={locations}
+      cardPayment={{ stripeActive, hasContractPayment: false, canRefund: viewer.role === ADMIN_ROLE }}
       can={{
         edit: viewerCan(viewer, "contracts.edit"),
         delete: viewerCan(viewer, "contracts.delete"),

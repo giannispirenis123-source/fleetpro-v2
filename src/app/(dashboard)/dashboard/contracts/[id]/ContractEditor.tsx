@@ -41,6 +41,9 @@ import {
   Mail,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
+import { contractCardMode } from "@/lib/contractPaymentCore";
+import type { ContractPaymentDTO } from "@/lib/contractPayment";
+import ContractCardPayment from "./ContractCardPayment";
 import {
   CONTRACT_STATUS_CLASS,
   DEPOSIT_METHODS,
@@ -379,6 +382,7 @@ export default function ContractEditor({
   locations,
   walkIn,
   emailSent = null,
+  cardPayment = { stripeActive: false, hasContractPayment: false, canRefund: false },
 }: {
   /** null = νέο συμβόλαιο (walk-in), πριν την πρώτη αποθήκευση. */
   initialContract: ContractDTO | null;
@@ -399,6 +403,8 @@ export default function ContractEditor({
   walkIn?: { partners: { id: string; name: string }[]; canOverride: boolean };
   /** Τελευταία επιτυχής αποστολή στον πελάτη (email + PDF). */
   emailSent?: { sentAt: string; sentTo: string } | null;
+  /** Κάρτα μέσω Stripe: ενεργός λογαριασμός, υπάρχουσα πληρωμή συμβολαίου, επιστροφή (Διαχειριστής). */
+  cardPayment?: { stripeActive: boolean; hasContractPayment: boolean; canRefund: boolean };
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -606,8 +612,20 @@ export default function ContractEditor({
   const vat = shown && money ? splitVatInclusive(shown.total, money.vatRate) : null;
   const totalChangedAfterSign =
     !!contract && hasSignatures && s !== null && Math.abs(s.booking.total - contract.bookingTotalNow) > 0.004;
+  // Κάρτα πληρωμής: μέσω Stripe (link/QR, κανένα στοιχείο κάρτας) ή ο παλιός
+  // χειροκίνητος τρόπος (εταιρία χωρίς ενεργό Stripe ή παλιό συμβόλαιο με κάρτα).
+  const hasLegacyCard = !!contract?.paymentCard || !!contract?.cardNumberSaved.payment;
+  const cardMode = contractCardMode({
+    paymentMethod: form.paymentMethod || null,
+    hasLegacyCard,
+    hasContractPayment: cardPayment.hasContractPayment,
+    stripeActive: cardPayment.stripeActive,
+  });
+  const stripeCard = cardMode === "STRIPE";
+  const [payInfo, setPayInfo] = useState<ContractPaymentDTO | null>(null);
+  const completeBlocked = stripeCard ? payInfo?.completionBlock ?? (payInfo ? null : "") : null;
   const cardsInvalid =
-    (paymentUsesCard(form.paymentMethod) && !cardValid(form.paymentCard)) ||
+    (paymentUsesCard(form.paymentMethod) && !stripeCard && !cardValid(form.paymentCard)) ||
     (depositUsesCard(form.depositMethod) && !cardValid(form.depositCard));
 
   // Τα επίπεδα ασφάλειας: το πολύ ΕΝΑ στην κράτηση (radio), καμία προεπιλογή.
@@ -1796,7 +1814,12 @@ export default function ContractEditor({
             </select>
           </label>
         </div>
-        {paymentUsesCard(form.paymentMethod) && (
+        {stripeCard && <p className="dash-form-note">{tr("contracts.cardPayStripeNote")}</p>}
+        {cardMode === "MANUAL" && hasLegacyCard && <p className="dash-form-note">{tr("contracts.cardPayLegacyNote")}</p>}
+        {cardMode === "MANUAL" && !hasLegacyCard && !cardPayment.stripeActive && (
+          <p className="dash-form-note">{tr("contracts.cardPayManualNote")}</p>
+        )}
+        {paymentUsesCard(form.paymentMethod) && !stripeCard && (
           <CardFields
             title={tr("contracts.paymentCard")}
             value={form.paymentCard}
@@ -2069,11 +2092,26 @@ export default function ContractEditor({
           </div>
         )}
 
+        {contract && stripeCard && contract.status !== "DRAFT" && (
+          <ContractCardPayment
+            contractId={contract.id}
+            bookingId={contract.bookingId}
+            canEdit={can.edit}
+            canRefund={cardPayment.canRefund}
+            onChange={setPayInfo}
+          />
+        )}
+
         {contract?.status === "SIGNED" && can.edit && (
           <div className="dash-contract-complete">
-            <button className="dash-btn dash-btn--primary" disabled={busy || dirty} onClick={complete}>
+            <button
+              className="dash-btn dash-btn--primary"
+              disabled={busy || dirty || completeBlocked !== null}
+              onClick={complete}
+            >
               <CheckCircle2 size={16} /> {tr("contracts.complete")}
             </button>
+            {completeBlocked && <p className="dash-form-note">{completeBlocked}</p>}
           </div>
         )}
         {contract && allSigned(contract.drivers) && contract.signedAt && (

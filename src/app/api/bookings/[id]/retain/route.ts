@@ -31,7 +31,7 @@ export const POST = withPermission(
       const [booking, payment] = await Promise.all([
         db.booking.findFirst({ where: { id, tenantId }, select: { id: true, status: true } }),
         db.bookingPayment.findFirst({
-          where: { tenantId, bookingId: id, status: { in: ["PAID", "PARTIALLY_REFUNDED"] } },
+          where: { tenantId, bookingId: id, purpose: "BOOKING", status: { in: ["PAID", "PARTIALLY_REFUNDED"] } },
           orderBy: { createdAt: "desc" },
           select: { id: true, status: true, amountCents: true, refundedCents: true, retainedCents: true },
         }),

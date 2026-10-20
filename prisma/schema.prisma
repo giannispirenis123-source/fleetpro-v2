@@ -1310,6 +1310,8 @@ model BookingPayment {
   retainedNote            String?
   /// userId του Διαχειριστή που το αποφάσισε.
   retainedBy              String?
+  /// BOOKING = online πληρωμή κράτησης (site) | CONTRACT = ενοίκιο από το συμβόλαιο (SQL 29).
+  purpose                 String    @default("BOOKING")
   expiresAt               DateTime?
   paidAt                  DateTime?
   createdAt               DateTime  @default(now())
@@ -1319,6 +1321,7 @@ model BookingPayment {
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, bookingId])
+  @@index([tenantId, bookingId, purpose])
   @@index([stripePaymentIntentId])
   @@map("booking_payments")
 }

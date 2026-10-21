@@ -113,7 +113,8 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
     setProblems(found);
     if (found.length > 0) {
       const first = found[0].field;
-      const target = first === "from" || first === "to" ? "dates" : first;
+      // Σφάλμα ημερομηνίας → το αντίστοιχο πεδίο (παραλαβή ή επιστροφή).
+      const target = first === "from" ? "dates" : first === "to" ? "dates-end" : first;
       const el = document.getElementById(fieldId(target));
       el?.scrollIntoView({ block: "center", behavior: "smooth" });
       el?.focus({ preventScroll: true });
@@ -132,22 +133,52 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
       aria-label={d.searchTitle}
       id={id}
     >
-      <div className="sf-search-grid">
-        {pickups.length > 0 && (
-          <div className="sf-search-loc">
-            <label className={`sf-field${invalid("pl") ? " is-invalid" : ""}`} htmlFor={fieldId("pl")}>
-              <span className="sf-label">{d.pickupLocation}</span>
-              <select id={fieldId("pl")} value={pl} onChange={(e) => setPl(e.target.value)} aria-invalid={invalid("pl")}>
-                {!pl && <option value="">—</option>}
-                {pickups.map((l) => (
-                  <option key={l.slug} value={l.slug}>
-                    {l.name}
+      {/* Ένα grid με ονομασμένες περιοχές (storefront.css): παραλαβή | επιστροφή |
+          ηλικία + κουμπί, με τις στήλες ευθυγραμμισμένες. Η σειρά στο DOM =
+          η σειρά ανάγνωσης/Tab: παραλαβή → επιστροφή → ηλικία → αναζήτηση. */}
+      <DateRangePicker
+        idPrefix={id}
+        start={fromDate}
+        end={toDate}
+        minDate={today}
+        maxDate={maxDate}
+        d={d}
+        openSignal={openSignal}
+        invalid={{ start: invalid("from"), end: invalid("to") }}
+        onChange={(s, e) => {
+          setFromDate(s);
+          setToDate(e);
+        }}
+      >
+        {(dates) => (
+          <div className="sf-search-grid">
+            {pickups.length > 0 && (
+              <label className={`sf-field sf-search-pl${invalid("pl") ? " is-invalid" : ""}`} htmlFor={fieldId("pl")}>
+                <span className="sf-label">{d.pickupLocation}</span>
+                <select id={fieldId("pl")} value={pl} onChange={(e) => setPl(e.target.value)} aria-invalid={invalid("pl")}>
+                  {!pl && <option value="">—</option>}
+                  {pickups.map((l) => (
+                    <option key={l.slug} value={l.slug}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className="sf-search-fd">{dates.start}</div>
+            <label className={`sf-field sf-search-ft${invalid("from") ? " is-invalid" : ""}`} htmlFor={fieldId("from-time")}>
+              <span className="sf-label">{d.pickupTime}</span>
+              <select id={fieldId("from-time")} value={fromTime} onChange={(e) => setFromTime(e.target.value)}>
+                {TIME_SLOTS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
                   </option>
                 ))}
               </select>
             </label>
-            {dropoffs.length > 0 && (
-              <label className={`sf-field${invalid("dl") ? " is-invalid" : ""}`} htmlFor={fieldId("dl")}>
+
+            {pickups.length > 0 && dropoffs.length > 0 && (
+              <label className={`sf-field sf-search-dl${invalid("dl") ? " is-invalid" : ""}`} htmlFor={fieldId("dl")}>
                 <span className="sf-label">{d.dropoffLocation}</span>
                 <select
                   id={fieldId("dl")}
@@ -175,36 +206,8 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
                 )}
               </label>
             )}
-          </div>
-        )}
-
-        <div className="sf-search-when">
-          <DateRangePicker
-            idPrefix={id}
-            start={fromDate}
-            end={toDate}
-            minDate={today}
-            maxDate={maxDate}
-            d={d}
-            openSignal={openSignal}
-            invalid={{ start: invalid("from"), end: invalid("to") }}
-            onChange={(s, e) => {
-              setFromDate(s);
-              setToDate(e);
-            }}
-          />
-          <div className="sf-search-times">
-            <label className={`sf-field${invalid("from") ? " is-invalid" : ""}`} htmlFor={fieldId("from-time")}>
-              <span className="sf-label">{d.pickupTime}</span>
-              <select id={fieldId("from-time")} value={fromTime} onChange={(e) => setFromTime(e.target.value)}>
-                {TIME_SLOTS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className={`sf-field${invalid("to") ? " is-invalid" : ""}`} htmlFor={fieldId("to-time")}>
+            <div className="sf-search-td">{dates.end}</div>
+            <label className={`sf-field sf-search-tt${invalid("to") ? " is-invalid" : ""}`} htmlFor={fieldId("to-time")}>
               <span className="sf-label">{d.dropoffTime}</span>
               <select id={fieldId("to-time")} value={toTime} onChange={(e) => setToTime(e.target.value)}>
                 {TIME_SLOTS.map((t) => (
@@ -214,26 +217,26 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
                 ))}
               </select>
             </label>
+
+            {ages.length > 0 && (
+              <label className={`sf-field sf-search-age${invalid("age") ? " is-invalid" : ""}`} htmlFor={fieldId("age")}>
+                <span className="sf-label">{d.driverAge}</span>
+                <select id={fieldId("age")} value={age} onChange={(e) => setAge(e.target.value)} aria-invalid={invalid("age")}>
+                  {ages.map((a) => (
+                    <option key={a.value} value={String(a.value)} title={a.hint || undefined}>
+                      {fill(d.ageYears, { label: a.label })}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            <button type="submit" className="sf-btn sf-btn--primary sf-search-go" disabled={busy}>
+              {busy ? d.searching : d.searchButton}
+            </button>
           </div>
-        </div>
-
-        {ages.length > 0 && (
-          <label className={`sf-field sf-search-age${invalid("age") ? " is-invalid" : ""}`} htmlFor={fieldId("age")}>
-            <span className="sf-label">{d.driverAge}</span>
-            <select id={fieldId("age")} value={age} onChange={(e) => setAge(e.target.value)} aria-invalid={invalid("age")}>
-              {ages.map((a) => (
-                <option key={a.value} value={String(a.value)} title={a.hint || undefined}>
-                  {fill(d.ageYears, { label: a.label })}
-                </option>
-              ))}
-            </select>
-          </label>
         )}
-
-        <button type="submit" className="sf-btn sf-btn--primary sf-search-go" disabled={busy}>
-          {busy ? d.searching : d.searchButton}
-        </button>
-      </div>
+      </DateRangePicker>
 
       <p className="sf-search-note">{d.timesNote}</p>
 

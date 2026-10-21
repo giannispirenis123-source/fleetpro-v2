@@ -823,3 +823,13 @@ npm run build           # ΠΑΝΤΑ πριν το commit — πιάνει τα 
 npx prisma generate     # μετά από αλλαγή schema
 npm test                # unit tests (node:test, χωρίς εξάρτηση)
 ```
+
+## SEO και νομικά δημόσιου site (PR SEO/νομικά, SQL 31)
+
+- **Απόλυτα URL:** ΜΟΝΟ `siteUrl()` (`src/lib/storefront/siteUrlServer.ts` → `buildSiteUrl` στο `siteUrl.ts`). Σήμερα origin του αιτήματος + `/s/<slug>/<lang>/…`. Το domain ανά εταιρία αλλάζει μόνο εκεί.
+- **Meta:** `src/lib/storefront/seo.ts` — `indexablePage` (title, description, canonical, hreflang el/en + x-default, OG/Twitter με hero → λογότυπο), `noindexPage` (search, book, booking, παλιά σελίδα οχήματος). Πεδία SEO ανά γλώσσα στο `storefrontSettings` (`seoTitle`, `seoDescription`), κενά → προεπιλογές. Το `layout.tsx` του `/s/[slug]` αφαιρεί τα meta της πλατφόρμας (ίδιο ουδέτερο 404).
+- **sitemap/robots:** `/s/<slug>/sitemap.xml` (αρχική, ενεργά μέρη, νομικά — ποτέ search/book/booking/c/pay) και `/s/<slug>/robots.txt`. Ανενεργή/άγνωστη → 404.
+- **schema.org:** `AutoRental` στην αρχική (`businessJsonLd`) με το `aggregateRating` των κριτικών αυτούσιο· ώρες = εκτός της «χρέωσης εκτός ωραρίου».
+- **Νομικά:** `/s/<slug>/<lang>/terms|privacy|cookies`. Πρότυπα ΕΛ/EN στο `src/lib/legal/templates.ts` (`{{company}}`, `{{vat}}`, …). Δικά τους κείμενα στο `site_legal_texts` (κάθε αποθήκευση = νέα έκδοση). Markdown μόνο μέσω `parseMarkdown` + `LegalText` (κανένα raw HTML). Καρτέλα «Νομικά» (`LegalTab.tsx`, API `/api/public-site/legal`, μόνο Admin + publicSite).
+- **Κράτηση:** `bookings.termsVersion` (π.χ. `terms/el/v3` ή `terms/el/template-2026-10-21`) + `termsAcceptedAt`.
+- **Cookies (έλεγχος 21/10/2026):** το δημόσιο site δεν βάζει cookies· μόνο `sessionStorage` `sf-book-draft` (απαραίτητο). Stripe μόνο στη δική του σελίδα checkout, Google Places μόνο από τον server, γραμματοσειρά self-hosted (next/font). Άρα **χωρίς banner** — μόνο σελίδα cookies. Αν μπει ποτέ analytics/pixel, χρειάζεται banner.

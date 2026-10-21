@@ -8,6 +8,7 @@
 // · Κράτηση: PENDING, source "site", όχημα της ομάδας (ανατέθηκε αυτόματα),
 //   ομάδα, ολόκληρη η ανάλυση της quote() (priceQuote, AUTO), πτήση, σχόλια.
 // · Κωδικός: τυχαίος, μοναδικός σε όλη τη βάση (UNIQUE)· σε σύγκρουση νέος.
+// · Όροι: ποια έκδοση αποδέχτηκε ο πελάτης (termsVersion + termsAcceptedAt).
 // · Ειδοποίηση «Νέα κράτηση από το site» στο dashboard (όχι email).
 
 import { buildExtrasSnapshot } from "../pricing";
@@ -33,6 +34,11 @@ export interface SiteBookingWrite {
    * μέχρι το expiresAt. Χωρίς τιμή = όπως πριν (καμία πληροφορία πληρωμής).
    */
   payment?: { method: "PICKUP" | "ONLINE"; expiresAt: Date | null };
+  /**
+   * Οι όροι που αποδέχτηκε ο πελάτης (SQL 31): η έκδοση που ίσχυε τη στιγμή
+   * της υποβολής για τη γλώσσα του site, π.χ. "terms/el/v3".
+   */
+  terms?: { version: string; acceptedAt: Date };
 }
 
 const toDate = (v: string) => new Date(`${v.slice(0, 10)}T00:00:00.000Z`);
@@ -110,6 +116,7 @@ export async function writeSiteBooking<Tx extends SiteBookingTx>(
             paymentExpiresAt: w.payment.method === "ONLINE" ? w.payment.expiresAt : null,
           }
         : {}),
+      ...(w.terms ? { termsVersion: w.terms.version, termsAcceptedAt: w.terms.acceptedAt } : {}),
     },
     select: { id: true },
   });

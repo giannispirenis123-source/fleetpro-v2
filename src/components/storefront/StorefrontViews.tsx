@@ -29,6 +29,9 @@ import { cancelReasonText } from "@/lib/bookingMessages";
 import type { PublicPlace, PublicPlaceCard } from "@/lib/public/places";
 import type { ReviewSection } from "@/lib/public/reviews";
 import { PlacesSection, ReviewsSection } from "./PlacesReviews";
+import LegalText from "./LegalText";
+import { jsonLdText } from "@/lib/storefront/seo";
+import { formatLegalDate, type LegalDoc } from "@/lib/legal/legal";
 import { bookingTexts, type ConfirmationDTO } from "@/lib/public/bookingRequest";
 import type { PublicExtraOption, PublicInsuranceOption, PublicQuote } from "@/lib/public/bookingView";
 import Results, { GroupCard } from "./Results";
@@ -39,6 +42,12 @@ interface Ctx {
   lang: string;
   d: StorefrontDictionary;
 }
+
+const LEGAL_LINKS = [
+  ["terms", "legalTerms"],
+  ["privacy", "legalPrivacy"],
+  ["cookies", "legalCookies"],
+] as const;
 
 const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`;
 const waHref = (phone: string) => `https://wa.me/${phone.replace(/\D/g, "")}`;
@@ -135,6 +144,13 @@ function Shell({
           <span>
             © {new Date().getFullYear()} {company.name}
           </span>
+          <nav className="sf-footer-legal" aria-label={d.legalNav}>
+            {LEGAL_LINKS.map(([kind, key]) => (
+              <Link key={kind} href={storefrontPath(company.slug, lang, kind)}>
+                {d[key]}
+              </Link>
+            ))}
+          </nav>
           <span className="sf-muted">{d.poweredBy}</span>
         </div>
       </footer>
@@ -232,7 +248,7 @@ export function StorefrontHome({
   places?: PublicPlaceCard[];
   /** «Κριτικές πελατών» — null = χωρίς ενότητα. */
   reviews?: ReviewSection | null;
-  /** schema.org AggregateRating — ΜΟΝΟ με πραγματικά δεδομένα. */
+  /** schema.org AutoRental (businessJsonLd) — με το AggregateRating των κριτικών όπως είναι. */
   jsonLd?: Record<string, unknown> | null;
 }) {
   const d = storefrontDictionary(lang);
@@ -304,8 +320,8 @@ export function StorefrontHome({
       {jsonLd && (
         <script
           type="application/ld+json"
-          // Δικά μας δεδομένα (χειροκίνητες κριτικές)· «<» διαφυγή για ασφάλεια.
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+          // schema.org AutoRental (seo.ts) — JSON, όχι HTML· «<» διαφυγή (jsonLdText).
+          dangerouslySetInnerHTML={{ __html: jsonLdText(jsonLd) }}
         />
       )}
     </Shell>
@@ -577,6 +593,7 @@ export function StorefrontBook({
                 {...form}
                 lang={lang}
                 d={d}
+                legal={{ termsHref: storefrontPath(company.slug, lang, "terms"), privacyHref: storefrontPath(company.slug, lang, "privacy") }}
                 submitLabel={lang === "el" ? texts.submit.el : texts.submit.en}
               />
             </div>
@@ -747,6 +764,31 @@ export function StorefrontConfirmation({
           <PrintButton label={d.printSave} />
         </div>
       </div>
+    </Shell>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   /s/<slug>/<lang>/terms | privacy | cookies — νομικά
+   ───────────────────────────────────────────── */
+
+const LEGAL_TITLE = { terms: "legalTerms", privacy: "legalPrivacy", cookies: "legalCookies" } as const;
+
+export function StorefrontLegal({ company, lang, doc }: { company: PublicCompany; lang: string; doc: LegalDoc }) {
+  const d = storefrontDictionary(lang);
+  const ctx: Ctx = { company, lang, d };
+  return (
+    <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, doc.kind)}>
+      <article className="sf-wrap sf-legal" lang={doc.lang}>
+        <Link href={storefrontPath(company.slug, lang)} className="sf-back">
+          ← {d.backToHome}
+        </Link>
+        <h1 className="sf-h1 sf-h1--dark">{d[LEGAL_TITLE[doc.kind]]}</h1>
+        <p className="sf-muted sf-legal-updated">
+          {fill(d.lastUpdated, { date: formatLegalDate(doc.updated, lang) })}
+        </p>
+        <LegalText body={doc.body} className="sf-legal-body" skipTitle />
+      </article>
     </Shell>
   );
 }

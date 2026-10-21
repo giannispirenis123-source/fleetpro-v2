@@ -18,6 +18,8 @@ const FIELD_LABEL: Record<TextField, string> = {
   title: "storefront.titleField",
   tagline: "storefront.taglineField",
   about: "storefront.aboutField",
+  seoTitle: "storefront.seoTitleField",
+  seoDescription: "storefront.seoDescriptionField",
 };
 
 export default function StorefrontClient({
@@ -38,6 +40,8 @@ export default function StorefrontClient({
     title: { ...initial.settings.title },
     tagline: { ...initial.settings.tagline },
     about: { ...initial.settings.about },
+    seoTitle: { ...initial.settings.seoTitle },
+    seoDescription: { ...initial.settings.seoDescription },
   }));
   const [langs, setLangs] = useState<string[]>(initial.settings.supportedLanguages);
   const [defaultLang, setDefaultLang] = useState(initial.settings.defaultLanguage);
@@ -223,9 +227,9 @@ export default function StorefrontClient({
                 {TEXT_FIELDS.map((field) => (
                   <label key={field} className="dash-field dash-field--wide">
                     {tr(FIELD_LABEL[field])}
-                    {field === "about" ? (
+                    {field === "about" || field === "seoDescription" ? (
                       <textarea
-                        rows={4}
+                        rows={field === "about" ? 4 : 2}
                         maxLength={TEXT_MAX[field]}
                         value={texts[field][l.code] ?? ""}
                         onChange={(e) => setText(field, l.code, e.target.value)}
@@ -240,6 +244,7 @@ export default function StorefrontClient({
                   </label>
                 ))}
               </div>
+              <p className="dash-form-note">{tr("storefront.seoHint")}</p>
             </fieldset>
           ))}
       </div>

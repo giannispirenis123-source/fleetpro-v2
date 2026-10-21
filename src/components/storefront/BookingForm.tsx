@@ -37,6 +37,30 @@ interface Props {
   needsFlight: boolean;
   /** Οι τρόποι πληρωμής που ισχύουν (ο server τους ξαναελέγχει) + πόσο χρεώνεται online. */
   payment: { methods: PaymentMethod[]; amountType: string; depositPercent: number };
+  /** Οι όροι και το απόρρητο της ΙΔΙΑΣ εταιρίας (ανοίγουν σε νέα καρτέλα — η φόρμα μένει). */
+  legal: { termsHref: string; privacyHref: string };
+}
+
+/** «… τους {terms} … στην {privacy}.» → κείμενο με links. */
+function TermsLabel({ d, legal }: { d: StorefrontDictionary; legal: Props["legal"] }) {
+  const parts = d.acceptTermsRich.split(/(\{terms\}|\{privacy\})/);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p === "{terms}" ? (
+          <a key={i} href={legal.termsHref} target="_blank" rel="noopener">
+            {d.termsLink}
+          </a>
+        ) : p === "{privacy}" ? (
+          <a key={i} href={legal.privacyHref} target="_blank" rel="noopener">
+            {d.privacyLink}
+          </a>
+        ) : (
+          p
+        )
+      )}
+    </>
+  );
 }
 
 const DRAFT_KEY = "sf-book-draft";
@@ -65,7 +89,7 @@ const EMPTY: Contact = {
   acceptTerms: false,
 };
 
-export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, query, d, submitLabel, options, insurance, initialQuote, needsFlight, payment }: Props) {
+export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, query, d, submitLabel, options, insurance, initialQuote, needsFlight, payment, legal }: Props) {
   const t = (m: Msg | undefined) => (m ? textFor(m as Record<string, string>, lang) : "");
   const extrasOpts = options;
   const insuranceOpts = insurance;
@@ -468,7 +492,9 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
 
         <div className={`sf-bk-terms${errors.acceptTerms ? " is-invalid" : ""}`}>
           <input {...aria("acceptTerms")} type="checkbox" checked={contact.acceptTerms} onChange={(e) => set("acceptTerms", e.target.checked)} />
-          <label htmlFor="bk-acceptTerms">{d.acceptTerms}</label>
+          <label htmlFor="bk-acceptTerms">
+            <TermsLabel d={d} legal={legal} />
+          </label>
           {errors.acceptTerms && (
             <span className="sf-bk-err" id="bk-acceptTerms-err" role="alert">
               {errors.acceptTerms}

@@ -2,6 +2,7 @@
 // Δημόσια κράτηση — ΜΟΝΟ server. Η εταιρία ΜΟΝΟ από το slug
 // (resolveStorefrontCompany)· η τιμή ΜΟΝΟ από την ίδια μηχανή (quote())·
 // διαθεσιμότητα + εγγραφή ΜΕΣΑ σε pg_advisory_xact_lock της εταιρίας.
+// Η κράτηση κρατά ποια έκδοση όρων αποδέχτηκε ο πελάτης (currentTermsVersion).
 
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
@@ -30,6 +31,7 @@ import { createBookingCheckout, expireStaleHolds, holdUntil, loadSitePayment } f
 import { resolvePaymentMethod, type PaymentMethod } from "./payments";
 import { loadSiteCatalog, type SiteCatalog } from "./site";
 import { textFor } from "./text";
+import { currentTermsVersion } from "../legal/legalServer";
 
 export type SubmitResult =
   | { ok: true; code: string; url: string }
@@ -55,7 +57,8 @@ function prismaStore(
   locNames: { pickup: string | null; dropoff: string | null },
   window: { from: string; to: string },
   lang: string,
-  payment: { method: PaymentMethod; expiresAt: Date | null }
+  payment: { method: PaymentMethod; expiresAt: Date | null },
+  terms: { version: string; acceptedAt: Date }
 ): BookingStore<Tx> {
   return {
     withLock: (key, fn) =>
@@ -71,7 +74,7 @@ function prismaStore(
       ),
     loadBookings: (tx, window) => loadBlockingBookings(tx, cat.companyId, window),
     write: (tx, plan: SitePlan) =>
-      writeSiteBooking(tx, { tenantId: cat.companyId, plan, contact, locations: locNames, window, lang, payment }, {
+      writeSiteBooking(tx, { tenantId: cat.companyId, plan, contact, locations: locNames, window, lang, payment, terms }, {
         nextNumber: (t) => nextBookingNumber(t, cat.companyId),
         generateCode: generateInvoiceCode,
       }),
@@ -136,6 +139,9 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
     return { ok: false, status: 429, message: msg("Πολλές υποβολές. Δοκιμάστε ξανά σε λίγο ή επικοινωνήστε μαζί μας.", "Too many submissions. Please try again later or contact us.") };
   }
 
+  // Οι όροι της ΙΔΙΑΣ εταιρίας που ισχύουν τώρα στη γλώσσα του site (αυτοί που ανοίγει το link της φόρμας).
+  const termsVersion = await currentTermsVersion(resolved.companyId, input.lang);
+
   const loc = (slug: string | null) => {
     const l = slug ? cat.ctx.locations.find((x) => x.slug === slug && x.isActive) : null;
     return l ? textFor(l.name, "el") || l.slug : null;
@@ -145,7 +151,7 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
     prismaStore(cat, contact.contact, { pickup: loc(c.pl), dropoff: loc(c.dl) }, { from: c.from, to: c.to }, input.lang, {
       method: online ? "ONLINE" : "PICKUP",
       expiresAt: online ? holdUntil(now) : null,
-    }),
+    }, { version: termsVersion, acceptedAt: now }),
     cat,
     { key: input.key, criteria: c, extras: input.extras, insuranceId: input.insuranceId, driverAge: band.age },
     now

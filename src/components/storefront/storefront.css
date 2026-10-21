@@ -308,6 +308,21 @@
 .sf-note { margin-top: 14px; font-size: 13px; color: var(--sf-text-2); }
 .sf-footer { border-top: 1px solid var(--sf-border); padding: 18px 0; font-size: 13px; }
 .sf-footer-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.sf-footer-legal { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.sf-footer-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; padding: 4px 0; }
+
+/* ── Νομικά ── */
+.sf-legal { max-width: 780px; padding-top: 20px; padding-bottom: 40px; }
+.sf-legal-updated { margin: 4px 0 20px; font-size: 14px; }
+.sf-legal-body { line-height: 1.65; overflow-wrap: anywhere; }
+.sf-legal-body h2 { font-size: 20px; margin: 28px 0 8px; }
+.sf-legal-body h3 { font-size: 17px; margin: 22px 0 6px; }
+.sf-legal-body h4 { font-size: 15px; margin: 18px 0 6px; }
+.sf-legal-body p { margin: 0 0 12px; }
+.sf-legal-body ul, .sf-legal-body ol { margin: 0 0 12px; padding-left: 22px; }
+.sf-legal-body li { margin: 4px 0; }
+.sf-legal-body a { color: var(--sf-brand); text-decoration: underline; }
+.sf-bk-terms label a { color: var(--sf-brand); text-decoration: underline; }
 
 @media (max-width: 480px) {
   .sf-brand-name { font-size: 15px; }

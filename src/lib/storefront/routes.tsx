@@ -10,10 +10,15 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { openStorefront } from "./page";
 import { loadPublicVehicle } from "./resolve";
-import { pickText } from "./settings";
 import { storefrontPath } from "./slug";
 import { storefrontDictionary } from "./i18n";
 import { headers } from "next/headers";
+import { siteUrl } from "./siteUrlServer";
+import { businessJsonLd, homeSeoDescription, homeSeoTitle, indexablePage, noindexPage } from "./seo";
+import { loadSeoLocations } from "./seoServer";
+import { loadLegalDoc } from "../legal/legalServer";
+import { isLegalKind, type LegalKind } from "../legal/legal";
+import { parseMarkdown, plainText } from "../legal/markdown";
 import { publicFormQuote, needsFlight } from "../public/bookingSubmit";
 import { extraOptions, insuranceOptions, toPublicQuote } from "../public/bookingView";
 import { loadConfirmation } from "../public/bookingLookup";
@@ -26,7 +31,9 @@ import {
   StorefrontConfirmation,
   StorefrontBook,
   StorefrontHome,
+  StorefrontLegal,
   StorefrontPlace,
+  contactOf,
   StorefrontSearch,
   StorefrontVehicle,
   type SearchBoxData,
@@ -73,17 +80,6 @@ const sortOf = (sp: SearchParams): SortOrder => {
    Κοινά
    ───────────────────────────────────────────── */
 
-function heroOg(company: PublicCompany): Metadata["openGraph"] {
-  const hero = company.settings.theme.heroImage?.url;
-  return hero ? { images: [{ url: cloudinaryThumb(hero, 1200), width: 1200 }] } : undefined;
-}
-
-function homeTitle(company: PublicCompany, lang: string) {
-  const s = company.settings;
-  const t = textFor(s.theme.heroTitle, lang) || pickText(s.title, lang, s.defaultLanguage);
-  return t && t !== company.name ? `${t} — ${company.name}` : company.name;
-}
-
 function searchBoxData(company: PublicCompany, cat: SiteCatalog, lang: string, initial: SearchCriteria): SearchBoxData {
   return {
     action: storefrontPath(company.slug, lang, "search"),
@@ -116,18 +112,13 @@ async function catalogOr404(companyId: string) {
 
 export async function storefrontHomeMetadata(p: StorefrontParams, sp: SearchParams = {}): Promise<Metadata> {
   const { company, lang } = await openStorefront(p.slug, p.lang, "", rawQuery(sp));
-  const s = company.settings;
-  const description = textFor(s.theme.heroSubtitle, lang) || pickText(s.tagline, lang, s.defaultLanguage) || undefined;
-  const title = homeTitle(company, lang);
-  return {
-    title,
-    description,
-    openGraph: { title, description, locale: lang, type: "website", ...heroOg(company) },
-    alternates: {
-      languages: Object.fromEntries(s.supportedLanguages.map((l) => [l, storefrontPath(company.slug, l)])),
-    },
-    robots: { index: true, follow: true },
-  };
+  return indexablePage({
+    company,
+    lang,
+    title: homeSeoTitle(company, lang),
+    description: homeSeoDescription(company, lang),
+    url: (l) => siteUrl(company, { lang: l }),
+  });
 }
 
 export async function StorefrontHomePage({ params, searchParams = {} }: { params: StorefrontParams; searchParams?: SearchParams }) {
@@ -136,10 +127,13 @@ export async function StorefrontHomePage({ params, searchParams = {} }: { params
   const initial = defaultCriteria(cat.rules);
   // Μέρη: με τοποθεσία παραλαβής στο URL (pl), πρώτα τα δικά της.
   const pl = first(searchParams.pl);
-  const [places, reviews] = await Promise.all([
+  const url = siteUrl(company, { lang });
+  const [places, reviews, locations] = await Promise.all([
     loadSitePlaces(companyId, pl && /^[a-z0-9-]{1,60}$/.test(pl) ? pl : null, lang),
-    loadReviewSection(companyId, lang, { name: company.name, url: absoluteUrl(storefrontPath(company.slug, lang)) }),
+    loadReviewSection(companyId, lang, { name: company.name, url }),
+    loadSeoLocations(companyId, lang),
   ]);
+  const jsonLd = businessJsonLd({ company, url, contact: contactOf(company), locations, reviewsJsonLd: reviews.jsonLd });
   return (
     <StorefrontHome
       company={company}
@@ -150,17 +144,9 @@ export async function StorefrontHomePage({ params, searchParams = {} }: { params
       initialSort={sortOf(searchParams)}
       places={places}
       reviews={reviews.section}
-      jsonLd={reviews.jsonLd}
+      jsonLd={jsonLd}
     />
   );
-}
-
-/** Απόλυτο URL του ίδιου deployment (για το schema.org). */
-function absoluteUrl(path: string): string {
-  const h = headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = (h.get("x-forwarded-proto") ?? "https").split(",")[0];
-  return host ? `${proto}://${host.split(",")[0]}${path}` : path;
 }
 
 /* ─────────────────────────────────────────────
@@ -170,26 +156,17 @@ function absoluteUrl(path: string): string {
 export async function storefrontPlaceMetadata(p: StorefrontParams & { placeSlug?: string }): Promise<Metadata> {
   const { company, companyId, lang } = await openStorefront(p.slug, p.lang, { placeSlug: p.placeSlug ?? "" });
   const place = p.placeSlug ? await loadSitePlace(companyId, p.placeSlug, lang) : null;
-  if (!place) return { title: company.name, robots: { index: false, follow: false } };
-  const title = `${place.name} — ${company.name}`;
-  const description = place.short || place.description.slice(0, 160) || undefined;
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      locale: lang,
-      type: "article",
-      ...(place.coverUrl ? { images: [{ url: cloudinaryThumb(place.coverUrl, 1200), width: 1200 }] } : {}),
-    },
-    alternates: {
-      languages: Object.fromEntries(
-        company.settings.supportedLanguages.map((l) => [l, storefrontPath(company.slug, l, { placeSlug: place.slug })])
-      ),
-    },
-    robots: { index: true, follow: true },
-  };
+  // Ανενεργό/άγνωστο μέρος → η σελίδα δίνει 404· εδώ κανένα στοιχείο.
+  if (!place) return noindexPage(company.name);
+  return indexablePage({
+    company,
+    lang,
+    title: `${place.name} — ${company.name}`,
+    description: place.short || place.description,
+    url: (l) => siteUrl(company, { lang: l, page: { placeSlug: place.slug } }),
+    image: place.coverUrl ? { url: cloudinaryThumb(place.coverUrl, 1200), width: 1200 } : undefined,
+    type: "article",
+  });
 }
 
 export async function StorefrontPlacePage({ params }: { params: StorefrontParams & { placeSlug: string } }) {
@@ -206,12 +183,7 @@ export async function StorefrontPlacePage({ params }: { params: StorefrontParams
 
 export async function storefrontSearchMetadata(p: StorefrontParams, sp: SearchParams = {}): Promise<Metadata> {
   const { company, lang } = await openStorefront(p.slug, p.lang, "search", rawQuery(sp));
-  const d = storefrontDictionary(lang);
-  return {
-    title: `${d.resultsTitle} — ${company.name}`,
-    robots: { index: false, follow: false },
-    openGraph: { title: company.name, locale: lang, ...heroOg(company) },
-  };
+  return noindexPage(`${storefrontDictionary(lang).resultsTitle} — ${company.name}`);
 }
 
 export async function StorefrontSearchPage({ params, searchParams }: { params: StorefrontParams; searchParams: SearchParams }) {
@@ -255,10 +227,7 @@ export async function StorefrontSearchPage({ params, searchParams }: { params: S
 export async function storefrontBookMetadata(p: StorefrontParams, sp: SearchParams = {}): Promise<Metadata> {
   const { company, lang } = await openStorefront(p.slug, p.lang, "book", rawQuery(sp));
   const d = storefrontDictionary(lang);
-  return {
-    title: `${company.rentalMode === "REQUEST" ? d.requestTitle : d.bookTitle} — ${company.name}`,
-    robots: { index: false, follow: false },
-  };
+  return noindexPage(`${company.rentalMode === "REQUEST" ? d.requestTitle : d.bookTitle} — ${company.name}`);
 }
 
 export async function StorefrontBookPage({ params, searchParams }: { params: StorefrontParams; searchParams: SearchParams }) {
@@ -330,7 +299,7 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
 
 export async function storefrontConfirmationMetadata(p: StorefrontParams & { code?: string }): Promise<Metadata> {
   const { company } = await openStorefront(p.slug, p.lang);
-  return { title: `${company.name}`, robots: { index: false, follow: false } };
+  return noindexPage(company.name);
 }
 
 export async function StorefrontConfirmationPage({
@@ -357,7 +326,8 @@ export async function StorefrontConfirmationPage({
 export async function storefrontVehicleMetadata(p: StorefrontParams): Promise<Metadata> {
   const { company, companyId } = await openStorefront(p.slug, p.lang, { vehicleId: p.vehicleId ?? "" });
   const vehicle = p.vehicleId ? await loadPublicVehicle(companyId, p.vehicleId) : null;
-  return { title: vehicle ? `${vehicle.brand} ${vehicle.model} — ${company.name}` : company.name };
+  // Παλιά σελίδα (δεν συνδέεται από πουθενά, οι κάρτες είναι ανά ομάδα): εκτός ευρετηρίου και sitemap.
+  return noindexPage(vehicle ? `${vehicle.brand} ${vehicle.model} — ${company.name}` : company.name);
 }
 
 export async function StorefrontVehiclePage({ params }: { params: StorefrontParams }) {
@@ -367,3 +337,36 @@ export async function StorefrontVehiclePage({ params }: { params: StorefrontPara
   return <StorefrontVehicle company={company} vehicle={vehicle} lang={lang} />;
 }
 
+
+/* ─────────────────────────────────────────────
+   Νομικά — /terms, /privacy, /cookies
+   ───────────────────────────────────────────── */
+
+const LEGAL_TITLE = { terms: "legalTerms", privacy: "legalPrivacy", cookies: "legalCookies" } as const;
+
+async function openLegal(p: StorefrontParams, kind: LegalKind) {
+  const { company, companyId, lang } = await openStorefront(p.slug, p.lang, kind);
+  // Κείμενο ΜΟΝΟ της εταιρίας του slug (companyId από το resolveStorefrontCompany).
+  const doc = isLegalKind(kind) ? await loadLegalDoc(companyId, kind, lang) : null;
+  if (!doc) notFound();
+  return { company, lang, doc };
+}
+
+export async function storefrontLegalMetadata(p: StorefrontParams, kind: LegalKind): Promise<Metadata> {
+  const { company, lang, doc } = await openLegal(p, kind);
+  const blocks = parseMarkdown(doc.body);
+  const body = blocks[0]?.t === "h" ? blocks.slice(1) : blocks;
+  return indexablePage({
+    company,
+    lang,
+    title: `${storefrontDictionary(lang)[LEGAL_TITLE[kind]]} — ${company.name}`,
+    description: plainText(body),
+    url: (l) => siteUrl(company, { lang: l, page: kind }),
+    type: "article",
+  });
+}
+
+export async function StorefrontLegalPage({ params, kind }: { params: StorefrontParams; kind: LegalKind }) {
+  const { company, lang, doc } = await openLegal(params, kind);
+  return <StorefrontLegal company={company} lang={lang} doc={doc} />;
+}

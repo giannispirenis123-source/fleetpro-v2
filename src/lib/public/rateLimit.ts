@@ -25,6 +25,12 @@ export interface Limit {
 export const LIMITS = {
   bookingPerEmail: { scope: "book-email", max: 5, windowMinutes: 60 },
   bookingPerTenant: { scope: "book-tenant", max: 30, windowMinutes: 60 },
+  /**
+   * Υποβολή κράτησης από το site ανά IP (hash). 10/ώρα: αρκετό για οικογένειες
+   * και ξενοδοχεία πίσω από κοινό IP (το όριο ανά email μένει 5/ώρα), σταματά
+   * όμως έναν που γεμίζει ψεύτικες κρατήσεις με διαφορετικά email.
+   */
+  bookingPerClient: { scope: "book-ip", max: 10, windowMinutes: 60 },
   confirmationPerClient: { scope: "booking-view", max: 60, windowMinutes: 10 },
   /** Σύνδεση στο dashboard: όλες οι προσπάθειες ανά IP (hash). Τα λάθη ανά email: loginLock.ts. */
   loginPerIp: { scope: "login-ip", max: 30, windowMinutes: 15 },

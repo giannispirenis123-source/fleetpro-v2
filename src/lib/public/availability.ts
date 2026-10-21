@@ -1,18 +1,25 @@
 // src/lib/public/availability.ts
-// Διαθεσιμότητα του δημόσιου site: ΠΟΣΑ οχήματα κάθε ομάδας είναι ελεύθερα
-// σε ένα διάστημα. Στο site φεύγει ΜΟΝΟ ο αριθμός — ποτέ ποια οχήματα.
+// Ο ΕΝΑΣ κανόνας «ποιες κρατήσεις κλείνουν ένα όχημα σε ένα διάστημα» —
+// για ΟΛΑ τα κανάλια: δημόσιο site (αναζήτηση, υποβολή), dashboard (νέα
+// κράτηση, επεξεργασία, επιβεβαίωση αιτήματος), walk-in (λίστα οχημάτων +
+// κράτηση) και αλλαγή οχήματος στο συμβόλαιο. Κανένα άλλο αρχείο δεν κρίνει
+// μόνο του αν ένα όχημα είναι ελεύθερο (βλ. bookingConflicts.ts, walkIn.ts).
+// Στο site φεύγει ΜΟΝΟ ο αριθμός διαθέσιμων — ποτέ ποια οχήματα.
 //
-// Πηγή αλήθειας = ο πίνακας bookings, όπως και στον έλεγχο σύγκρουσης του
-// dashboard (src/lib/bookings.ts → findConflicts, CONFLICT_STATUSES):
+// Πηγή αλήθειας = ο πίνακας bookings:
 //   · Κάθε συμβόλαιο ανήκει σε ΜΙΑ κράτηση (contracts.bookingId UNIQUE) και η
 //     κράτηση ακολουθεί το συμβόλαιο (ACTIVE / COMPLETED), άρα οι κρατήσεις
 //     καλύπτουν και τα συμβόλαια. Από το συμβόλαιο διαβάζεται μόνο το
-//     vehicleChanges: σε αλλαγή οχήματος δεσμεύονται ΚΑΙ τα δύο οχήματα.
+//     vehicleChanges: σε αλλαγή οχήματος το ΝΕΟ όχημα κλείνει από την
+//     ημερομηνία της αλλαγής (00:00) ως το τέλος της κράτησης· το αρχικό
+//     μένει κλεισμένο για όλο το διάστημα (απόφαση 22/10/2026).
 //   · «Κλείνουν» όχημα: PENDING, CONFIRMED, ACTIVE. Όχι CANCELLED, όχι
 //     COMPLETED (έχει επιστραφεί). Μια ACTIVE που έπρεπε να έχει επιστραφεί
 //     (καθυστέρηση) κρατά το όχημα μέχρι «τώρα».
 //   · Χρόνος προετοιμασίας (tenants.prepTimeMinutes) και από τις δύο πλευρές.
-//   · Όχημα σε service (status MAINTENANCE) ή «Ανενεργό» δεν μετρά ποτέ.
+//   · Όχημα σε service (status MAINTENANCE) ή «Ανενεργό» δεν μετρά ποτέ στο
+//     site και στη λίστα του walk-in. Η κράτηση από το dashboard το επιτρέπει
+//     (η κατάσταση είναι «τώρα», όχι για ημερομηνίες — απόφαση 22/10/2026).
 //   · Κράτηση που περιμένει online πληρωμή (AWAITING_PAYMENT) κλείνει το
 //     όχημα ΜΕΧΡΙ τη λήξη της· μετά δεν μετρά, ακόμα κι αν δεν ήρθε webhook.
 //
@@ -25,7 +32,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { holdExpired, notExpiredHold } from "./payments";
 
-/** Ίδιες με το CONFLICT_STATUSES του src/lib/bookings.ts. */
+/** Ίδιες με το CONFLICT_STATUSES του src/lib/bookings.ts (test τις κλειδώνει). */
 export const BLOCKING_STATUSES = ["PENDING", "CONFIRMED", "ACTIVE"] as const;
 
 /** Καταστάσεις οχήματος που το βγάζουν εκτός (service / ανενεργό). */
@@ -40,9 +47,17 @@ export interface FleetVehicle {
   isActive: boolean;
 }
 
+export interface VehicleChange {
+  vehicleId: string;
+  /** "YYYY-MM-DD" — από πότε ο πελάτης έχει το νέο όχημα. */
+  date: string;
+}
+
 export interface BlockingBooking {
   /** Για να εξαιρεθεί η ίδια η κράτηση (π.χ. στην επιβεβαίωση από το dashboard). */
   id?: string;
+  /** Για τα μηνύματα σύγκρουσης του dashboard. */
+  bookingNumber?: string;
   tenantId: string;
   vehicleId: string;
   status: string;
@@ -51,8 +66,8 @@ export interface BlockingBooking {
   pickupTime: string | null;
   returnDate: string;
   returnTime: string | null;
-  /** Οχήματα από αλλαγές οχήματος στο συμβόλαιο. */
-  extraVehicleIds?: string[];
+  /** Αλλαγές οχήματος στο συμβόλαιο. */
+  vehicleChanges?: VehicleChange[];
   /** Online πληρωμή: AWAITING_PAYMENT κρατά το όχημα μέχρι το paymentExpiresMs (πραγματική στιγμή). */
   paymentStatus?: string | null;
   paymentExpiresMs?: number | null;
@@ -97,6 +112,7 @@ export function bookingInterval(b: BlockingBooking, nowMs?: number): Interval {
 
 export interface AvailabilityInput {
   companyId: string;
+  excludeBookingId?: string;
   vehicles: FleetVehicle[];
   bookings: BlockingBooking[];
   /** "YYYY-MM-DDTHH:mm" */
@@ -109,23 +125,74 @@ export interface AvailabilityInput {
   instantMs?: number;
 }
 
+/** Ένα όχημα δεσμευμένο από μια κράτηση σε ένα διάστημα (ώρα τοίχου). */
+export interface VehicleClaim {
+  booking: BlockingBooking;
+  vehicleId: string;
+  interval: Interval;
+}
+
+export interface ClaimOptions {
+  companyId: string;
+  /** "YYYY-MM-DDTHH:mm" — τώρα, στη ζώνη της εταιρίας (για τις καθυστερήσεις). */
+  now?: string;
+  /** Η πραγματική στιγμή (ms) — για τη λήξη των αναμονών πληρωμής. */
+  instantMs?: number;
+  /** Η ίδια η κράτηση (επεξεργασία, επιβεβαίωση, αλλαγή οχήματος) δεν κλείνει τον εαυτό της. */
+  excludeBookingId?: string;
+}
+
+/**
+ * Ο ΚΑΝΟΝΑΣ: ποια οχήματα κρατά κάθε κράτηση και πότε. Μόνο της ίδιας
+ * εταιρίας, μόνο PENDING/CONFIRMED/ACTIVE, όχι ληγμένη αναμονή πληρωμής·
+ * ACTIVE σε καθυστέρηση ως «τώρα»· αλλαγή οχήματος από την ημερομηνία της.
+ */
+export function vehicleClaims(bookings: BlockingBooking[], o: ClaimOptions): VehicleClaim[] {
+  const nowMs = o.now ? localMs(o.now) : NaN;
+  const out: VehicleClaim[] = [];
+  for (const b of bookings) {
+    if (b.tenantId !== o.companyId) continue;
+    if (o.excludeBookingId && b.id === o.excludeBookingId) continue;
+    if (!(BLOCKING_STATUSES as readonly string[]).includes(b.status)) continue;
+    if (holdExpired(b, o.instantMs ?? Date.now())) continue;
+    const interval = bookingInterval(b, Number.isFinite(nowMs) ? nowMs : undefined);
+    out.push({ booking: b, vehicleId: b.vehicleId, interval });
+    for (const c of b.vehicleChanges ?? []) {
+      if (!c.vehicleId) continue;
+      out.push({ booking: b, vehicleId: c.vehicleId, interval: changeInterval(c.date, interval) });
+    }
+  }
+  return out;
+}
+
+/** Το νέο όχημα μιας αλλαγής: από την ημερομηνία της (00:00) ως το τέλος της κράτησης. */
+export function changeInterval(date: string, booking: Interval): Interval {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(date) ? wallClockMs(date, null, "start") : booking.start;
+  const start = Math.max(booking.start, from);
+  // Αλλαγή με ημερομηνία μετά την επιστροφή (λάθος καταχώρηση): κλείνει εκείνη την ημέρα.
+  return start < booking.end ? { start, end: booking.end } : { start, end: wallClockMs(date, null, "end") };
+}
+
+/** Οι δεσμεύσεις που ΣΥΓΚΡΟΥΟΝΤΑΙ με το `window` για το `vehicleId` (με κενό προετοιμασίας). */
+export function blockersOf(
+  bookings: BlockingBooking[],
+  o: ClaimOptions & { vehicleId: string; window: Interval; prepMinutes: number }
+): VehicleClaim[] {
+  const prep = Math.max(0, o.prepMinutes) * 60_000;
+  return vehicleClaims(bookings, o).filter((c) => c.vehicleId === o.vehicleId && intervalsConflict(o.window, c.interval, prep));
+}
+
 /** Τα οχήματα που ΚΛΕΙΝΟΥΝ στο διάστημα (κρατήσεις της ίδιας εταιρίας). */
-function blockedIds(input: AvailabilityInput, window: Interval): Set<string> {
-  const nowMs = input.now ? localMs(input.now) : undefined;
+export function blockedVehicleIds(input: AvailabilityInput, window: Interval): Set<string> {
   const prep = Math.max(0, input.prepMinutes) * 60_000;
   const blocked = new Set<string>();
-  for (const b of input.bookings) {
-    if (b.tenantId !== input.companyId) continue;
-    if (!(BLOCKING_STATUSES as readonly string[]).includes(b.status)) continue;
-    if (holdExpired(b, input.instantMs ?? Date.now())) continue;
-    if (!intervalsConflict(window, bookingInterval(b, Number.isFinite(nowMs) ? nowMs : undefined), prep)) continue;
-    blocked.add(b.vehicleId);
-    for (const id of b.extraVehicleIds ?? []) blocked.add(id);
+  for (const c of vehicleClaims(input.bookings, input)) {
+    if (intervalsConflict(window, c.interval, prep)) blocked.add(c.vehicleId);
   }
   return blocked;
 }
 
-const windowOf = (input: AvailabilityInput): Interval | null => {
+export const windowOf = (input: { from: string; to: string }): Interval | null => {
   const w = { start: localMs(input.from), end: localMs(input.to) };
   return Number.isFinite(w.start) && Number.isFinite(w.end) && w.end > w.start ? w : null;
 };
@@ -140,7 +207,7 @@ const usable = (input: AvailabilityInput, v: FleetVehicle) =>
 export function freeVehicleIds(input: AvailabilityInput, groupKey: string): string[] {
   const window = windowOf(input);
   if (!window) return [];
-  const blocked = blockedIds(input, window);
+  const blocked = blockedVehicleIds(input, window);
   return input.vehicles.filter((v) => v.groupKey === groupKey && usable(input, v) && !blocked.has(v.id)).map((v) => v.id);
 }
 
@@ -154,7 +221,7 @@ export function countAvailableByGroup(input: AvailabilityInput): Map<string, num
   const counts = new Map<string, number>();
   const window = windowOf(input);
   if (!window) return counts;
-  const blocked = blockedIds(input, window);
+  const blocked = blockedVehicleIds(input, window);
   for (const v of input.vehicles) {
     if (v.tenantId !== input.companyId || !v.groupKey) continue;
     if (!counts.has(v.groupKey)) counts.set(v.groupKey, 0);
@@ -170,9 +237,13 @@ export function countAvailableByGroup(input: AvailabilityInput): Map<string, num
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-function changedVehicleIds(raw: unknown): string[] {
+export function readVehicleChanges(raw: unknown): VehicleChange[] {
   if (!Array.isArray(raw)) return [];
-  return raw.flatMap((c) => (isObject(c) && typeof c.vehicleId === "string" && c.vehicleId ? [c.vehicleId] : []));
+  return raw.flatMap((c) =>
+    isObject(c) && typeof c.vehicleId === "string" && c.vehicleId
+      ? [{ vehicleId: c.vehicleId, date: typeof c.date === "string" ? c.date : "" }]
+      : []
+  );
 }
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
@@ -182,6 +253,7 @@ const isoDate = (d: Date) => d.toISOString().slice(0, 10);
  * για όλο τον στόλο. Περιθώριο 3 ημερών πριν (χρόνος προετοιμασίας έως 24ω)
  * και όλες οι ACTIVE που ξεκίνησαν πριν το τέλος (καθυστερήσεις).
  * Μόνο ό,τι χρειάζεται: όχημα, κατάσταση, ημερομηνίες/ώρες, αλλαγές οχήματος.
+ * Το ΙΔΙΟ ερώτημα για όλα τα κανάλια (site, dashboard, walk-in, συμβόλαιο).
  */
 export async function loadBlockingBookings(
   client: Pick<PrismaClient, "booking">,
@@ -204,6 +276,7 @@ export async function loadBlockingBookings(
     },
     select: {
       id: true,
+      bookingNumber: true,
       tenantId: true,
       vehicleId: true,
       status: true,
@@ -219,6 +292,7 @@ export async function loadBlockingBookings(
 
   return rows.map((r) => ({
     id: r.id,
+    bookingNumber: r.bookingNumber,
     tenantId: r.tenantId,
     vehicleId: r.vehicleId,
     status: r.status,
@@ -226,7 +300,7 @@ export async function loadBlockingBookings(
     pickupTime: r.pickupTime,
     returnDate: isoDate(r.returnDate),
     returnTime: r.returnTime,
-    extraVehicleIds: changedVehicleIds(r.contract?.vehicleChanges),
+    vehicleChanges: readVehicleChanges(r.contract?.vehicleChanges),
     paymentStatus: r.paymentStatus,
     paymentExpiresMs: r.paymentExpiresAt ? r.paymentExpiresAt.getTime() : null,
   }));

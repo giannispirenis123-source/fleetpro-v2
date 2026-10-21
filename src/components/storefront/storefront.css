@@ -103,11 +103,28 @@
   background: #fff; border: 1px solid var(--sf-border); border-radius: 18px;
   padding: 14px; box-shadow: 0 6px 24px rgba(15, 23, 42, .08); scroll-margin-top: 76px;
 }
-.sf-search-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.sf-search-loc { display: grid; gap: 8px; }
-.sf-search-when { display: grid; gap: 10px; }
-.sf-search-times { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.sf-search-go { width: 100%; font-size: 16px; }
+/* Κινητό: τοποθεσία σε όλο το πλάτος, ημερομηνία + ώρα δίπλα δίπλα, για
+   παραλαβή και μετά για επιστροφή· ηλικία και κουμπί σε όλο το πλάτος.
+   Κενή περιοχή (π.χ. χωρίς τοποθεσίες/ηλικίες) απλώς δεν πιάνει χώρο. */
+.sf-search-grid {
+  display: grid; gap: 10px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-areas:
+    "pl pl"
+    "fd ft"
+    "dl dl"
+    "td tt"
+    "age age"
+    "go go";
+}
+.sf-search-pl { grid-area: pl; }
+.sf-search-fd { grid-area: fd; display: grid; min-width: 0; }
+.sf-search-ft { grid-area: ft; }
+.sf-search-dl { grid-area: dl; }
+.sf-search-td { grid-area: td; display: grid; min-width: 0; }
+.sf-search-tt { grid-area: tt; }
+.sf-search-age { grid-area: age; }
+.sf-search-go { grid-area: go; width: 100%; font-size: 16px; min-height: 52px; }
 .sf-search-note { margin: 10px 2px 0; font-size: 12.5px; color: var(--sf-text-2); }
 
 .sf-field {
@@ -128,9 +145,9 @@
 .sf-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; padding: 2px; min-height: 32px; }
 .sf-check input { width: 18px; height: 18px; accent-color: var(--sf-brand); }
 
-.sf-dates .sf-field--btn { flex-direction: row; align-items: center; gap: 10px; width: 100%; }
-.sf-dates-half { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.sf-dates-arrow { color: var(--sf-text-2); font-weight: 700; }
+.sf-dates { display: grid; gap: 10px; }
+.sf-date-field { width: 100%; }
+.sf-date-field .sf-value { overflow: hidden; text-overflow: ellipsis; }
 
 .sf-search-errors {
   margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: #fef2f2;
@@ -140,10 +157,19 @@
 
 @media (min-width: 900px) {
   .sf-search { padding: 16px; }
-  .sf-search-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) minmax(0, .8fr) auto; align-items: start; }
-  .sf-search-when { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
-  .sf-search-go { width: auto; min-height: 52px; padding: 0 26px; }
-  .sf-search-grid > .sf-search-age:only-of-type { min-width: 120px; }
+  /* Desktop: 3 ίσες στήλες, ευθυγραμμισμένες σε όλες τις γραμμές.
+     Τοποθεσία | Ημερομηνία | Ώρα — για παραλαβή, μετά για επιστροφή —
+     και ηλικία με το κουμπί δίπλα της. */
+  .sf-search-grid {
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "pl fd ft"
+      "dl td tt"
+      "age go .";
+    align-items: start;
+  }
+  .sf-search-go { padding: 0 26px; }
 }
 
 .sf-search-band { background: var(--sf-bg-2); border-bottom: 1px solid var(--sf-border); padding: 18px 0 20px; }

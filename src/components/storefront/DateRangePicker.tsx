@@ -4,10 +4,14 @@
 // με κύλιση). Χωρίς βιβλιοθήκη: ημερομηνίες ως κείμενο "YYYY-MM-DD" (UTC
 // αριθμητική) → καμία εξάρτηση από τη ζώνη ώρας του browser.
 //
+// ΕΝΑ ημερολόγιο διαστήματος, ΔΥΟ πεδία (παραλαβή, επιστροφή): όποιο κι αν
+// πατηθεί ανοίγει το ίδιο ημερολόγιο. Με `children` ο γονέας τοποθετεί τα
+// δύο πεδία όπου θέλει (π.χ. σε διαφορετικές γραμμές της φόρμας).
+//
 // Πληκτρολόγιο: Tab στις ημέρες, βέλη ±1 / ±7 ημέρες, Enter/Space επιλογή,
 // Esc κλείσιμο (η εστίαση γυρνά στο κουμπί που το άνοιξε).
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatDay, type StorefrontDictionary } from "@/lib/storefront/i18n";
 import { addDays } from "@/lib/public/search";
 
@@ -37,6 +41,8 @@ interface Props {
   openSignal?: number;
   invalid?: { start?: boolean; end?: boolean };
   idPrefix: string;
+  /** Τοποθέτηση των δύο πεδίων από τον γονέα· χωρίς αυτό, το ένα κάτω από το άλλο. */
+  children?: (fields: { start: ReactNode; end: ReactNode }) => ReactNode;
 }
 
 interface Month {
@@ -66,22 +72,26 @@ function monthsBetween(minDate: string, maxDate: string): Month[] {
   return out;
 }
 
-export default function DateRangePicker({ start, end, minDate, maxDate, d, onChange, openSignal, invalid, idPrefix }: Props) {
+export default function DateRangePicker({ start, end, minDate, maxDate, d, onChange, openSignal, invalid, idPrefix, children }: Props) {
   const [open, setOpen] = useState(false);
   const [draftStart, setDraftStart] = useState(start);
   const [draftEnd, setDraftEnd] = useState<string | null>(end);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const startRef = useRef<HTMLButtonElement>(null);
+  const endRef = useRef<HTMLButtonElement>(null);
+  // Από ποιο πεδίο άνοιξε: εκεί γυρνά η εστίαση με το κλείσιμο.
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const months = useMemo(() => monthsBetween(minDate, maxDate), [minDate, maxDate]);
 
-  const openPicker = () => {
+  const openPicker = (from: HTMLButtonElement | null = startRef.current) => {
+    triggerRef.current = from;
     setDraftStart(start);
     setDraftEnd(end);
     setOpen(true);
   };
 
   useEffect(() => {
-    if (openSignal) openPicker();
+    if (openSignal) openPicker(startRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openSignal]);
 
@@ -137,28 +147,38 @@ export default function DateRangePicker({ start, end, minDate, maxDate, d, onCha
   // Η ημέρα που παίρνει την εστίαση με Tab (roving tabindex).
   const focusDay = draftStart >= minDate && draftStart <= maxDate ? draftStart : minDate;
 
-  return (
-    <div className="sf-dates">
+  const field = (which: "start" | "end") => {
+    const isStart = which === "start";
+    const label = isStart ? d.pickupDate : d.dropoffDate;
+    const value = isStart ? start : end;
+    return (
       <button
         type="button"
-        ref={triggerRef}
-        className={`sf-field sf-field--btn${invalid?.start || invalid?.end ? " is-invalid" : ""}`}
-        onClick={openPicker}
+        ref={isStart ? startRef : endRef}
+        className={`sf-field sf-field--btn sf-date-field${invalid?.[which] ? " is-invalid" : ""}`}
+        onClick={(e) => openPicker(e.currentTarget)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`${d.chooseDates}: ${d.pickupDate} ${formatDay(start, d)}, ${d.dropoffDate} ${formatDay(end, d)}`}
-        id={`${idPrefix}-dates`}
+        aria-label={`${d.chooseDates}: ${label} ${formatDay(value, d)}`}
+        id={isStart ? `${idPrefix}-dates` : `${idPrefix}-dates-end`}
       >
-        <span className="sf-dates-half">
-          <span className="sf-label">{d.pickupDate}</span>
-          <span className="sf-value">{formatDay(start, d)}</span>
-        </span>
-        <span className="sf-dates-arrow" aria-hidden>→</span>
-        <span className="sf-dates-half">
-          <span className="sf-label">{d.dropoffDate}</span>
-          <span className="sf-value">{formatDay(end, d)}</span>
-        </span>
+        <span className="sf-label">{label}</span>
+        <span className="sf-value">{formatDay(value, d)}</span>
       </button>
+    );
+  };
+  const fields = { start: field("start"), end: field("end") };
+
+  return (
+    <>
+      {children ? (
+        children(fields)
+      ) : (
+        <div className="sf-dates">
+          {fields.start}
+          {fields.end}
+        </div>
+      )}
 
       {open && (
         <div className="sf-cal-backdrop" onClick={close}>
@@ -235,6 +255,6 @@ export default function DateRangePicker({ start, end, minDate, maxDate, d, onCha
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -10,7 +10,7 @@
 
 Multi-tenant SaaS για ελληνικές εταιρίες ενοικίασης αυτοκινήτων. Κάθε εταιρία (`Tenant`) έχει στόλο, πελάτες, κρατήσεις, τιμολόγια και χρήστες. Πάνω από όλα υπάρχει Super Admin πλατφόρμας.
 
-**Stack:** Next.js 14.1.3 (App Router) · React 18 · TypeScript · Prisma 5.22 · PostgreSQL (Supabase) · JWT με `jose` · bcryptjs (12 rounds) · zod · lucide-react · καθαρό CSS (όχι Tailwind).
+**Stack:** Next.js 14.2.35 (App Router) · React 18 · TypeScript · Prisma 5.22 · PostgreSQL (Supabase) · JWT με `jose` · bcryptjs (12 rounds) · zod · lucide-react · καθαρό CSS (όχι Tailwind).
 
 ## 2. Πού ζει — και η ροή deploy
 
@@ -657,7 +657,13 @@ Branch `claude/audit-fixes` (από το audit του PR #30). **Χωρίς SQL,
 - **Login:** κλείδωμα 15΄ μετά από 10 ΛΑΘΟΣ κωδικούς για ίδιο email από ίδια IP (κυλιόμενο παράθυρο 15΄, `src/lib/loginLock.ts`, store στο `rate_limits` — κανένα νέο SQL)· δίχτυ 100 λάθη/ώρα ανά email από όλες τις IP· 30 προσπάθειες/15΄ ανά IP (όπως πριν). Ίδιο 429 και μήνυμα για άγνωστο και υπαρκτό email· κλειδωμένο ακόμη και με σωστό κωδικό· σωστό login μηδενίζει τα λάθη· ένδειξη `auth.login_locked` στο activity log (χωρίς IP/κωδικό). Ο Διαχειριστής από άλλη IP δεν κλειδώνεται.
 - **Αριθμός κράτησης:** UNIQUE `(tenantId, bookingNumber)` (SQL 30, μόνο αν δεν υπάρχουν διπλότυπα)· σε σύγκρουση η transaction ξανατρέχει έως 3 φορές (`withBookingNumberRetry`: site, dashboard, walk-in) — όχι 500.
 - **jspdf / jspdf-autotable αφαιρέθηκαν** (κανένα import· τα PDF συμβολαίου/τιμολογίου είναι pdf-lib).
-- **Next 14.2.x:** ξεχωριστό PR, μετά από αυτό.
+- **Next 14.2.x:** ξεχωριστό PR, μετά από αυτό (έγινε: βλ. «Next.js 14.2.35»).
+
+### Next.js 14.2.35 (branch `ccr-ca53119d-35ul64`, χωρίς SQL/env)
+
+- `next` 14.1.3 → **14.2.35** και `eslint-config-next` → **14.2.35** (ακριβείς εκδόσεις, χωρίς `^`). React/React DOM 18 όπως ήταν. Καμία αλλαγή κώδικα· στο lockfile άλλαξαν μόνο εξαρτήσεις του `next` (`@next/env`, `@next/swc-*`, `@swc/helpers`) και του `eslint-config-next` (`@typescript-eslint/*` 6 → 8).
+- `experimental.instrumentationHook` μένει (στο 14.2 είναι ακόμη experimental). Ίδιος πίνακας routes στο build (ίδια static/dynamic). Headers ίδια σε 23 διαδρομές (security headers, `Cache-Control` του `/c/` και της επιβεβαίωσης κράτησης)· μόνη διαφορά: το `Vary` δεν έχει πια `Next-Url` (το 14.2 το βάζει μόνο με intercepting routes, που δεν έχουμε).
+- `npm audit`: 18 → 14 ευρήματα· έκλεισαν 15 advisories (μεταξύ τους το critical «Authorization Bypass in Next.js Middleware»). Τα υπόλοιπα του `next` διορθώνονται μόνο σε 15/16 και κυρίως αφορούν δυνατότητες που δεν χρησιμοποιούμε (Server Actions, rewrites, Pages Router i18n, WebSockets, AVIF, Windows).
 
 ### Διάταξη αναζήτησης δημόσιου site (branch `claude/storefront-search-layout`, χωρίς SQL/env)
 
@@ -748,6 +754,7 @@ Branch `claude/audit-fixes` (από το audit του PR #30). **Χωρίς SQL,
 
 | Commit | Τι |
 |---|---|
+| _(branch `ccr-ca53119d-35ul64`)_ | Next.js 14.1.3 → 14.2.35 + eslint-config-next 14.2.35 (κλείνουν 15 ευρήματα του audit). Χωρίς αλλαγή κώδικα, SQL ή env |
 | _(branch `claude/stripe-connect-payments`, 2η φάση)_ | «Το υπόλοιπο κρατείται» (χρέωση ακύρωσης), εφεδρικός έλεγχος πληρωμής με retrieve (ίδια μετάβαση με το webhook, κλείδωμα γραμμής, 1/10΄΄), «Έλεγχος πληρωμής στο Stripe», μόνο κάρτα, σωστά κείμενα online. Migration `28` |
 | _(branch `claude/stripe-connect-payments`)_ | Online πληρωμές με Stripe Connect Express: καρτέλα «Πληρωμές», επιλογή στη φόρμα, Checkout (direct charge, προκαταβολή), webhook με idempotency, αναμονή πληρωμής που κρατά/ελευθερώνει το όχημα, ένδειξη + επιστροφή χρημάτων στο dashboard, προμήθεια πλατφόρμας (Super Admin). Migration `27` |
 | `8d42225` | Merge PR #28 (μέρη/κριτικές, σειρά αρχικής, υποχρεωτική επιστροφή). SQL 26 έτρεξε |

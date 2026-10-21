@@ -659,6 +659,11 @@ Branch `claude/audit-fixes` (από το audit του PR #30). **Χωρίς SQL,
 - **jspdf / jspdf-autotable αφαιρέθηκαν** (κανένα import· τα PDF συμβολαίου/τιμολογίου είναι pdf-lib).
 - **Next 14.2.x:** ξεχωριστό PR, μετά από αυτό.
 
+### Διάταξη αναζήτησης δημόσιου site (branch `claude/storefront-search-layout`, χωρίς SQL/env)
+
+- `SearchBox` σε ένα grid με ονομασμένες περιοχές (`storefront.css`): desktop 3 ίσες στήλες — «Τοποθεσία παραλαβής | Παραλαβή | Ώρα παραλαβής», «Τοποθεσία επιστροφής | Επιστροφή | Ώρα επιστροφής», «Ηλικία | Αναζήτηση». Κινητό: τοποθεσία σε όλο το πλάτος, ημερομηνία + ώρα δίπλα δίπλα, ηλικία και κουμπί πλήρους πλάτους. Ίδια στο hero και στη συμπαγή μορφή των αποτελεσμάτων.
+- `DateRangePicker`: ΕΝΑ ημερολόγιο διαστήματος, ΔΥΟ πεδία (`#<id>-dates`, `#<id>-dates-end`) που τοποθετεί ο γονέας (`children`)· ανοίγει από όποιο πεδίο, η εστίαση γυρνά σε αυτό. Λογική, έλεγχοι, URL, κείμενα: αμετάβλητα. Σφάλμα στην επιστροφή → εστίαση στο πεδίο επιστροφής.
+
 ## 6. Migrations
 
 Στο `prisma/sql/`, με σειρά: `01-schema` → `01b-locale` → `02b-extras-rentalmode` → `03-booking-times` → `04-round-up-total` → `05-invoices` → `06-permissions` → `07-partner-commission` → `08-service-damages` → `09-platform-discounts` → `10-finance` → `11-contracts` → `12-contracts-update` → `13-contract-photos` → `14-contract-branding-link` → `15-contract-fuel-type` → `16-contract-card-number` → `17-contract-email-sent` → `18-vehicle-photos` → `19-invoice-pdf`. Το `02-seed` τρέχει οποτεδήποτε μετά το `01-schema`.

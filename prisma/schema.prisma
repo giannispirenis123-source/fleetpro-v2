@@ -265,6 +265,7 @@ model Tenant {
   bookingPayments   BookingPayment[]
   places            Place[]
   reviews           Review[]
+  legalTexts        SiteLegalText[]
   entitlementPlan   Plan?                 @relation(fields: [planKey], references: [key], onDelete: SetNull)
 
   @@index([planKey])
@@ -511,6 +512,11 @@ model Booking {
   paymentMethod    String?
   paymentStatus    String    @default("NONE")
   paymentExpiresAt DateTime?
+
+  // Όροι που αποδέχτηκε ο πελάτης στο site (SQL 31): "terms/el/v3" ή
+  // "terms/el/template-2026-10-21". NULL = παλιά κράτηση ή από το dashboard.
+  termsVersion    String?
+  termsAcceptedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1342,4 +1348,25 @@ model StripeEvent {
   receivedAt DateTime @default(now())
 
   @@map("stripe_events")
+}
+
+// Νομικά κείμενα του δημόσιου site (SQL 31) — ΜΟΝΟ όσα αποθήκευσε η εταιρία.
+// Κάθε αποθήκευση = νέα γραμμή (version + 1)· ισχύει η μεγαλύτερη έκδοση.
+// Χωρίς γραμμή = το πρότυπο (src/lib/legal/templates.ts).
+model SiteLegalText {
+  id          String   @id @default(cuid())
+  tenantId    String
+  /// 'terms' | 'privacy' | 'cookies' (CHECK στη βάση).
+  kind        String
+  lang        String
+  version     Int
+  /// Markdown (περιορισμένο) — αποδίδεται ΧΩΡΙΣ raw HTML (src/lib/legal/markdown.ts).
+  body        String   @db.Text
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, kind, lang, version])
+  @@map("site_legal_texts")
 }

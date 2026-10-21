@@ -7,6 +7,7 @@
 //   "title":   {"el":"…","en":"…"},   ← κείμενα ανά ΚΩΔΙΚΟ γλώσσας,
 //   "tagline": {"el":"…","en":"…"},     όχι στήλες ανά γλώσσα
 //   "about":   {"el":"…","en":"…"},
+//   "seoTitle": {"el":"…"}, "seoDescription": {"el":"…"},   ← SEO (PR SEO/νομικά)
 //   "supportedLanguages": ["el","en"],
 //   "defaultLanguage": "el",
 //   "paymentOptions": {"onPickup":true,"online":false},
@@ -32,11 +33,11 @@ import {
   type TrustBlock,
 } from "../public/siteSettings";
 
-export const TEXT_FIELDS = ["title", "tagline", "about"] as const;
+export const TEXT_FIELDS = ["title", "tagline", "about", "seoTitle", "seoDescription"] as const;
 export type TextField = (typeof TEXT_FIELDS)[number];
 export type LocalizedText = Record<string, string>;
 
-export const TEXT_MAX: Record<TextField, number> = { title: 80, tagline: 160, about: 2000 };
+export const TEXT_MAX: Record<TextField, number> = { title: 80, tagline: 160, about: 2000, seoTitle: 70, seoDescription: 160 };
 
 export const DEFAULT_LANGUAGES = ["el", "en"];
 export const DEFAULT_LANGUAGE = "el";
@@ -45,6 +46,9 @@ export interface StorefrontSettings {
   title: LocalizedText;
   tagline: LocalizedText;
   about: LocalizedText;
+  /** SEO ανά γλώσσα (κενό = προεπιλογή από τα κείμενα της σελίδας, seo.ts). */
+  seoTitle: LocalizedText;
+  seoDescription: LocalizedText;
   supportedLanguages: string[];
   defaultLanguage: string;
   /** online: ΠΑΝΤΑ false μέχρι να υπάρξουν πληρωμές («σύντομα»). */
@@ -90,6 +94,8 @@ export function normalizeStorefrontSettings(raw: unknown): StorefrontSettings {
     title: readText(o.title, "title"),
     tagline: readText(o.tagline, "tagline"),
     about: readText(o.about, "about"),
+    seoTitle: readText(o.seoTitle, "seoTitle"),
+    seoDescription: readText(o.seoDescription, "seoDescription"),
     supportedLanguages: languages,
     defaultLanguage,
     paymentOptions: { onPickup: pay.onPickup !== false, online: false },
@@ -119,6 +125,8 @@ export const storefrontUpdateSchema = z.object({
   title: textMap("title"),
   tagline: textMap("tagline"),
   about: textMap("about"),
+  seoTitle: textMap("seoTitle"),
+  seoDescription: textMap("seoDescription"),
   supportedLanguages: z
     .array(z.string())
     .min(1, "Διαλέξτε τουλάχιστον μία γλώσσα")
@@ -143,6 +151,8 @@ export function mergeStorefrontSettings(
     ...(update.title && { title: update.title }),
     ...(update.tagline && { tagline: update.tagline }),
     ...(update.about && { about: update.about }),
+    ...(update.seoTitle && { seoTitle: update.seoTitle }),
+    ...(update.seoDescription && { seoDescription: update.seoDescription }),
     ...(update.supportedLanguages && { supportedLanguages: update.supportedLanguages }),
     ...(update.defaultLanguage && { defaultLanguage: update.defaultLanguage }),
     paymentOptions: {

@@ -75,17 +75,28 @@ export function checkSlugAvailability(
   return check;
 }
 
+export type SitePath =
+  | ""
+  | "search"
+  | "book"
+  | "terms"
+  | "privacy"
+  | "cookies"
+  | { vehicleId: string }
+  | { placeSlug: string };
+
 /**
  * Η διεύθυνση μιας δημόσιας σελίδας: ΠΑΝΤΑ με τη γλώσσα (/s/<slug>/<lang>),
  * ώστε αρχική, αναζήτηση και κράτηση να έχουν την ίδια μορφή
  * (/s/<slug>/<lang>/search, …/book, …/v/<id>). Το σκέτο /s/<slug> κάνει
  * redirect στην προεπιλεγμένη γλώσσα.
- * `page`: "" (αρχική), "search", "book", ή { vehicleId }.
+ * `page`: "" (αρχική), "search", "book", νομικά ("terms", "privacy",
+ * "cookies"), { vehicleId } ή { placeSlug }.
  */
 export function storefrontPath(
   slug: string,
   lang: string,
-  page: "" | "search" | "book" | { vehicleId: string } | { placeSlug: string } = "",
+  page: SitePath = "",
   query = ""
 ): string {
   const tail =

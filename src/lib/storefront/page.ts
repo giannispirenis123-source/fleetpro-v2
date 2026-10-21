@@ -9,7 +9,7 @@
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { resolveStorefrontCompany, type ResolvedStorefront } from "./resolve";
-import { chooseLanguage, storefrontPath } from "./slug";
+import { chooseLanguage, storefrontPath, type SitePath } from "./slug";
 
 // Μία ανάγνωση της βάσης ανά αίτημα, ακόμη κι αν τη ζητήσουν και τα
 // metadata και η σελίδα.
@@ -19,7 +19,7 @@ export interface StorefrontPage extends ResolvedStorefront {
   lang: string;
 }
 
-export type SitePage = "" | "search" | "book" | { vehicleId: string } | { placeSlug: string };
+export type SitePage = SitePath;
 
 /**
  * `langParam` = το τμήμα γλώσσας του URL (/s/<slug>/<lang>/…), `page` = πού

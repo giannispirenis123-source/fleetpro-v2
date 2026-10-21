@@ -11,6 +11,8 @@ import { badRequest, logError, serverError } from "@/lib/api";
 import { LOGIN_MSG, loginDecision } from "@/lib/loginCore";
 import { hitLimit, LIMITS } from "@/lib/public/rateLimit";
 import { dbCounterStore } from "@/lib/public/rateLimitStore";
+import { LOGIN_LOCK, clearLoginFailures, isLoginLocked, recordLoginFailure } from "@/lib/loginLock";
+import { dbLoginLockStore } from "@/lib/loginLockStore";
 
 // bcrypt και για άγνωστο email: ίδιος χρόνος απάντησης (δεν μαρτυρά ποια email υπάρχουν).
 const DUMMY_HASH = bcrypt.hashSync("fleetpro-not-a-password", 10);
@@ -31,11 +33,11 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = parsed.data;
 
-    // Όριο προσπαθειών ανά email και ανά IP (hash, στη βάση — όχι στη μνήμη).
+    // Όριο προσπαθειών ανά IP (όλες) και κλείδωμα 15΄ μετά από 10 ΛΑΘΟΣ
+    // κωδικούς (email + IP). Ίδια απάντηση για άγνωστο και υπαρκτό email.
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
-    const okEmail = await hitLimit(dbCounterStore, LIMITS.loginPerEmail, email.toLowerCase());
     const okIp = await hitLimit(dbCounterStore, LIMITS.loginPerIp, ip);
-    if (!okEmail || !okIp) {
+    if (!okIp || (await isLoginLocked(dbLoginLockStore, email, ip))) {
       return NextResponse.json({ success: false, message: LOGIN_MSG.tooMany }, { status: 429 });
     }
 
@@ -58,10 +60,29 @@ export async function POST(req: NextRequest) {
 
     // Κωδικός ΠΡΩΤΑ (και για άγνωστο email), μετά κατάσταση λογαριασμού/εταιρίας.
     const passwordOk = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
+    if (!passwordOk) {
+      const { lockedNow } = await recordLoginFailure(dbLoginLockStore, email, ip);
+      // Ένδειξη στο ιστορικό (μόνο για υπαρκτό χρήστη· χωρίς IP/κωδικό).
+      if (lockedNow && user) {
+        await db.activityLog.create({
+          data: {
+            tenantId: user.tenantId,
+            userId: user.id,
+            action: "auth.login_locked",
+            entity: "User",
+            entityId: user.id,
+            newData: { failures: LOGIN_LOCK.maxFailures, minutes: LOGIN_LOCK.lockMinutes },
+          },
+        });
+      }
+    }
     const decision = loginDecision(user, passwordOk);
     if (!decision.ok || !user) {
       return badRequest(decision.ok ? LOGIN_MSG.wrong : decision.message);
     }
+
+    // Σωστή σύνδεση: τα λάθη αυτού του email από αυτή την IP μηδενίζονται.
+    await clearLoginFailures(dbLoginLockStore, email, ip);
 
     // Δημιουργία token
     const token = await signToken({

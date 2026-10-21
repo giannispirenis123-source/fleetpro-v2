@@ -79,7 +79,9 @@ test("login: ακυρωμένη εταιρία δεν συνδέεται (όχι
 
 test("login: όριο προσπαθειών ανά email και ανά IP", () => {
   const src = read("src/app/api/auth/login/route.ts");
-  assert.match(src, /LIMITS\.loginPerEmail/);
+  // Τα λάθη ανά email: κλείδωμα μετά από 10 λάθος κωδικούς (loginLock.ts).
+  assert.match(src, /isLoginLocked\(/);
+  assert.match(src, /recordLoginFailure\(/);
   assert.match(src, /LIMITS\.loginPerIp/);
   assert.match(src, /status:\s*429/);
 });

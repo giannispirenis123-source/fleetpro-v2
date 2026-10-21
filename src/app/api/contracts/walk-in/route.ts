@@ -22,6 +22,7 @@ import { viewerCan, withPermission } from "@/lib/authz";
 import { TIME_RE } from "@/lib/bookings";
 import { prepareBooking, writeBooking, BookingConflictError } from "@/lib/bookingCreate";
 import { cardModeFor } from "@/lib/contractPayment";
+import { withBookingNumberRetry } from "@/lib/bookingNumberRetry";
 import { CONTRACT_PAY_MSG, sendsPaymentCardData } from "@/lib/contractPaymentCore";
 import {
   createContractInTx,
@@ -166,7 +167,8 @@ export const POST = withPermission(
         }
       }
 
-      const result = await db.$transaction(
+      // Σύγκρουση στο UNIQUE αριθμού κράτησης → όλη η transaction ξανά (όχι 500).
+      const result = await withBookingNumberRetry(() => db.$transaction(
         async (tx) => {
           let customerId = plan.customerId;
           const dates = (v: string | null) => (v ? new Date(`${v}T00:00:00.000Z`) : null);
@@ -247,7 +249,7 @@ export const POST = withPermission(
           return { bookingId: booking.id, contractId: contract.id };
         },
         { maxWait: 10000, timeout: 20000 }
-      );
+      ));
 
       const contract = await loadContract(viewer!, result.contractId);
       return created({ id: result.contractId, bookingId: result.bookingId, contract });

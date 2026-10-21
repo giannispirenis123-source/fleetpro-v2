@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { generateInvoiceCode } from "../invoiceCode";
 import { nextBookingNumber } from "../bookingCreate";
+import { withBookingNumberRetry } from "../bookingNumberRetry";
 import { resolveStorefrontCompany } from "../storefront/resolve";
 import { storefrontPath } from "../storefront/slug";
 import { loadBlockingBookings } from "./availability";
@@ -139,7 +140,8 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
     const l = slug ? cat.ctx.locations.find((x) => x.slug === slug && x.isActive) : null;
     return l ? textFor(l.name, "el") || l.slug : null;
   };
-  const result = await runSiteBooking(
+  // Σύγκρουση στο UNIQUE αριθμού κράτησης → ξανά ολόκληρο (κλείδωμα, διαθεσιμότητα, εγγραφή).
+  const result = await withBookingNumberRetry(() => runSiteBooking(
     prismaStore(cat, contact.contact, { pickup: loc(c.pl), dropoff: loc(c.dl) }, { from: c.from, to: c.to }, input.lang, {
       method: online ? "ONLINE" : "PICKUP",
       expiresAt: online ? holdUntil(now) : null,
@@ -147,7 +149,7 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
     cat,
     { key: input.key, criteria: c, extras: input.extras, insuranceId: input.insuranceId, driverAge: band.age },
     now
-  );
+  ));
   if (!result.ok) {
     const status = result.error.code === "UNAVAILABLE" ? 409 : result.error.code === "NOT_FOUND" ? 404 : 400;
     return { ok: false, status, message: result.error.message };

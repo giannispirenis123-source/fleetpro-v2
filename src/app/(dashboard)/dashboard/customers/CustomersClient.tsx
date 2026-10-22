@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import Pager from "@/components/lists/Pager";
+import { useServerList } from "@/components/lists/useServerList";
+import type { ListPage } from "@/lib/pagination";
 import {
   Plus,
   Search,
@@ -84,35 +87,22 @@ const formToPayload = (f: FormState) => ({
 });
 
 export default function CustomersClient({
-  initialCustomers,
+  initialPage,
 }: {
-  initialCustomers: CustomerDTO[];
+  initialPage: ListPage<CustomerDTO>;
 }) {
   const tr = useT();
 
-  const [customers, setCustomers] = useState<CustomerDTO[]>(initialCustomers);
   const [search, setSearch] = useState("");
+  // Σελίδες των 50 στον server, αναζήτηση στον server (όλοι οι πελάτες, όχι μόνο η σελίδα).
+  const list = useServerList("/api/customers", initialPage, { q: search.trim() }, {
+    load: tr("contracts.errorLoad"),
+    connection: tr("customers.errorConnection"),
+  });
+  const visible = list.data.items;
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<CustomerDTO | null>(null);
   const [deleting, setDeleting] = useState<CustomerDTO | null>(null);
-
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter((c) =>
-      [c.firstName, c.lastName, c.email ?? "", c.phone ?? ""]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [customers, search]);
-
-  const sortCustomers = (list: CustomerDTO[]) =>
-    [...list].sort(
-      (a, b) =>
-        a.lastName.localeCompare(b.lastName) ||
-        a.firstName.localeCompare(b.firstName)
-    );
 
   return (
     <>
@@ -139,16 +129,18 @@ export default function CustomersClient({
           />
         </div>
         <span className="dash-count">
-          {visible.length}{" "}
-          {visible.length === 1
+          {list.data.total}{" "}
+          {list.data.total === 1
             ? tr("customers.customerCountOne")
             : tr("customers.customerCount")}
         </span>
       </div>
 
+      {list.error && <div className="dash-form-error">{list.error}</div>}
+
       {visible.length === 0 ? (
         <div className="dash-panel dash-empty">
-          {customers.length === 0
+          {!search.trim()
             ? tr("customers.empty")
             : tr("customers.emptyFiltered")}
         </div>
@@ -166,13 +158,15 @@ export default function CustomersClient({
         </div>
       )}
 
+      <Pager page={list.data.page} total={list.data.total} pageSize={list.data.pageSize} loading={list.loading} onPage={list.setPage} />
+
       {showCreate && (
         <CustomerModal
           mode="create"
           tr={tr}
           onClose={() => setShowCreate(false)}
-          onSaved={(customer) => {
-            setCustomers((prev) => sortCustomers([...prev, customer]));
+          onSaved={() => {
+            list.reload();
             setShowCreate(false);
           }}
         />
@@ -185,11 +179,9 @@ export default function CustomersClient({
           tr={tr}
           onClose={() => setEditing(null)}
           onSaved={(customer) => {
-            setCustomers((prev) =>
-              sortCustomers(
-                prev.map((c) => (c.id === customer.id ? customer : c))
-              )
-            );
+            // Αμέσως στη θέση της· η σειρά/σελίδα από τον server.
+            list.setData((d) => ({ ...d, items: d.items.map((c) => (c.id === customer.id ? customer : c)) }));
+            list.reload();
             setEditing(null);
           }}
         />
@@ -201,7 +193,8 @@ export default function CustomersClient({
           tr={tr}
           onClose={() => setDeleting(null)}
           onDeleted={(id) => {
-            setCustomers((prev) => prev.filter((c) => c.id !== id));
+            list.setData((d) => ({ ...d, items: d.items.filter((c) => c.id !== id), total: Math.max(0, d.total - 1) }));
+            list.reload();
             setDeleting(null);
           }}
         />

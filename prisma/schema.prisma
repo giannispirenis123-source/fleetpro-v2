@@ -407,6 +407,8 @@ model Customer {
   invoices  Invoice[]
   contracts Contract[]
 
+  // Σελιδοποίηση: αλφαβητικά ανά εταιρία (SQL 32).
+  @@index([tenantId, lastName, firstName, id])
   @@map("customers")
 }
 
@@ -724,6 +726,8 @@ model Invoice {
   @@unique([tenantId, invoiceNumber])
   // Έσοδα διαστήματος στα Οικονομικά και στον Πίνακα.
   @@index([tenantId, status, paidAt])
+  // Σελιδοποίηση: νεότερα πρώτα ανά εταιρία (SQL 32).
+  @@index([tenantId, issueDate(sort: Desc), id(sort: Desc)])
   @@map("invoices")
 }
 

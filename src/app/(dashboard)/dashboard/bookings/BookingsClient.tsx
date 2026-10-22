@@ -34,6 +34,9 @@ import {
   Lock,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
+import Pager from "@/components/lists/Pager";
+import { useServerList } from "@/components/lists/useServerList";
+import type { BookingListPage } from "@/lib/listServer";
 import { kindForStatus } from "@/lib/bookingMessages";
 import { DecisionModal, MessageModal, PaymentInfo, RefundModal, RetainModal, outstandingOf, refundableOf } from "./BookingDecision";
 import { isCheckable } from "@/lib/public/payments";
@@ -51,9 +54,9 @@ import type { ExtraDTO } from "@/lib/extras";
 import {
   commissionFor,
   countsForCommission,
-  summarize,
   baseLabels,
   type CommissionSettings,
+  type CommissionSummary as CommissionSummaryValue,
 } from "@/lib/commission";
 import {
   round2,
@@ -198,7 +201,8 @@ function manualDiscountForm(b: BookingDTO): Pick<FormState, "discountMode" | "di
 }
 
 export default function BookingsClient({
-  initialBookings,
+  initialPage,
+  focusBooking = null,
   customers,
   vehicles,
   extras,
@@ -216,7 +220,10 @@ export default function BookingsClient({
   initialStatus,
   canContract = false,
 }: {
-  initialBookings: BookingDTO[];
+  /** Πρώτη σελίδα (50) από τον server — φίλτρα/αναζήτηση/σελίδες από το API. */
+  initialPage: BookingListPage;
+  /** Η κράτηση του ?booking=… (μπορεί να μην είναι στην πρώτη σελίδα). */
+  focusBooking?: BookingDTO | null;
   customers: Option[];
   vehicles: VehicleOption[];
   extras: ExtraDTO[];
@@ -287,12 +294,22 @@ export default function BookingsClient({
       setCheckingId(null);
     }
   };
-  const [bookings, setBookings] = useState<BookingDTO[]>(initialBookings);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>(initialStatus ?? "ALL");
   // Ο συνεργάτης είναι ήδη στεγανός, οπότε το φίλτρο αφορά προσωπικό και
   // διαχειριστή: «όσες έγραψα εγώ», χωριστά από τις γενικές.
   const [onlyMine, setOnlyMine] = useState(false);
+  // Σελίδες των 50 στον server· φίλτρο, «δικές μου» και αναζήτηση στον server
+  // (πάνω σε ΟΛΕΣ τις κρατήσεις), σύνοψη προμήθειας επίσης στον server.
+  const list = useServerList(
+    "/api/bookings",
+    initialPage,
+    { status: filter === "ALL" ? "" : filter, mine: onlyMine ? "1" : "", q: search.trim() },
+    { load: tr("contracts.errorLoad"), connection: tr("bookings.errorConnection") }
+  );
+  const bookings = list.data.items;
+  const visible = bookings;
+  const setBookings = (fn: (prev: BookingDTO[]) => BookingDTO[]) => list.setData((d) => ({ ...d, items: fn(d.items) }));
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<BookingDTO | null>(null);
   const [cancelling, setCancelling] = useState<BookingDTO | null>(null);
@@ -304,7 +321,7 @@ export default function BookingsClient({
   // οπότε γι' αυτόν απλώς φιλτράρουμε τη λίστα στη συγκεκριμένη κράτηση.
   useEffect(() => {
     if (!focusBookingId) return;
-    const target = initialBookings.find((b) => b.id === focusBookingId);
+    const target = focusBooking ?? initialPage.items.find((b) => b.id === focusBookingId);
     if (!target) return;
 
     if (canManage) setEditing(target);
@@ -349,22 +366,7 @@ export default function BookingsClient({
     }
   };
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return bookings.filter((b) => {
-      const matchesStatus = filter === "ALL" || b.status === filter;
-      const matchesMine = !onlyMine || b.createdById === currentUserId;
-      const matchesSearch =
-        !q ||
-        [b.bookingNumber, b.customerName, b.vehicleName, b.vehiclePlate]
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
-      return matchesStatus && matchesSearch && matchesMine;
-    });
-  }, [bookings, search, filter, onlyMine, currentUserId]);
-
-  const upsert = (booking: BookingDTO) =>
+  const upsert = (booking: BookingDTO) => {
     setBookings((prev) => {
       const exists = prev.some((b) => b.id === booking.id);
       // Απαντήσεις που δεν φορτώνουν την πληρωμή (undefined) κρατούν την προηγούμενη.
@@ -373,6 +375,9 @@ export default function BookingsClient({
         ? prev.map((b) => (b.id === booking.id ? merge(b) : b))
         : [booking, ...prev];
     });
+    // Σειρά, φίλτρα, σύνολα και σύνοψη προμήθειας: ξανά από τον server.
+    list.reload();
+  };
 
   return (
     <>
@@ -429,22 +434,18 @@ export default function BookingsClient({
           </div>
         )}
         <span className="dash-count">
-          {visible.length}{" "}
-          {visible.length === 1
+          {list.data.total}{" "}
+          {list.data.total === 1
             ? tr("bookings.bookingCountOne")
             : tr("bookings.bookingCount")}
         </span>
       </div>
 
-      {canSeeCommission && myCommission.rate > 0 && (
+      {canSeeCommission && myCommission.rate > 0 && list.data.commission && (
         <CommissionSummary
           // Ο συνεργάτης αμείβεται για όσες ΕΦΕΡΕ, ο υπάλληλος για όσες
-          // ΚΑΤΑΧΩΡΗΣΕ. Η λίστα του συνεργάτη είναι ήδη μόνο δική του.
-          bookings={bookings.filter((b) =>
-            isPartner
-              ? b.partnerId === currentUserId
-              : b.createdById === currentUserId
-          )}
+          // ΚΑΤΑΧΩΡΗΣΕ — υπολογισμένο στον server σε ΟΛΕΣ (listServer.ts).
+          summary={list.data.commission}
           settings={myCommission}
           tr={tr}
           locale={locale}
@@ -453,9 +454,11 @@ export default function BookingsClient({
 
       {issueError && <div className="dash-form-error">{issueError}</div>}
 
+      {list.error && <div className="dash-form-error">{list.error}</div>}
+
       {visible.length === 0 ? (
         <div className="dash-panel dash-empty">
-          {bookings.length === 0
+          {filter === "ALL" && !onlyMine && !search.trim()
             ? tr("bookings.empty")
             : tr("bookings.emptyFiltered")}
         </div>
@@ -487,6 +490,8 @@ export default function BookingsClient({
           ))}
         </div>
       )}
+
+      <Pager page={list.data.page} total={list.data.total} pageSize={list.data.pageSize} loading={list.loading} onPage={list.setPage} />
 
       {retaining && (
         <RetainModal
@@ -625,25 +630,18 @@ function PriceRow({
    ───────────────────────────────────────────── */
 
 function CommissionSummary({
-  bookings,
+  summary,
   settings,
   tr,
   locale,
 }: {
-  bookings: BookingDTO[];
+  /** Από τον server (summarize σε ΟΛΕΣ τις κρατήσεις): οι ακυρωμένες δεν μετράνε. */
+  summary: { all: CommissionSummaryValue; month: CommissionSummaryValue };
   settings: CommissionSettings;
   tr: (key: string) => string;
   locale: string;
 }) {
-  // Οι ακυρωμένες δεν φέρνουν προμήθεια. Όλες οι υπόλοιπες μετράνε, και
-  // οι εκκρεμείς: η δουλειά ήρθε, το αν θα ολοκληρωθεί δεν εξαρτάται
-  // από αυτόν που την έφερε ή την κατέγραψε.
-  const month = new Date().toISOString().slice(0, 7);
-  const all = summarize(bookings, settings);
-  const now = summarize(
-    bookings.filter((b) => b.pickupDate.startsWith(month)),
-    settings
-  );
+  const { all, month: now } = summary;
   const rate = settings.rate;
 
   return (

@@ -15,7 +15,8 @@ const updateTenantSchema = z.object({
   iban: z.string().optional(),
   logoUrl: z.string().optional(),
   brandColor: z.string().optional(),
-  customDomain: z.string().optional(),
+  // Το customDomain ΔΕΝ αλλάζει από εδώ: μόνο από «Η σελίδα μου» → «Domain»
+  // (έλεγχοι μορφής, μοναδικότητας και επαλήθευση DNS — SQL 33).
   website: z.string().optional(),
   status: z.enum(["ACTIVE", "SUSPENDED", "TRIAL", "CANCELLED"]).optional(),
   plan: z.enum(["STARTER", "PRO", "ENTERPRISE"]).optional(),

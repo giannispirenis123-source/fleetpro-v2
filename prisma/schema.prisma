@@ -182,7 +182,6 @@ model Tenant {
   // Εμφανίζεται με signed URL· στα συμβόλαια πάντα το ΤΡΕΧΟΝ (όχι snapshot).
   logoPath        String?
   brandColor      String           @default("#2563EB")
-  customDomain    String?          @unique
   website         String? // external website embed
   status          TenantStatus     @default(TRIAL)
   plan            SubscriptionPlan @default(STARTER)
@@ -193,6 +192,18 @@ model Tenant {
   // Στρογγυλοποίηση του ΤΕΛΙΚΟΥ ποσού κράτησης προς τα πάνω, στο
   // πλησιέστερο ακέραιο ευρώ. Οι επιμέρους γραμμές μένουν ακριβείς.
   roundUpTotal    Boolean          @default(false)
+
+  // Domain του δημόσιου site (SQL 33): host σε πεζά, μοναδικό σε όλη την
+  // πλατφόρμα (και στο lower()). Σερβίρει ΜΟΝΟ όταν customDomainStatus = VERIFIED.
+  customDomain           String?   @unique
+  customDomainStatus     String    @default("PENDING") // PENDING | VERIFIED
+  customDomainVerifiedAt DateTime?
+  // Αποστολέας email ανά εταιρία (SQL 33) — βλ. src/lib/emailSender.ts.
+  // Χωρίς VERIFIED → το κοινό EMAIL_FROM.
+  emailFromName          String?
+  emailFromAddress       String?
+  emailSenderStatus      String    @default("UNVERIFIED") // UNVERIFIED | VERIFIED
+  emailSenderVerifiedAt  DateTime?
 
   // Πακέτο (entitlements): ποιες ενότητες και ποια όρια έχει η εταιρία.
   // ΞΕΧΩΡΙΣΤΟ από το "plan" πιο πάνω, που αφορά μόνο την τιμή συνδρομής.

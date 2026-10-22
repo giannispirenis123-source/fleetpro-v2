@@ -214,3 +214,48 @@ export function siteResponseHeaders(internalPath: string): [string, string][] {
   }
   return [];
 }
+
+/* ─────────────────────────────────────────────
+   Επαλήθευση DNS («Έλεγχος domain») — η απόφαση, χωρίς δίκτυο
+   ───────────────────────────────────────────── */
+
+/** Οι εγγραφές που δείχνει το Vercel (Settings → Domains): A για το σκέτο domain, CNAME για το www. */
+export const VERCEL_A_RECORD = "76.76.21.21";
+export const VERCEL_CNAME_RECORD = "cname.vercel-dns.com";
+
+/**
+ * Δίκτυα IP του Vercel για A εγγραφές: το κλασικό 76.76.21.21 και τα νεότερα
+ * που προτείνει το Vercel σε νέα projects (216.198.79.x, 64.29.17.x).
+ */
+const VERCEL_IPV4_PREFIXES = ["76.76.21.", "216.198.79.", "64.29.17."];
+/** CNAME του Vercel: cname.vercel-dns.com ή <id>.vercel-dns-0NN.com (ανά project). */
+const VERCEL_CNAME_RE = /(^|\.)vercel-dns(-\d{1,4})?\.com$/;
+
+export interface DnsAnswer {
+  cnames: string[];
+  ips: string[];
+}
+
+export type DnsVerdict =
+  | { ok: true; via: "CNAME" | "A"; value: string }
+  | { ok: false; reason: "no_records" | "elsewhere"; found: string[] };
+
+/** Δείχνει το domain στο Vercel (άρα στην εφαρμογή, αφού προστέθηκε στο project); */
+export function dnsPointsToApp(answer: DnsAnswer): DnsVerdict {
+  const cnames = answer.cnames.map((c) => c.toLowerCase().replace(/\.$/, ""));
+  const cname = cnames.find((c) => VERCEL_CNAME_RE.test(c));
+  if (cname) return { ok: true, via: "CNAME", value: cname };
+  const ip = answer.ips.find((a) => VERCEL_IPV4_PREFIXES.some((p) => a.startsWith(p)));
+  if (ip) return { ok: true, via: "A", value: ip };
+  const found = [...cnames, ...answer.ips].slice(0, 6);
+  return { ok: false, reason: found.length ? "elsewhere" : "no_records", found };
+}
+
+/** Σκέτο domain (helios.gr) → εγγραφή A· υποτομέας (www.helios.gr) → CNAME. */
+export function dnsInstructions(domain: string): { type: "A" | "CNAME"; name: string; value: string } {
+  const labels = domain.split(".");
+  // Ελληνικά/ευρωπαϊκά δεύτερου επιπέδου (helios.com.gr) μετρούν ως σκέτο domain.
+  const apexLen = /^(com|org|net|gov|edu|co|ac)$/.test(labels[labels.length - 2] ?? "") && labels.length >= 3 ? 3 : 2;
+  if (labels.length <= apexLen) return { type: "A", name: "@", value: VERCEL_A_RECORD };
+  return { type: "CNAME", name: labels.slice(0, labels.length - apexLen).join("."), value: VERCEL_CNAME_RECORD };
+}

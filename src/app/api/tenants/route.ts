@@ -7,6 +7,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { withAuth, ok, created, badRequest, serverError, getPagination, getSearch, logError } from "@/lib/api";
+import { BCRYPT_ROUNDS, createTenantWithAdmin } from "@/lib/tenantCreate";
 
 const createTenantSchema = z.object({
   name: z.string().min(2, "Απαιτείται επωνυμία"),
@@ -33,17 +34,22 @@ export const GET = withAuth(async (req) => {
     const { skip, limit } = getPagination(req);
     const search = getSearch(req);
 
-    const where = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" as const } },
-            { email: { contains: search, mode: "insensitive" as const } },
-            { slug: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
-      : {};
+    // Προέλευση (SQL 34): ?source=self_signup | manual
+    const source = new URL(req.url).searchParams.get("source");
+    const where = {
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: "insensitive" as const } },
+              { email: { contains: search, mode: "insensitive" as const } },
+              { slug: { contains: search, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+      ...(source === "self_signup" || source === "manual" ? { signupSource: source } : {}),
+    };
 
-    const [tenants, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       db.tenant.findMany({
         where,
         skip,
@@ -57,10 +63,13 @@ export const GET = withAuth(async (req) => {
               bookings: true,
             },
           },
+          // «Email επαληθευμένο»: τουλάχιστον ένας χρήστης με emailVerifiedAt.
+          users: { where: { emailVerifiedAt: { not: null } }, select: { id: true }, take: 1 },
         },
       }),
       db.tenant.count({ where }),
     ]);
+    const tenants = rows.map(({ users, onboardingState: _onboarding, ...t }) => ({ ...t, emailVerified: users.length > 0 }));
 
     return ok({ tenants, total, page: Math.ceil(skip / limit) + 1, limit });
   } catch (error) {
@@ -117,48 +126,23 @@ export const POST = withAuth(async (req) => {
       return badRequest("Το email του διαχειριστή χρησιμοποιείται ήδη");
     }
 
-    const passwordHash = await bcrypt.hash(adminPassword, 12);
+    const passwordHash = await bcrypt.hash(adminPassword, BCRYPT_ROUNDS);
 
-    // Δημιουργία tenant + admin user σε transaction
-    const tenant = await db.$transaction(async (tx) => {
-      const newTenant = await tx.tenant.create({
-        data: {
-          name,
-          slug,
-          email: email.toLowerCase(),
-          phone,
-          address,
-          plan,
-          planKey,
-          status: "TRIAL",
-          trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
-        },
-      });
-
-      await tx.user.create({
-        data: {
-          tenantId: newTenant.id,
-          name: adminName,
-          email: adminEmail.toLowerCase(),
-          passwordHash,
-          role: "COMPANY_ADMIN",
-          permissions: {},
-        },
-      });
-
-      // Default contract template
-      await tx.contractTemplate.create({
-        data: {
-          tenantId: newTenant.id,
-          name: "Βασικό Συμβόλαιο",
-          content: getDefaultContractTemplate(),
-          isDefault: true,
-          language: "el",
-        },
-      });
-
-      return newTenant;
-    });
+    // Δημιουργία tenant + admin user + βασικό συμβόλαιο σε transaction — ο ΙΔΙΟΣ
+    // μηχανισμός με την αυτόματη εγγραφή (src/lib/tenantCreate.ts).
+    const { tenant } = await db.$transaction((tx) =>
+      createTenantWithAdmin(tx, {
+        name,
+        slug,
+        email,
+        phone,
+        address,
+        plan,
+        planKey,
+        signupSource: "manual",
+        admin: { name: adminName, email: adminEmail, passwordHash },
+      })
+    );
 
     return created({ tenant });
   } catch (error) {
@@ -166,24 +150,3 @@ export const POST = withAuth(async (req) => {
     return serverError();
   }
 }, ["SUPER_ADMIN"]);
-
-function getDefaultContractTemplate(): string {
-  return `
-<!DOCTYPE html>
-<html lang="el">
-<head><meta charset="UTF-8"><title>Συμβόλαιο Ενοικίασης</title></head>
-<body>
-  <h1>ΣΥΜΒΟΛΑΙΟ ΕΝΟΙΚΙΑΣΗΣ ΟΧΗΜΑΤΟΣ</h1>
-  <p>Εταιρία: {{company.name}}</p>
-  <p>Πελάτης: {{customer.fullName}}</p>
-  <p>Όχημα: {{vehicle.brand}} {{vehicle.model}} ({{vehicle.plate}})</p>
-  <p>Από: {{booking.pickupDate}} — Έως: {{booking.returnDate}}</p>
-  <p>Σύνολο: {{booking.total}}€</p>
-  <div class="signature-section">
-    <p>Υπογραφή: ____________________</p>
-  </div>
-</body>
-</html>
-  `.trim();
-}
-

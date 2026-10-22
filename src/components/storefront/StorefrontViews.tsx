@@ -7,7 +7,7 @@
 import Link from "next/link";
 import type { PublicCompany, PublicVehicle } from "@/lib/storefront/publicData";
 import { pickText } from "@/lib/storefront/settings";
-import { storefrontPath } from "@/lib/storefront/slug";
+import { sitePath } from "@/lib/storefront/slug";
 import {
   fill,
   formatDateTime,
@@ -79,7 +79,7 @@ function Shell({
 }) {
   const { company, lang, d } = ctx;
   const { supportedLanguages } = company.settings;
-  const home = storefrontPath(company.slug, lang);
+  const home = sitePath(company, lang);
   const contact = contactOf(company);
   const corner = company.settings.theme.cornerStyle === "rounded" ? "12px" : "999px";
 
@@ -146,12 +146,19 @@ function Shell({
           </span>
           <nav className="sf-footer-legal" aria-label={d.legalNav}>
             {LEGAL_LINKS.map(([kind, key]) => (
-              <Link key={kind} href={storefrontPath(company.slug, lang, kind)}>
+              <Link key={kind} href={sitePath(company, lang, kind)}>
                 {d[key]}
               </Link>
             ))}
           </nav>
           <span className="sf-muted">{d.poweredBy}</span>
+          {company.loginUrl && (
+            // Για το προσωπικό της εταιρίας: το login της πλατφόρμας (στο domain
+            // της εταιρίας δεν ανοίγει login/dashboard — βλ. domain.ts).
+            <a href={company.loginUrl} className="sf-footer-login" rel="nofollow">
+              {d.staffLogin}
+            </a>
+          )}
         </div>
       </footer>
     </div>
@@ -259,7 +266,7 @@ export function StorefrontHome({
   const hero = settings.theme.heroImage?.url ?? null;
 
   return (
-    <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code)}>
+    <Shell ctx={ctx} langHref={(code) => sitePath(company, code)}>
       <section className={`sf-hero${hero ? " has-photo" : ""}`}>
         <div className="sf-hero-bg" aria-hidden={!hero}>
           {hero && (
@@ -294,7 +301,7 @@ export function StorefrontHome({
       )}
 
       {/* Σειρά: hero → about → μέρη → κριτικές → οχήματα (κενές ενότητες = τίποτα). */}
-      <PlacesSection slug={company.slug} lang={lang} d={d} places={places} />
+      <PlacesSection company={company} lang={lang} d={d} places={places} />
       <ReviewsSection lang={lang} d={d} section={reviews} />
 
       <div className="sf-wrap sf-section">
@@ -335,9 +342,9 @@ export function StorefrontHome({
 export function StorefrontPlace({ company, lang, place: p }: { company: PublicCompany; lang: string; place: PublicPlace }) {
   const d = storefrontDictionary(lang);
   const ctx: Ctx = { company, lang, d };
-  const back = storefrontPath(company.slug, lang);
+  const back = sitePath(company, lang);
   return (
-    <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, { placeSlug: p.slug })}>
+    <Shell ctx={ctx} langHref={(code) => sitePath(company, code, { placeSlug: p.slug })}>
       <div className="sf-wrap sf-vehicle sf-place">
         <Link href={`${back}#sf-places-title`} className="sf-back">
           ← {d.backToHome}
@@ -443,7 +450,7 @@ export function StorefrontSearch({
   const anyAvailable = cards.some((c) => c.bookHref);
 
   return (
-    <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, "search", query)}>
+    <Shell ctx={ctx} langHref={(code) => sitePath(company, code, "search", query)}>
       <section className="sf-search-band">
         <div className="sf-wrap">
           <h1 className="sf-h1 sf-h1--dark sf-h1--sm">{d.searchTitle}</h1>
@@ -547,7 +554,7 @@ export function StorefrontBook({
   const texts = bookingTexts(company.rentalMode);
 
   return (
-    <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, "book", query)}>
+    <Shell ctx={ctx} langHref={(code) => sitePath(company, code, "book", query)}>
       <div className="sf-wrap sf-section sf-book">
         <a href={backHref} className="sf-back">
           ← {d.backToResults}
@@ -593,7 +600,7 @@ export function StorefrontBook({
                 {...form}
                 lang={lang}
                 d={d}
-                legal={{ termsHref: storefrontPath(company.slug, lang, "terms"), privacyHref: storefrontPath(company.slug, lang, "privacy") }}
+                legal={{ termsHref: sitePath(company, lang, "terms"), privacyHref: sitePath(company, lang, "privacy") }}
                 submitLabel={lang === "el" ? texts.submit.el : texts.submit.en}
               />
             </div>
@@ -658,7 +665,7 @@ export function StorefrontConfirmation({
   const cancelReason = b.status === "CANCELLED" ? cancelReasonText(lang, b.cancelReasonCode, b.cancelNote) : null;
 
   return (
-    <Shell ctx={ctx} langHref={(code) => `${storefrontPath(company.slug, code)}/booking/${b.code}`}>
+    <Shell ctx={ctx} langHref={(code) => sitePath(company, code, { bookingCode: b.code })}>
       <div className="sf-wrap sf-section sf-book sf-confirm">
         <h1 className="sf-h1 sf-h1--dark">{b.status === "PENDING" ? pick(texts.done) : fill(d.confirmTitle, { code: b.code })}</h1>
         <p className="sf-muted">
@@ -687,7 +694,7 @@ export function StorefrontConfirmation({
               </p>
             )}
             <p>{d.searchAgainText}</p>
-            <a className="sf-btn sf-btn--primary" href={storefrontPath(company.slug, lang)}>
+            <a className="sf-btn sf-btn--primary" href={sitePath(company, lang)}>
               {d.newSearch}
             </a>
           </div>
@@ -778,9 +785,9 @@ export function StorefrontLegal({ company, lang, doc }: { company: PublicCompany
   const d = storefrontDictionary(lang);
   const ctx: Ctx = { company, lang, d };
   return (
-    <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, doc.kind)}>
+    <Shell ctx={ctx} langHref={(code) => sitePath(company, code, doc.kind)}>
       <article className="sf-wrap sf-legal" lang={doc.lang}>
-        <Link href={storefrontPath(company.slug, lang)} className="sf-back">
+        <Link href={sitePath(company, lang)} className="sf-back">
           ← {d.backToHome}
         </Link>
         <h1 className="sf-h1 sf-h1--dark">{d[LEGAL_TITLE[doc.kind]]}</h1>
@@ -819,10 +826,10 @@ export function StorefrontVehicle({
 }) {
   const d = storefrontDictionary(lang);
   const ctx: Ctx = { company, lang, d };
-  const back = storefrontPath(company.slug, lang);
+  const back = sitePath(company, lang);
 
   return (
-    <Shell ctx={ctx} langHref={(code) => storefrontPath(company.slug, code, { vehicleId: v.id })}>
+    <Shell ctx={ctx} langHref={(code) => sitePath(company, code, { vehicleId: v.id })}>
       <div className="sf-wrap sf-vehicle">
         <Link href={back} className="sf-back">
           ← {d.back}

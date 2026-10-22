@@ -15,7 +15,8 @@ import { similarModelName } from "./public/catalog";
 import { readLocalized, textFor } from "./public/text";
 import { normalizeStorefrontSettings } from "./storefront/settings";
 import { storedInsurance } from "./pricingBridge";
-import { storefrontPath } from "./storefront/slug";
+import { buildSiteUrl } from "./storefront/siteUrl";
+import { verifiedDomainOf } from "./storefront/publicData";
 import {
   buildBookingMessage,
   messageLang,
@@ -186,7 +187,7 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
       customer: { select: { firstName: true, email: true, phone: true } },
       rentalGroup: { select: { name: true, similarModels: true } },
       vehicle: { select: { brand: true, model: true, rentalGroup: { select: { name: true, similarModels: true } } } },
-      tenant: { select: { name: true, phone: true, email: true, storefrontSlug: true, storefrontSettings: true } },
+      tenant: { select: { name: true, phone: true, email: true, storefrontSlug: true, storefrontSettings: true, customDomain: true, customDomainStatus: true } },
     },
   });
   if (!b) return null;
@@ -212,7 +213,9 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
   const insuranceName = q.version === 1 ? (ins ? textFor(ins.name, lang) || null : null) : undefined;
 
   const slug = b.tenant.storefrontSlug;
-  const base = origin.replace(/\/+$/, "");
+  // Links προς το site: στο VERIFIED domain της εταιρίας αν έχει, αλλιώς στο
+  // /s/<slug> του deployment (buildSiteUrl — ΕΝΑ σημείο για τα URL του site).
+  const site = slug ? { slug, siteDomain: verifiedDomainOf(b.tenant) } : null;
   return {
     data: {
       lang,
@@ -235,8 +238,8 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
           }
         : null,
       paymentMethod: b.paymentMethod,
-      bookingUrl: slug && b.publicCode ? `${base}${storefrontPath(slug, lang)}/booking/${b.publicCode}` : null,
-      searchUrl: slug ? `${base}${storefrontPath(slug, lang)}` : null,
+      bookingUrl: site && b.publicCode ? buildSiteUrl(origin, site, { lang, page: { bookingCode: b.publicCode } }) : null,
+      searchUrl: site ? buildSiteUrl(origin, site, { lang }) : null,
     },
     status: b.status,
     reasonCode: b.cancelReasonCode,

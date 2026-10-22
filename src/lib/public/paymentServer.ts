@@ -9,7 +9,8 @@ import { db } from "../db";
 import { syncVehicleStatus } from "../bookingLifecycle";
 import { stripe, stripeErrorCode, stripeReady, accountFlags } from "../stripeConnect";
 import { storefrontDictionary, fill } from "../storefront/i18n";
-import { storefrontPath } from "../storefront/slug";
+import { buildSiteUrl } from "../storefront/siteUrl";
+import { verifiedDomainOf } from "../storefront/publicData";
 import {
   CHECKOUT_TTL_MINUTES,
   PAYMENT_CANCEL_REASON,
@@ -97,6 +98,8 @@ export async function createBookingCheckout(opts: {
         select: {
           name: true,
           storefrontSlug: true,
+          customDomain: true,
+          customDomainStatus: true,
           platformFeeBps: true,
           ...PAYMENT_SETTINGS_SELECT,
         },
@@ -114,7 +117,10 @@ export async function createBookingCheckout(opts: {
 
   const lang = b.siteLang ?? opts.lang;
   const d = storefrontDictionary(lang);
-  const base = `${opts.origin.replace(/\/+$/, "")}${storefrontPath(b.tenant.storefrontSlug, lang)}/booking/${opts.code}`;
+  // Επιστροφή από το Stripe: στο VERIFIED domain της εταιρίας αν έχει, αλλιώς
+  // στο /s/<slug> του ίδιου deployment (buildSiteUrl — ΕΝΑ σημείο για τα URL).
+  const site = { slug: b.tenant.storefrontSlug, siteDomain: verifiedDomainOf(b.tenant) };
+  const base = buildSiteUrl(opts.origin, site, { lang, page: { bookingCode: opts.code } });
   const metadata = { bookingId: b.id, tenantId: opts.companyId, bookingCode: opts.code };
   const deposit = amount < totalCents;
 

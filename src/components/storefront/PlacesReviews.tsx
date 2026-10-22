@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { fill, formatDay, type StorefrontDictionary } from "@/lib/storefront/i18n";
-import { storefrontPath } from "@/lib/storefront/slug";
+import { sitePath, type SitePathCompany } from "@/lib/storefront/slug";
 import { cloudinaryThumb } from "@/lib/vehiclePhotos";
 import type { PublicPlaceCard } from "@/lib/public/places";
 import type { PublicReview, ReviewSection } from "@/lib/public/reviews";
@@ -13,12 +13,12 @@ import Carousel from "./Carousel";
 const CARD_WIDTHS = [320, 480, 640];
 
 export function PlacesSection({
-  slug,
+  company,
   lang,
   d,
   places,
 }: {
-  slug: string;
+  company: SitePathCompany;
   lang: string;
   d: StorefrontDictionary;
   places: PublicPlaceCard[];
@@ -32,7 +32,7 @@ export function PlacesSection({
       <p className="sf-muted">{d.placesIntro}</p>
       <Carousel label={d.placesTitle} prevLabel={d.carouselPrev} nextLabel={d.carouselNext} slideLabel={d.slideOf} className="sf-places-carousel">
         {places.map((p) => (
-          <Link key={p.slug} href={storefrontPath(slug, lang, { placeSlug: p.slug })} className="sf-place-card">
+          <Link key={p.slug} href={sitePath(company, lang, { placeSlug: p.slug })} className="sf-place-card">
             <span className="sf-place-img">
               {p.coverUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element

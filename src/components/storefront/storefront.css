@@ -310,6 +310,7 @@
 .sf-footer-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
 .sf-footer-legal { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .sf-footer-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; padding: 4px 0; }
+.sf-footer-login { color: var(--sf-text-2); font-size: 12px; padding: 4px 0; }
 
 /* ── Νομικά ── */
 .sf-legal { max-width: 780px; padding-top: 20px; padding-bottom: 40px; }

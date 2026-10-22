@@ -147,10 +147,13 @@ test("noindex σελίδες (search/book/booking/όχημα): robots noindex, �
     assert.match(body, /noindexPage\(/, fn);
     assert.doesNotMatch(body, /indexablePage\(/, fn);
   }
-  // Και στο middleware (header) — όπως πριν.
+  // Και στο middleware (header) — όπως πριν, ΙΔΙΟΙ κανόνες για /s/<slug> και
+  // για το domain εταιρίας (siteResponseHeaders στο domain.ts).
+  const rules = src("src/lib/storefront/domain.ts");
+  assert.match(rules, /\(search\|book\)/);
+  assert.match(rules, /booking\\\/\[\^\/\]\+/);
   const mw = src("src/middleware.ts");
-  assert.match(mw, /\(search\|book\)/);
-  assert.match(mw, /booking\\\/\[\^\/\]\+/);
+  assert.equal((mw.match(/withSiteHeaders\(res, (pathname|route\.path)\)/g) ?? []).length, 2);
 });
 
 test("404 (άγνωστο slug / ανενεργή σελίδα): ίδιο, χωρίς meta της πλατφόρμας ή της εταιρίας", () => {
@@ -161,9 +164,10 @@ test("404 (άγνωστο slug / ανενεργή σελίδα): ίδιο, χω�
   assert.match(layout, /index: false/);
   const nf = code("src/app/(storefront)/s/[slug]/not-found.tsx");
   assert.doesNotMatch(nf, /FleetPro|company|slug|params/);
-  // Νομικά/sitemap/robots: εταιρία ΜΟΝΟ μέσω resolveStorefrontCompany/openStorefront → 404.
+  // Νομικά/sitemap/robots: εταιρία ΜΟΝΟ μέσω resolveStorefrontParam (slug ή
+  // VERIFIED domain)/openStorefront → 404.
   const sr = src("src/lib/storefront/seoRoutes.ts");
-  assert.equal((sr.match(/resolveStorefrontCompany\(slug\)/g) ?? []).length, 2);
+  assert.equal((sr.match(/resolveStorefrontParam\(slug\)/g) ?? []).length, 2);
   assert.equal((sr.match(/if \(!r\) return notFoundText\(\)/g) ?? []).length, 2);
 });
 
@@ -365,12 +369,12 @@ test("versionId: πρότυπο vs δική τους έκδοση — σταθε
 
 test("φόρμα κράτησης: το τικ των όρων ανοίγει τους όρους/απόρρητο της ΙΔΙΑΣ εταιρίας", () => {
   const views = src("src/components/storefront/StorefrontViews.tsx");
-  assert.match(views, /legal=\{\{ termsHref: storefrontPath\(company\.slug, lang, "terms"\), privacyHref: storefrontPath\(company\.slug, lang, "privacy"\) \}\}/);
+  assert.match(views, /legal=\{\{ termsHref: sitePath\(company, lang, "terms"\), privacyHref: sitePath\(company, lang, "privacy"\) \}\}/);
   const form = src("src/components/storefront/BookingForm.tsx");
   assert.match(form, /href=\{legal\.termsHref\} target="_blank"/);
   assert.match(form, /href=\{legal\.privacyHref\} target="_blank"/);
   // Footer: σε ΚΑΘΕ σελίδα (Shell).
-  assert.match(views, /LEGAL_LINKS\.map\(\(\[kind, key\]\) => \(\s*<Link key=\{kind\} href=\{storefrontPath\(company\.slug, lang, kind\)\}/);
+  assert.match(views, /LEGAL_LINKS\.map\(\(\[kind, key\]\) => \(\s*<Link key=\{kind\} href=\{sitePath\(company, lang, kind\)\}/);
 });
 
 /* ─────────────────────────────────────────────

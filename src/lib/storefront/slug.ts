@@ -83,7 +83,23 @@ export type SitePath =
   | "privacy"
   | "cookies"
   | { vehicleId: string }
-  | { placeSlug: string };
+  | { placeSlug: string }
+  | { bookingCode: string };
+
+/** Το κομμάτι μετά τη βάση: /<lang>[/σελίδα][?query]. */
+function sitePathTail(lang: string, page: SitePath, query: string): string {
+  const tail =
+    typeof page === "object"
+      ? "placeSlug" in page
+        ? `/places/${encodeURIComponent(page.placeSlug)}`
+        : "bookingCode" in page
+          ? `/booking/${encodeURIComponent(page.bookingCode)}`
+          : `/v/${encodeURIComponent(page.vehicleId)}`
+      : page
+        ? `/${page}`
+        : "";
+  return `/${lang}${tail}${query ? `?${query}` : ""}`;
+}
 
 /**
  * Η διεύθυνση μιας δημόσιας σελίδας: ΠΑΝΤΑ με τη γλώσσα (/s/<slug>/<lang>),
@@ -91,7 +107,7 @@ export type SitePath =
  * (/s/<slug>/<lang>/search, …/book, …/v/<id>). Το σκέτο /s/<slug> κάνει
  * redirect στην προεπιλεγμένη γλώσσα.
  * `page`: "" (αρχική), "search", "book", νομικά ("terms", "privacy",
- * "cookies"), { vehicleId } ή { placeSlug }.
+ * "cookies"), { vehicleId }, { placeSlug } ή { bookingCode }.
  */
 export function storefrontPath(
   slug: string,
@@ -99,15 +115,26 @@ export function storefrontPath(
   page: SitePath = "",
   query = ""
 ): string {
-  const tail =
-    typeof page === "object"
-      ? "placeSlug" in page
-        ? `/places/${encodeURIComponent(page.placeSlug)}`
-        : `/v/${encodeURIComponent(page.vehicleId)}`
-      : page
-        ? `/${page}`
-        : "";
-  return `/s/${slug}/${lang}${tail}${query ? `?${query}` : ""}`;
+  return `/s/${slug}${sitePathTail(lang, page, query)}`;
+}
+
+/** Ό,τι χρειάζεται το sitePath: το slug και (προαιρετικά) η βάση του αιτήματος. */
+export interface SitePathCompany {
+  slug: string;
+  /**
+   * Η βάση των links ΓΙΑ ΤΟ ΤΡΕΧΟΝ αίτημα: "" όταν η σελίδα σερβίρεται στο
+   * domain της εταιρίας (https://domain/el/…), αλλιώς /s/<slug>. Λείπει → /s/<slug>.
+   */
+  basePath?: string;
+}
+
+/**
+ * Σχετικό link μέσα στο site, σωστό και στο /s/<slug> και στο domain της
+ * εταιρίας. ΟΛΑ τα links των σελίδων του site περνούν από εδώ.
+ */
+export function sitePath(company: SitePathCompany, lang: string, page: SitePath = "", query = ""): string {
+  const base = company.basePath ?? `/s/${company.slug}`;
+  return `${base}${sitePathTail(lang, page, query)}`;
 }
 
 /**

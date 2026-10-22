@@ -1,5 +1,5 @@
 // src/lib/storefront/page.ts
-// Κοινό «άνοιγμα» για όλες τις σελίδες /s/... — ΜΟΝΟ server.
+// Κοινό «άνοιγμα» για όλες τις σελίδες /s/... (και του domain εταιρίας) — ΜΟΝΟ server.
 // Εταιρία (μέσω resolveStorefrontCompany) + γλώσσα.
 //
 // 404 ΜΟΝΟ όταν η εταιρία δεν είναι δημόσια (άγνωστο slug, ανενεργή σελίδα,
@@ -8,12 +8,13 @@
 
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
-import { resolveStorefrontCompany, type ResolvedStorefront } from "./resolve";
-import { chooseLanguage, storefrontPath, type SitePath } from "./slug";
+import { resolveStorefrontParam, type ResolvedStorefront } from "./resolve";
+import { chooseLanguage, sitePath, type SitePath } from "./slug";
 
 // Μία ανάγνωση της βάσης ανά αίτημα, ακόμη κι αν τη ζητήσουν και τα
 // metadata και η σελίδα.
-const resolveOnce = cache(resolveStorefrontCompany);
+// [slug] = slug ή DOMAIN_SLUG (domain εταιρίας, βλ. resolveStorefrontParam).
+const resolveOnce = cache(resolveStorefrontParam);
 
 export interface StorefrontPage extends ResolvedStorefront {
   lang: string;
@@ -35,7 +36,7 @@ export async function openStorefront(
   if (!resolved) notFound();
   const { supportedLanguages, defaultLanguage } = resolved.company.settings;
   const choice = chooseLanguage(langParam, supportedLanguages, defaultLanguage);
-  if (!choice.ok) redirect(storefrontPath(resolved.company.slug, choice.redirectTo, page, query));
+  if (!choice.ok) redirect(sitePath(resolved.company, choice.redirectTo, page, query));
   return { ...resolved, lang: choice.lang };
 }
 
@@ -48,5 +49,5 @@ export async function redirectToDefaultLanguage(slug: string, vehicleId?: string
   const resolved = await resolveOnce(slug);
   if (!resolved) notFound();
   const { company } = resolved;
-  redirect(storefrontPath(company.slug, company.settings.defaultLanguage, vehicleId ? { vehicleId } : ""));
+  redirect(sitePath(company, company.settings.defaultLanguage, vehicleId ? { vehicleId } : ""));
 }

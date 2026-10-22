@@ -10,7 +10,8 @@ import { generateInvoiceCode } from "../invoiceCode";
 import { nextBookingNumber } from "../bookingCreate";
 import { withBookingNumberRetry } from "../bookingNumberRetry";
 import { resolveStorefrontCompany } from "../storefront/resolve";
-import { storefrontPath } from "../storefront/slug";
+import { sitePath } from "../storefront/slug";
+import { basePathForOrigin } from "../storefront/siteUrl";
 import { loadBlockingBookings } from "./availability";
 import {
   checkAgeBand,
@@ -163,7 +164,12 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
     const status = result.error.code === "UNAVAILABLE" ? 409 : result.error.code === "NOT_FOUND" ? 404 : 400;
     return { ok: false, status, message: result.error.message };
   }
-  const bookingUrl = storefrontPath(resolved.company.slug, input.lang, "") + `/booking/${result.code}`;
+  // Στο ΙΔΙΟ host με τη φόρμα: /el/booking/… στο domain της εταιρίας, αλλιώς /s/<slug>/…
+  const bookingUrl = sitePath(
+    { slug: resolved.company.slug, basePath: basePathForOrigin(origin, resolved.company) },
+    input.lang,
+    { bookingCode: result.code }
+  );
   if (!online) return { ok: true, code: result.code, url: bookingUrl };
 
   // Online: η κράτηση γράφτηκε (AWAITING_PAYMENT)· τώρα η σελίδα πληρωμής του Stripe.

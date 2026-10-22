@@ -94,9 +94,24 @@ test("εταιρία: μόνο τα επιτρεπόμενα πεδία", () => 
   const pub = toPublicCompany(FULL_TENANT, "https://signed.example/logo.png");
   assert.deepEqual(
     Object.keys(pub).sort(),
-    ["address", "brandColor", "email", "logoUrl", "name", "phone", "region", "rentalMode", "settings", "slug"]
+    ["address", "basePath", "brandColor", "email", "loginUrl", "logoUrl", "name", "phone", "region", "rentalMode", "settings", "siteDomain", "slug"]
   );
   assert.equal(pub.slug, "chania-cars", "το δημόσιο slug, όχι το εσωτερικό");
+  // Domain: μόνο όταν είναι VERIFIED· links με /s/<slug> εκτός αν σερβίρεται στο domain.
+  assert.equal(pub.siteDomain, null);
+  assert.equal(pub.basePath, "/s/chania-cars");
+  assert.equal(pub.loginUrl, "/login");
+  const pending = toPublicCompany({ ...FULL_TENANT, customDomain: "www.chania-cars.gr", customDomainStatus: "PENDING" }, null);
+  assert.equal(pending.siteDomain, null, "PENDING δεν μετρά");
+  const onDomain = toPublicCompany(
+    { ...FULL_TENANT, customDomain: "www.chania-cars.gr", customDomainStatus: "VERIFIED" },
+    null,
+    { onDomain: true, platformOrigin: "https://fleetpro-app-eight.vercel.app" }
+  );
+  assert.equal(onDomain.siteDomain, "www.chania-cars.gr");
+  assert.equal(onDomain.basePath, "");
+  assert.equal(onDomain.loginUrl, "https://fleetpro-app-eight.vercel.app/login");
+  assert.equal(toPublicCompany(FULL_TENANT, null, { onDomain: true, platformOrigin: null }).loginUrl, null);
   const json = JSON.stringify(pub);
   for (const secret of PRIVATE_TEXT) {
     if (secret === "enc") continue; // κοινή συλλαβή, ελέγχεται με τα tokens πιο κάτω

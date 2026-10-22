@@ -21,6 +21,12 @@ export interface PublicCompany {
   /** Τρόπος κράτησης — ΜΟΝΗ πηγή: tenants.rentalMode (BOOKING = απευθείας, REQUEST = αίτημα). */
   rentalMode: "BOOKING" | "REQUEST";
   settings: StorefrontSettings;
+  /** Το VERIFIED domain του site (canonical, sitemap, links σε email) ή null. */
+  siteDomain: string | null;
+  /** Βάση των links για το ΤΡΕΧΟΝ αίτημα: "" στο domain, /s/<slug> αλλιώς. */
+  basePath: string;
+  /** Το «Είσοδος» στο footer (login της πλατφόρμας) ή null αν είναι άγνωστο. */
+  loginUrl: string | null;
 }
 
 export interface PublicVehicle {
@@ -65,11 +71,26 @@ export interface CompanySource {
   region: string | null;
   rentalMode?: string | null;
   storefrontSettings: unknown;
+  customDomain?: string | null;
+  customDomainStatus?: string | null;
 }
 
-export function toPublicCompany(t: CompanySource, logoUrl: string | null): PublicCompany {
+/** Το domain μετρά ΜΟΝΟ όταν είναι VERIFIED. */
+export const verifiedDomainOf = (t: Pick<CompanySource, "customDomain" | "customDomainStatus">): string | null =>
+  t.customDomain && t.customDomainStatus === "VERIFIED" ? t.customDomain : null;
+
+/**
+ * `served`: πώς ήρθε το αίτημα — στο domain της εταιρίας (links χωρίς /s/<slug>,
+ * «Είσοδος» προς την πλατφόρμα) ή στο /s/<slug> (όπως πριν).
+ */
+export function toPublicCompany(
+  t: CompanySource,
+  logoUrl: string | null,
+  served: { onDomain: boolean; platformOrigin: string | null } = { onDomain: false, platformOrigin: null }
+): PublicCompany {
+  const slug = t.storefrontSlug ?? "";
   return {
-    slug: t.storefrontSlug ?? "",
+    slug,
     name: t.name,
     logoUrl,
     brandColor: safeBrandColor(t.brandColor),
@@ -79,6 +100,9 @@ export function toPublicCompany(t: CompanySource, logoUrl: string | null): Publi
     region: t.region || null,
     rentalMode: t.rentalMode === "REQUEST" ? "REQUEST" : "BOOKING",
     settings: publicSettings(normalizeStorefrontSettings(t.storefrontSettings)),
+    siteDomain: verifiedDomainOf(t),
+    basePath: served.onDomain ? "" : `/s/${slug}`,
+    loginUrl: served.onDomain ? (served.platformOrigin ? `${served.platformOrigin}/login` : null) : "/login",
   };
 }
 

@@ -192,7 +192,8 @@ export function routeCustomDomain(pathname: string): DomainRoute {
     return { kind: "redirect", path: `/${rest}` };
   }
   if (first === "_next") return { kind: "pass" };
-  if (/^(api|c|pay|print|super-admin)$/.test(first)) return { kind: "notFound" };
+  // Εγγραφή/επαλήθευση/νομικά της ΠΛΑΤΦΟΡΜΑΣ: ποτέ στο domain εταιρίας.
+  if (/^(api|c|pay|print|super-admin|signup|verify-email|legal)$/.test(first)) return { kind: "notFound" };
   return { kind: "rewrite", path: `/s/${DOMAIN_SLUG}${pathname}` };
 }
 

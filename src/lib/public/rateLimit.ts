@@ -42,6 +42,14 @@ export const LIMITS = {
   checkoutPerTenant: { scope: "checkout-tenant", max: 30, windowMinutes: 60 },
   /** Εφεδρικός έλεγχος πληρωμής στο Stripe (retrieve): 1 ανά 10΄΄ ανά κράτηση. */
   paymentCheckPerBooking: { scope: "pay-check", max: 1, windowMinutes: 1 / 6 },
+  /** Αυτόματη εγγραφή εταιρίας (/signup): ανά IP (hash) και ανά email (hash). */
+  signupPerIp: { scope: "signup-ip", max: 5, windowMinutes: 60 },
+  signupPerEmail: { scope: "signup-email", max: 3, windowMinutes: 60 },
+  /** «Ξαναστείλε email» επαλήθευσης. */
+  verifyResendPerIp: { scope: "verify-resend-ip", max: 10, windowMinutes: 60 },
+  verifyResendPerEmail: { scope: "verify-resend-email", max: 3, windowMinutes: 60 },
+  /** Δοκιμές συνδέσμου επαλήθευσης ανά IP (το token είναι 256 bit — δίχτυ ασφαλείας). */
+  verifyPerIp: { scope: "verify-ip", max: 30, windowMinutes: 15 },
 } as const satisfies Record<string, Limit>;
 
 /** Κλειδί χωρίς προσωπικά δεδομένα: scope + hash(μυστικό + τιμή). */

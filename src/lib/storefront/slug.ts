@@ -23,6 +23,9 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "settings", "account", "billing", "booking", "bookings", "checkout", "pay",
   "payment", "payments", "contracts", "invoices", "new", "edit", "null",
   "undefined", "test", "demo", "el", "en", "fr", "de", "it", "es", "pl",
+  // Αυτόματη εγγραφή (SQL 34): οι νέες διαδρομές + συνήθη ονόματα υπηρεσιών.
+  "verify-email", "onboarding", "legal", "auth", "robots", "sitemap", "favicon",
+  "webmail", "smtp", "cdn", "platform", "system", "root",
 ]);
 
 /** Ό,τι πληκτρολόγησε ο χρήστης → μορφή slug (πεζά, χωρίς κενά άκρων). */

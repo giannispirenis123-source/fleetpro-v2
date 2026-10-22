@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { signToken } from "@/lib/auth";
+import { setSessionCookie } from "@/lib/sessionCookie";
 import { normalizeLocale } from "@/lib/i18n/locale";
 import { badRequest, logError, serverError } from "@/lib/api";
 import { LOGIN_MSG, loginDecision } from "@/lib/loginCore";
@@ -78,22 +78,14 @@ export async function POST(req: NextRequest) {
     }
     const decision = loginDecision(user, passwordOk);
     if (!decision.ok || !user) {
+      if (!decision.ok && decision.code) {
+        return NextResponse.json({ success: false, message: decision.message, code: decision.code }, { status: 400 });
+      }
       return badRequest(decision.ok ? LOGIN_MSG.wrong : decision.message);
     }
 
     // Σωστή σύνδεση: τα λάθη αυτού του email από αυτή την IP μηδενίζονται.
     await clearLoginFailures(dbLoginLockStore, email, ip);
-
-    // Δημιουργία token
-    const token = await signToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      tenantId: user.tenantId,
-      tenantSlug: user.tenant?.slug || null,
-      name: user.name,
-      locale: normalizeLocale(user.locale),
-    });
 
     // Ενημέρωση lastLoginAt
     await db.user.update({
@@ -122,13 +114,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Set HTTP-only cookie
-    response.cookies.set("fleetpro_token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: "/",
+    // HTTP-only cookie (ίδιο με την αυτόματη σύνδεση μετά την επαλήθευση email)
+    await setSessionCookie(response, {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenantId,
+      tenantSlug: user.tenant?.slug || null,
+      name: user.name,
+      locale: normalizeLocale(user.locale),
     });
 
     return response;

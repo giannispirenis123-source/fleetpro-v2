@@ -20,6 +20,10 @@ import {
 // Routes που δεν χρειάζονται auth
 const PUBLIC_ROUTES = ["/login", "/api/auth/login"];
 
+// Αυτόματη εγγραφή (SQL 34) και νομικά της πλατφόρμας: χωρίς login. Αν ο
+// διακόπτης SELF_SIGNUP_ENABLED είναι OFF, οι ίδιες οι σελίδες δίνουν 404.
+const SIGNUP_ROUTE_RE = /^\/(signup|verify-email|legal\/(terms|privacy))\/?$/;
+
 // Routes μόνο για Super Admin
 const SUPER_ADMIN_ROUTES = ["/super-admin"];
 
@@ -139,6 +143,14 @@ export async function middleware(req: NextRequest) {
     }
     const res = NextResponse.next({ request: { headers: siteRequestHeaders(req, pathname, null) } });
     return withSiteHeaders(res, pathname);
+  }
+
+  if (SIGNUP_ROUTE_RE.test(pathname)) {
+    const res = NextResponse.next();
+    res.headers.set("X-Robots-Tag", "noindex, nofollow");
+    res.headers.set("Cache-Control", "no-store, max-age=0");
+    res.headers.set("Referrer-Policy", "no-referrer");
+    return res;
   }
 
   // Επιτρέπουμε public routes

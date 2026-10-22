@@ -11,6 +11,8 @@
 
 import { headers } from "next/headers";
 import { db } from "../db";
+import { getSession } from "../auth";
+import { loadViewer } from "../viewer";
 import { signUrls } from "../storage";
 import { canonicalSlug } from "./slug";
 import { DOMAIN_SLUG, normalizeHost, platformOrigin, readPlatformEnv, SITE_HOST_HEADER } from "./domain";
@@ -47,15 +49,33 @@ const TENANT_SELECT = {
   customDomainStatus: true,
   entitlementOverrides: true,
   entitlementPlan: { select: { key: true, name: true, modules: true, limits: true } },
+  // SQL 34: εγγραφή χωρίς επαληθευμένο email → κλειστή (visibility.ts).
+  signupSource: true,
+  _count: { select: { users: { where: { emailVerifiedAt: { not: null } } } } },
 } as const;
+
+/**
+ * Προεπισκόπηση ΠΡΙΝ τη δημοσίευση (onboarding, βήμα Δ): ΜΟΝΟ ο ενεργός
+ * Διαχειριστής της ΙΔΙΑΣ εταιρίας (συνεδρία + έλεγχος στη βάση) και ΜΟΝΟ όταν
+ * ο μόνος λόγος είναι ο κλειστός διακόπτης. Κανείς άλλος δεν βλέπει διαφορά.
+ */
+async function ownerPreview(companyId: string): Promise<boolean> {
+  const session = await getSession();
+  if (!session || session.tenantId !== companyId) return false;
+  const viewer = await loadViewer(session);
+  return viewer?.role === "COMPANY_ADMIN" && viewer.tenantId === companyId;
+}
 
 async function finish(
   tenant: Awaited<ReturnType<typeof findTenant>>,
   onDomain: boolean,
-  logKey: Record<string, string>
+  logKey: Record<string, string>,
+  allowOwnerPreview = false
 ): Promise<ResolvedStorefront | null> {
   const visibility = storefrontRowVisibility(tenant);
-  if (!tenant || !visibility.open) {
+  const preview =
+    allowOwnerPreview && !onDomain && tenant && !visibility.open && visibility.reason === "disabled" && (await ownerPreview(tenant.id));
+  if (!tenant || (!visibility.open && !preview)) {
     // Μόνο στα logs του server (Vercel → Logs): ποιο slug/domain και γιατί. Ο
     // επισκέπτης βλέπει το ίδιο 404 σε κάθε περίπτωση.
     console.info("[FleetPro] site 404", { ...logKey, reason: visibility.open ? "unknown" : visibility.reason });
@@ -76,13 +96,14 @@ const findTenant = (where: { storefrontSlug: string } | { customDomain: string; 
   db.tenant.findFirst({ where, select: TENANT_SELECT });
 
 export async function resolveStorefrontCompany(
-  rawSlug: string
+  rawSlug: string,
+  opts: { allowOwnerPreview?: boolean } = {}
 ): Promise<ResolvedStorefront | null> {
   // Το middleware έχει ήδη κάνει redirect σε κανονική μορφή· εδώ ξανά, για
   // ασφάλεια (κεφαλαία/κενά/τόνοι δεν δίνουν 404 σε ενεργή σελίδα).
   const slug = canonicalSlug(rawSlug);
   if (!slug) return null;
-  return finish(await findTenant({ storefrontSlug: slug }), false, { slug });
+  return finish(await findTenant({ storefrontSlug: slug }), false, { slug }, opts.allowOwnerPreview);
 }
 
 /**
@@ -104,7 +125,8 @@ export async function resolveStorefrontByHost(rawHost: string | null): Promise<R
  */
 export async function resolveStorefrontParam(param: string): Promise<ResolvedStorefront | null> {
   if (param === DOMAIN_SLUG) return resolveStorefrontByHost(headers().get(SITE_HOST_HEADER));
-  return resolveStorefrontCompany(param);
+  // Μόνο οι ΣΕΛΙΔΕΣ (όχι τα δημόσια API κράτησης/τιμής) δέχονται προεπισκόπηση Διαχειριστή.
+  return resolveStorefrontCompany(param, { allowOwnerPreview: true });
 }
 
 /** Τα οχήματα του site: ενεργά, όχι «Ανενεργό», με publicVisible. */

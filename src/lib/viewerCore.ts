@@ -4,6 +4,8 @@
 // · Ανενεργός χρήστης → όχι.
 // · Χρήστης εταιρίας σε αναστολή ή ακυρωμένης → όχι (και με ζωντανό cookie).
 // · Το token πρέπει να αντιστοιχεί στον ΙΔΙΟ χρήστη/εταιρία με τη βάση.
+// · Email που περιμένει επαλήθευση (emailVerifiedAt = null, μόνο από /signup)
+//   → όχι (ούτε dashboard ούτε API).
 // Ο ρόλος και τα δικαιώματα έρχονται ΠΑΝΤΑ από τη βάση, όχι από το JWT.
 
 export const BLOCKED_TENANT_STATUSES = ["SUSPENDED", "CANCELLED"] as const;
@@ -16,6 +18,8 @@ export interface ViewerRow {
   role: string;
   tenantId: string | null;
   isActive: boolean;
+  /** null = περιμένει επαλήθευση email. undefined = δεν διαβάστηκε (παλιοί καλούντες). */
+  emailVerifiedAt?: Date | null;
   permissions: unknown;
   tenant: { status: string } | null;
 }
@@ -26,6 +30,7 @@ export function acceptViewerRow(
   session: { userId: string; tenantId?: string | null }
 ): ViewerRow | null {
   if (!row || !row.isActive) return null;
+  if (row.emailVerifiedAt === null) return null;
   if (row.id !== session.userId) return null;
   // Το token γράφτηκε για άλλη εταιρία από αυτή που έχει τώρα ο χρήστης.
   if ((session.tenantId ?? null) !== (row.tenantId ?? null)) return null;

@@ -16,6 +16,7 @@ import { Resend } from "resend";
 import { db } from "@/lib/db";
 import { badRequest, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
+import { emailFromForTenant } from "@/lib/emailSenderServer";
 import {
   EMAIL_SEND_LIMIT,
   EMAIL_SEND_WINDOW_MS,
@@ -44,7 +45,8 @@ export const POST = withPermission(
 
       const deps: InvoiceEmailDeps = {
         apiKey: process.env.RESEND_API_KEY,
-        from: process.env.EMAIL_FROM,
+        // Αποστολέας της εταιρίας αν είναι επαληθευμένος, αλλιώς EMAIL_FROM (emailSender.ts).
+        from: await emailFromForTenant(tenantId),
         loadInvoice: async () => {
           if (!tenantId) return null;
           const loaded = await loadInvoiceDoc(tenantId, id);

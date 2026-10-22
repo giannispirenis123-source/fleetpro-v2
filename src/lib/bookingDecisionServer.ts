@@ -256,10 +256,11 @@ export function messageFromContext(ctx: MessageContext, kind: MessageKind): Book
 }
 
 /** Οι εξαρτήσεις αποστολής με Resend + καταγραφή στο booking_notifications. */
-export function prismaMessageDeps(tenantId: string, bookingId: string, userId: string, origin: string): MessageDeps {
+/** `from` = emailFromForTenant(tenantId): της εταιρίας αν είναι επαληθευμένος, αλλιώς EMAIL_FROM. */
+export function prismaMessageDeps(tenantId: string, bookingId: string, userId: string, origin: string, from: string | undefined): MessageDeps {
   return {
     apiKey: process.env.RESEND_API_KEY,
-    from: process.env.EMAIL_FROM,
+    from,
     loadNotifications: () =>
       db.bookingNotification.findMany({ where: { tenantId, bookingId }, select: { kind: true, channel: true, result: true } }),
     buildMessage: async (kind) => {

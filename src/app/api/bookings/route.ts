@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { ok, created, badRequest, conflict, serverError, logError } from "@/lib/api";
-import { withPermission, bookingScope } from "@/lib/authz";
+import { withPermission, viewerCan } from "@/lib/authz";
+import { loadBookingPage, myCommissionSettings } from "@/lib/listServer";
 import { BOOKING_STATUSES, toBookingDTO } from "@/lib/bookings";
 import { withBookingNumberRetry } from "@/lib/bookingNumberRetry";
 import {
@@ -19,7 +20,7 @@ import {
   BookingConflictError,
 } from "@/lib/bookingCreate";
 
-// GET /api/bookings
+// GET /api/bookings?status=&q=&mine=1&page=
 export const GET = withPermission(
   async (req, session, _params, viewer) => {
     try {
@@ -30,33 +31,15 @@ export const GET = withPermission(
         return badRequest("Μη έγκυρη κατάσταση κράτησης");
       }
 
-      const bookings = await db.booking.findMany({
-        where: {
-          // Ο συνεργάτης βλέπει μόνο τις δικές του — το φίλτρο μπαίνει
-          // στο ερώτημα, όχι στην εμφάνιση.
-          ...bookingScope(viewer!),
-          ...(status ? { status: status as never } : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        include: {
-          vehicle: { select: { brand: true, model: true, plate: true } },
-          customer: { select: { firstName: true, lastName: true } },
-          invoice: { select: { invoiceNumber: true, invoiceCode: true } },
-          partner: {
-            select: {
-              id: true,
-              name: true,
-              commissionRate: true,
-              commissionOnRental: true,
-              commissionOnExtras: true,
-              commissionOnInsurance: true,
-            },
-          },
-          createdBy: { select: { id: true, name: true } },
-        },
-      });
-
-      return ok(bookings.map(toBookingDTO));
+      // Σελίδα (50) με φίλτρο/αναζήτηση στον server· στεγανότητα συνεργάτη μέσα
+      // στο bookingScope (listServer.ts). Η σύνοψη προμήθειας σε ΟΛΕΣ.
+      const commission = await myCommissionSettings(viewer!, viewerCan(viewer!, "commission.view"));
+      const page = await loadBookingPage(
+        viewer!,
+        { status, q: url.searchParams.get("q"), mine: url.searchParams.get("mine") === "1", page: url.searchParams.get("page") },
+        commission
+      );
+      return ok(page);
     } catch (error) {
       logError("bookings", error);
       return serverError();

@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { readLocalized, textFor } from "./text";
+import { TIMEOUTS } from "../withTimeout";
 
 export const REVIEW_TEXT_MAX = 1500;
 
@@ -161,7 +162,7 @@ export type FetchLike = (url: string, init: Record<string, unknown>) => Promise<
 
 /**
  * Βαθμολογία + κριτικές ενός σημείου από το Places API (New). ΠΟΤΕ δεν ρίχνει:
- * χωρίς κλειδί / χωρίς Place ID / σφάλμα δικτύου / μη-200 → null (σιωπηλά,
+ * χωρίς κλειδί / χωρίς Place ID / σφάλμα δικτύου / timeout 5΄΄ / μη-200 → null (σιωπηλά,
  * μόνο κωδικός στα logs — ποτέ το κλειδί).
  */
 export async function fetchGooglePlace(
@@ -177,6 +178,8 @@ export async function fetchGooglePlace(
       {
         headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": GOOGLE_FIELD_MASK },
         next: { revalidate: GOOGLE_REVALIDATE_SECONDS },
+        // Αργή απάντηση = καμία απάντηση: η σελίδα φορτώνει χωρίς τις κριτικές Google.
+        signal: AbortSignal.timeout(TIMEOUTS.google),
       }
     );
     if (!res.ok) {

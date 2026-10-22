@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ok, created, badRequest, serverError, logError } from "@/lib/api";
+import { loadCustomerPage } from "@/lib/listServer";
 import { withPermission } from "@/lib/authz";
 import { toCustomerDTO } from "@/lib/customers";
 
@@ -45,32 +46,15 @@ const createCustomerSchema = z.object({
   isBlacklisted: z.boolean().optional(),
 });
 
-// GET /api/customers — λίστα πελατών του tenant
+// GET /api/customers?q=&page= — λίστα πελατών του tenant (σελίδες των 50)
 export const GET = withPermission(
   async (req, session) => {
     try {
       const url = new URL(req.url);
       const q = (url.searchParams.get("q") || "").trim();
 
-      const customers = await db.customer.findMany({
-        where: {
-          tenantId: session.tenantId!,
-          ...(q
-            ? {
-                OR: [
-                  { firstName: { contains: q, mode: "insensitive" as const } },
-                  { lastName: { contains: q, mode: "insensitive" as const } },
-                  { email: { contains: q, mode: "insensitive" as const } },
-                  { phone: { contains: q } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-        include: { _count: { select: { bookings: true } } },
-      });
-
-      return ok(customers.map(toCustomerDTO));
+      // Σελίδα (50) αλφαβητικά, αναζήτηση στον server, ΜΟΝΟ της εταιρίας της συνεδρίας.
+      return ok(await loadCustomerPage(session.tenantId!, { q, page: url.searchParams.get("page") }));
     } catch (error) {
       logError("customers", error);
       return serverError();

@@ -27,6 +27,7 @@ import { classifyProviderError } from "@/lib/invoiceEmail";
 import { sendInvoiceEmail, type InvoiceEmailDeps } from "@/lib/invoiceEmailSend";
 import { fetchLogoBytes, loadInvoiceDoc } from "@/lib/invoiceServer";
 import { buildInvoicePdf } from "@/lib/invoicePdf";
+import { TIMEOUTS, withTimeout } from "@/lib/withTimeout";
 
 const schema = z.object({ lang: z.enum(DOC_LANGS) });
 
@@ -94,7 +95,7 @@ export const POST = withPermission(
         buildPdf: async (doc) => buildInvoicePdf({ doc, logo: await fetchLogoBytes(logoPath) }),
         send: async (apiKey, email) => {
           try {
-            const { error } = await new Resend(apiKey).emails.send(email);
+            const { error } = await withTimeout(new Resend(apiKey).emails.send(email), TIMEOUTS.email, "email");
             return { error: error ? classifyProviderError(error) : null };
           } catch (e) {
             return { error: classifyProviderError(e) };

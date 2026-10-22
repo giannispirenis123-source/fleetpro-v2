@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { pageGuard, bookingScope, viewerCan } from "@/lib/authz";
 import { listPartners } from "@/lib/partners";
 import { db } from "@/lib/db";
-import { BOOKING_PAYMENT_INCLUDE, toBookingDTO } from "@/lib/bookings";
+import { loadBookingForList, loadBookingPage, myCommissionSettings } from "@/lib/listServer";
 import { toExtraDTO } from "@/lib/extras";
 import { expireStaleHolds } from "@/lib/public/paymentServer";
 import { stripeLiveMode } from "@/lib/stripeConnect";
@@ -25,31 +25,13 @@ export default async function BookingsPage({
   // Αναμονές online πληρωμής που έληξαν χωρίς webhook → ακυρωμένες, πριν τη λίστα.
   if (tenantId) await expireStaleHolds(db, tenantId);
 
-  const [bookings, customers, vehicles, extras, tenant, partners, me] =
+  const [initialPage, customers, vehicles, extras, tenant, partners, me, focusBooking] =
     await Promise.all([
-    db.booking.findMany({
-      // Ο συνεργάτης βλέπει ΜΟΝΟ τις δικές του — φιλτράρεται στη βάση.
-      where: bookingScope(viewer),
-      orderBy: { createdAt: "desc" },
-      include: {
-        vehicle: { select: { brand: true, model: true, plate: true } },
-        customer: { select: { firstName: true, lastName: true } },
-        invoice: { select: { invoiceNumber: true, invoiceCode: true } },
-        partner: {
-            select: {
-              id: true,
-              name: true,
-              commissionRate: true,
-              commissionOnRental: true,
-              commissionOnExtras: true,
-              commissionOnInsurance: true,
-            },
-          },
-          createdBy: { select: { id: true, name: true } },
-          messages: { select: { kind: true, channel: true, result: true } },
-            payments: BOOKING_PAYMENT_INCLUDE,
-      },
-    }),
+    // Πρώτη σελίδα (50) — με το φίλτρο «Εκκρεμεί» αν ήρθαμε από το banner.
+    // Σύνοψη προμήθειας σε ΟΛΕΣ τις κρατήσεις του χρήστη (listServer.ts).
+    myCommissionSettings(viewer, viewerCan(viewer, "commission.view")).then((settings) =>
+      loadBookingPage(viewer, { status: searchParams?.status === "PENDING" ? "PENDING" : undefined }, settings)
+    ),
     db.customer.findMany({
       where: { tenantId },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -91,11 +73,14 @@ export default async function BookingsPage({
         commissionOnInsurance: true,
       },
     }),
+    // Από το Ημερολόγιο / ειδοποίηση: η κράτηση μπορεί να μην είναι στην πρώτη σελίδα.
+    searchParams?.booking ? loadBookingForList(viewer, searchParams.booking) : null,
   ]);
 
   return (
     <BookingsClient
-      initialBookings={bookings.map(toBookingDTO)}
+      initialPage={initialPage}
+      focusBooking={focusBooking}
       customers={customers.map((c) => ({
         id: c.id,
         label: `${c.firstName} ${c.lastName}`,

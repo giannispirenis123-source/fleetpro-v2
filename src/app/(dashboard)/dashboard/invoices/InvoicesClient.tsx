@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import Pager from "@/components/lists/Pager";
+import { useServerList } from "@/components/lists/useServerList";
+import type { ListPage } from "@/lib/pagination";
 import {
   Search,
   Receipt,
@@ -70,20 +73,27 @@ interface DocActions {
 }
 
 export default function InvoicesClient({
-  initialInvoices,
+  initialPage,
   company,
   canExport = false,
 }: {
-  initialInvoices: InvoiceDTO[];
+  initialPage: ListPage<InvoiceDTO>;
   company: CompanyInfo;
   canExport?: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
 
-  const [invoices, setInvoices] = useState<InvoiceDTO[]>(initialInvoices);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
+  // Σελίδες των 50 στον server· φίλτρο (ίδιο νόημα με το effectiveStatus) και
+  // αναζήτηση στον server, πάνω σε ΟΛΑ τα τιμολόγια.
+  const list = useServerList("/api/invoices", initialPage, { filter: filter === "ALL" ? "" : filter, q: search.trim() }, {
+    load: tr("contracts.errorLoad"),
+    connection: tr("invoices.errorConnection"),
+  });
+  const visible = list.data.items;
+  const setInvoices = (fn: (prev: InvoiceDTO[]) => InvoiceDTO[]) => list.setData((d) => ({ ...d, items: fn(d.items) }));
   const [open, setOpen] = useState<InvoiceDTO | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -92,25 +102,6 @@ export default function InvoicesClient({
   // πάντα δίγλωσσο και δεν εξαρτάται από αυτήν.
   const [docLang, setDocLang] = useState<DocLang>("el");
   const [docBusy, setDocBusy] = useState<DocActions["busy"]>(null);
-
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return invoices.filter((i) => {
-      const state = effectiveStatus(i);
-      const matchesFilter =
-        filter === "ALL" ||
-        (filter === "UNPAID"
-          ? state === "UNPAID" || state === "OVERDUE"
-          : state === filter);
-      const matchesSearch =
-        !q ||
-        [i.invoiceCode, i.invoiceNumber, i.customerName, i.bookingNumber]
-          .join(" ")
-          .toLowerCase()
-          .includes(q);
-      return matchesFilter && matchesSearch;
-    });
-  }, [invoices, search, filter]);
 
   const setPaid = async (invoice: InvoiceDTO, paid: boolean) => {
     if (busyId) return;
@@ -134,6 +125,8 @@ export default function InvoicesClient({
       const next: InvoiceDTO = data.data.invoice;
       setInvoices((prev) => prev.map((x) => (x.id === next.id ? next : x)));
       setOpen((current) => (current && current.id === next.id ? next : current));
+      // Πληρώθηκε/ξεπληρώθηκε: με φίλτρο μπορεί να βγει από τη λίστα — ξανά από τον server.
+      if (filter !== "ALL") list.reload();
     } catch {
       setError(tr("invoices.errorConnection"));
     } finally {
@@ -241,8 +234,8 @@ export default function InvoicesClient({
           ))}
         </div>
         <span className="dash-count">
-          {visible.length}{" "}
-          {visible.length === 1
+          {list.data.total}{" "}
+          {list.data.total === 1
             ? tr("invoices.countOne")
             : tr("invoices.count")}
         </span>
@@ -253,7 +246,7 @@ export default function InvoicesClient({
 
       {visible.length === 0 ? (
         <div className="dash-panel dash-empty">
-          {invoices.length === 0 ? (
+          {filter === "ALL" && !search.trim() ? (
             <>
               {tr("invoices.empty")}
               <br />
@@ -279,6 +272,9 @@ export default function InvoicesClient({
           ))}
         </div>
       )}
+
+      {list.error && <div className="dash-form-error">{list.error}</div>}
+      <Pager page={list.data.page} total={list.data.total} pageSize={list.data.pageSize} loading={list.loading} onPage={list.setPage} />
 
       {open && (
         <InvoiceDetail

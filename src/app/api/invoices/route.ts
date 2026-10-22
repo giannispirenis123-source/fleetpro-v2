@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ok, created, badRequest, serverError, logError } from "@/lib/api";
+import { loadInvoicePage } from "@/lib/listServer";
 import { withPermission } from "@/lib/authz";
 import { INVOICE_RELATIONS, toInvoiceDTO } from "@/lib/invoices";
 import { issueInvoiceForBooking } from "@/lib/invoiceIssue";
@@ -18,17 +19,12 @@ const issueSchema = z.object({
   bookingId: z.string().min(1, "Δώσε κράτηση"),
 });
 
-// GET /api/invoices
+// GET /api/invoices?filter=ALL|UNPAID|PAID|OVERDUE&q=&page= — σελίδες των 50
 export const GET = withPermission(
-  async (_req, session) => {
+  async (req, session) => {
     try {
-      const invoices = await db.invoice.findMany({
-        where: { tenantId: session.tenantId! },
-        orderBy: { issueDate: "desc" },
-        include: INVOICE_RELATIONS,
-      });
-
-      return ok(invoices.map(toInvoiceDTO));
+      const sp = new URL(req.url).searchParams;
+      return ok(await loadInvoicePage(session.tenantId!, { filter: sp.get("filter"), q: sp.get("q"), page: sp.get("page") }));
     } catch (error) {
       logError("invoices", error);
       return serverError();

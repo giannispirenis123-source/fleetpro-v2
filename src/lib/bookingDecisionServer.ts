@@ -24,6 +24,7 @@ import {
   type MessageKind,
 } from "./bookingMessages";
 import type { DecisionBooking, DecisionPatch, DecisionStore, MessageDeps } from "./bookingDecision";
+import { TIMEOUTS, withTimeout } from "./withTimeout";
 
 type Tx = Prisma.TransactionClient;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -265,7 +266,7 @@ export function prismaMessageDeps(tenantId: string, bookingId: string, userId: s
     },
     send: async (apiKey, email) => {
       try {
-        const { error } = await new Resend(apiKey).emails.send(email);
+        const { error } = await withTimeout(new Resend(apiKey).emails.send(email), TIMEOUTS.email, "email");
         return { error: error ? classifyProviderError(error) : null };
       } catch (e) {
         return { error: classifyProviderError(e) };

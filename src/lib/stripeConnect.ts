@@ -12,6 +12,7 @@
 
 import Stripe from "stripe";
 import { missingStripeEnv } from "./stripeConnectEnv";
+import { TIMEOUTS } from "./withTimeout";
 
 export { missingStripeEnv };
 
@@ -35,7 +36,9 @@ let client: Stripe | null = null;
 export function stripe(): Stripe {
   const key = value("STRIPE_SECRET_KEY");
   if (!key) throw new Error("STRIPE_SECRET_KEY missing");
-  if (!client) client = new Stripe(key, { apiVersion: "2023-10-16", maxNetworkRetries: 2, timeout: 20_000 });
+  // Όριο ανά προσπάθεια + μία επανάληψη (με idempotency key όπου γράφει): στη
+  // χειρότερη ~20΄΄ αντί για ~60΄΄. Σφάλμα → σαφές μήνυμα «Το Stripe δεν απάντησε».
+  if (!client) client = new Stripe(key, { apiVersion: "2023-10-16", maxNetworkRetries: 1, timeout: TIMEOUTS.stripe });
   return client;
 }
 

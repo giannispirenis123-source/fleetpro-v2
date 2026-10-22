@@ -499,9 +499,10 @@ function VehicleCard({
 
 /* ─────────────────────────────────────────────
    Modal δημιουργίας / επεξεργασίας
+   (το ίδιο το χρησιμοποιεί και το onboarding, βήμα Β — μία φόρμα οχήματος)
    ───────────────────────────────────────────── */
 
-function VehicleModal({
+export function VehicleModal({
   mode,
   vehicle,
   photos,

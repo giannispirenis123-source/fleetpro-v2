@@ -2894,3 +2894,31 @@ input.dash-invalid,
 .dash-domain-dns th, .dash-domain-dns td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .dash-domain-dns th { color: var(--text-3); font-weight: 500; font-size: 12px; }
 .dash-domain-dns code { user-select: all; font-size: 12.5px; }
+
+/* ── Onboarding μετά την εγγραφή (SQL 34) ── */
+.dash-onb-banner {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--primary-bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 16px; margin-bottom: 18px; font-size: 14px; color: var(--text);
+}
+.dash-onb-banner progress { flex: 1; min-width: 80px; max-width: 220px; height: 8px; accent-color: var(--primary); }
+.dash-onb-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 14px; }
+.dash-onb-step.is-done { opacity: 0.85; }
+.dash-onb-head { display: flex; align-items: flex-start; gap: 12px; }
+.dash-onb-titles { flex: 1; min-width: 0; }
+.dash-onb-titles .dash-section-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
+.dash-onb-icon {
+  width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text-3); flex-shrink: 0;
+}
+.dash-onb-step.is-done .dash-onb-icon { background: var(--primary); color: #fff; }
+.dash-onb-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-4); }
+.dash-onb-tag.is-ok { color: var(--ok-fg); }
+.dash-onb-body { margin-top: 14px; }
+.dash-onb-preview { width: 100%; height: 420px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.dash-onb-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.dash-onb-done { margin-bottom: 14px; }
+@media (max-width: 640px) {
+  .dash-onb-head { flex-wrap: wrap; }
+  .dash-onb-preview { height: 320px; }
+}

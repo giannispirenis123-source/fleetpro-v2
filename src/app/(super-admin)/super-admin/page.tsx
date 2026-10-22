@@ -65,6 +65,12 @@ interface Tenant {
   createdAt: string;
   /** Προμήθεια πλατφόρμας στις online πληρωμές (basis points). */
   platformFeeBps?: number;
+  /** SQL 34: manual (Super Admin) | self_signup (/signup). */
+  signupSource?: "manual" | "self_signup";
+  /** Τουλάχιστον ένας χρήστης με επαληθευμένο email. */
+  emailVerified?: boolean;
+  /** Σημάνθηκε για καθάρισμα (ανεπιβεβαίωτη εγγραφή > 7 ημέρες). */
+  cleanupFlaggedAt?: string | null;
   _count: {
     users: number;
     vehicles: number;
@@ -163,6 +169,8 @@ export default function SuperAdminDashboard() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<TenantStatus | "ALL">("ALL");
   const [filterPlan, setFilterPlan] = useState<SubscriptionPlan | "ALL">("ALL");
+  const [filterSource, setFilterSource] = useState<"ALL" | "manual" | "self_signup">("ALL");
+  const [cleanup, setCleanup] = useState<{ count: number; message: string } | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [showTenantMenu, setShowTenantMenu] = useState<string | null>(null);
@@ -208,8 +216,48 @@ export default function SuperAdminDashboard() {
       t.slug.includes(search.toLowerCase());
     const matchStatus = filterStatus === "ALL" || t.status === filterStatus;
     const matchPlan = filterPlan === "ALL" || t.plan === filterPlan;
-    return matchSearch && matchStatus && matchPlan;
+    const matchSource = filterSource === "ALL" || (t.signupSource ?? "manual") === filterSource;
+    return matchSearch && matchStatus && matchPlan && matchSource;
   });
+
+  // Αναστολή/ενεργοποίηση με τον ΥΠΑΡΧΟΝΤΑ μηχανισμό (PATCH /api/tenants/[id] status).
+  const changeStatus = async (tenant: Tenant, status: TenantStatus) => {
+    setShowTenantMenu(null);
+    try {
+      const res = await fetch(`/api/tenants/${tenant.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLoadError(data.message || "Η αλλαγή κατάστασης απέτυχε");
+        return;
+      }
+      setTenants((prev) => prev.map((t) => (t.id === tenant.id ? { ...t, status } : t)));
+    } catch {
+      setLoadError("Σφάλμα σύνδεσης");
+    }
+  };
+
+  // Ανεπιβεβαίωτες εγγραφές > 7 ημέρες: ΜΟΝΟ σήμανση, όχι διαγραφή.
+  const flagCleanup = async () => {
+    try {
+      const res = await fetch("/api/super-admin/signup-cleanup", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCleanup({ count: 0, message: data.message || "Σφάλμα" });
+        return;
+      }
+      setCleanup({
+        count: data.data.items.length,
+        message: `Σημάνθηκαν ${data.data.flagged} · ανεπιβεβαίωτες > 7 ημ.: ${data.data.items.length}`,
+      });
+      loadTenants();
+    } catch {
+      setCleanup({ count: 0, message: "Σφάλμα σύνδεσης" });
+    }
+  };
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -378,6 +426,21 @@ export default function SuperAdminDashboard() {
                   <option value="PRO">Pro</option>
                   <option value="ENTERPRISE">Enterprise</option>
                 </select>
+                <select
+                  className="sa-select"
+                  value={filterSource}
+                  onChange={(e) => setFilterSource(e.target.value as typeof filterSource)}
+                  aria-label="Προέλευση"
+                >
+                  <option value="ALL">Κάθε προέλευση</option>
+                  <option value="manual">Manual</option>
+                  <option value="self_signup">Self-signup</option>
+                </select>
+                {filterSource === "self_signup" && (
+                  <button className="sa-btn-ghost" onClick={flagCleanup} title="Σήμανση ανεπιβεβαίωτων εγγραφών > 7 ημερών (χωρίς διαγραφή)">
+                    Σήμανση για καθάρισμα
+                  </button>
+                )}
                 <button
                   className="sa-btn-primary"
                   onClick={() => setShowCreateModal(true)}
@@ -387,6 +450,8 @@ export default function SuperAdminDashboard() {
                 </button>
               </div>
             </div>
+
+            {cleanup && <div className="sa-load-error">{cleanup.message}</div>}
 
             {loadError && (
               <div className="sa-load-error">
@@ -415,7 +480,9 @@ export default function SuperAdminDashboard() {
                       <th>Οχήματα</th>
                       <th>Χρήστες</th>
                       <th>Κρατήσεις</th>
+                      <th>Προέλευση</th>
                       <th>Εγγραφή</th>
+                      <th>Email επαλ.</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -435,14 +502,7 @@ export default function SuperAdminDashboard() {
                           setUsersOfTenant(tenant);
                           setShowTenantMenu(null);
                         }}
-                        onStatusChange={(status) => {
-                          setTenants((prev) =>
-                            prev.map((t) =>
-                              t.id === tenant.id ? { ...t, status } : t
-                            )
-                          );
-                          setShowTenantMenu(null);
-                        }}
+                        onStatusChange={(status) => changeStatus(tenant, status)}
                       />
                     ))}
                   </tbody>
@@ -603,9 +663,14 @@ function TenantRow({
       <td className="sa-num">{tenant._count.vehicles}</td>
       <td className="sa-num">{tenant._count.users}</td>
       <td className="sa-num">{tenant._count.bookings}</td>
+      <td>
+        <span className="sa-source">{tenant.signupSource === "self_signup" ? "self-signup" : "manual"}</span>
+        {tenant.cleanupFlaggedAt && <span className="sa-trial-expired"> για καθάρισμα</span>}
+      </td>
       <td className="sa-date">
         {new Date(tenant.createdAt).toLocaleDateString("el-GR")}
       </td>
+      <td>{tenant.emailVerified === false ? <span className="sa-trial-expired">Όχι</span> : "Ναι"}</td>
       <td>
         <div className="sa-actions">
           <button
@@ -2320,6 +2385,7 @@ const superAdminStyles = `
   }
 
   .sa-trial-days { font-size: 9px; color: var(--warn-icon); font-weight: 600; }
+  .sa-source { font-size: 12px; color: var(--text-3); }
   .sa-trial-expired { font-size: 9px; color: var(--bad-icon); font-weight: 600; }
 
   .sa-num { color: var(--text-3); font-weight: 600; font-size: 13px; }

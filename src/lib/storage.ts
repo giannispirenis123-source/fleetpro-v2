@@ -15,6 +15,9 @@
 //
 // Server-only.
 
+// Όρια χρόνου (ms) — εδώ και όχι στο withTimeout.ts: το αρχείο μένει χωρίς imports.
+const TIMEOUTS = { storageSign: 8_000, storageRemove: 10_000, storageUpload: 30_000 } as const;
+
 /** Το όνομα του bucket στο Supabase (Storage → New bucket, Private). */
 export const STORAGE_BUCKET = "fleetpro-files";
 
@@ -310,6 +313,7 @@ export async function uploadObject(path: string, body: Uint8Array, contentType: 
       },
       body: Buffer.from(body),
       cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUTS.storageUpload),
     });
   } catch (e) {
     throw networkError("upload", e);
@@ -328,6 +332,7 @@ export async function removeObjects(paths: string[]): Promise<void> {
       headers: { ...headers(key), "Content-Type": "application/json" },
       body: JSON.stringify({ prefixes: list }),
       cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUTS.storageRemove),
     });
     if (!res.ok) await responseError("remove", res);
   } catch (e) {
@@ -364,6 +369,8 @@ export async function signUrls(
       headers: { ...headers(key), "Content-Type": "application/json" },
       body: JSON.stringify({ expiresIn: seconds, paths: Array.from(new Set(todo)) }),
       cache: "no-store",
+      // Αργή αποθήκευση: η σελίδα (και το δημόσιο site) φορτώνει χωρίς τις εικόνες.
+      signal: AbortSignal.timeout(TIMEOUTS.storageSign),
     });
     if (!res.ok) {
       await responseError("sign", res);

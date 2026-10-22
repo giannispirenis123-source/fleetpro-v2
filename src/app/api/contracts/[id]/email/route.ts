@@ -27,6 +27,7 @@ import {
   readSendLog,
 } from "@/lib/contractEmail";
 import { sendContractEmail, type EmailSendDeps } from "@/lib/contractEmailSend";
+import { TIMEOUTS, withTimeout } from "@/lib/withTimeout";
 
 const schema = z.object({ lang: z.enum(EMAIL_LANGS) });
 
@@ -100,7 +101,7 @@ export const POST = withPermission(
         buildPdf: (contract, url, vatRate) => buildContractPdf({ contract, url, fallbackVatRate: vatRate }),
         send: async (apiKey, email) => {
           try {
-            const { error } = await new Resend(apiKey).emails.send(email);
+            const { error } = await withTimeout(new Resend(apiKey).emails.send(email), TIMEOUTS.email, "email");
             return { error: error ? errorCode(error) : null };
           } catch (e) {
             return { error: errorCode(e) };

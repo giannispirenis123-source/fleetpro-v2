@@ -34,6 +34,7 @@ const en = {
   payOnPickup: "Pay on pickup",
   bookingRequest: "Bookings are confirmed by the company.",
   poweredBy: "Powered by FleetPro",
+  staffLogin: "Staff login",
   notFoundTitle: "Page not found",
   // ── Αρχική / αναζήτηση (PR 2) ──
   heroTitle: "Car rental · {name}",
@@ -288,6 +289,7 @@ const el: Partial<StorefrontDictionary> = {
   payOnPickup: "Πληρωμή κατά την παραλαβή",
   bookingRequest: "Οι κρατήσεις επιβεβαιώνονται από την εταιρία.",
   poweredBy: "Με την τεχνολογία του FleetPro",
+  staffLogin: "Είσοδος προσωπικού",
   notFoundTitle: "Η σελίδα δεν βρέθηκε",
   heroTitle: "Ενοικίαση οχημάτων · {name}",
   searchTitle: "Βρείτε το όχημά σας",

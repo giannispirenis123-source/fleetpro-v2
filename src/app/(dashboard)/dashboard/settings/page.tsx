@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import SettingsClient from "./SettingsClient";
 import { signUrls } from "@/lib/storage";
 import CompanyContractSettings from "./CompanyContractSettings";
+import EmailSenderSettings from "./EmailSenderSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function SettingsPage() {
   // κάτι που ο server θα αρνιόταν.
   const guard = await pageGuard("settings.view");
   if (!guard) redirect("/dashboard");
-  const { session } = guard;
+  const { session, viewer } = guard;
 
   const tenant = await db.tenant.findUnique({
     where: { id: session.tenantId },
@@ -65,6 +66,8 @@ export default async function SettingsPage() {
           contractTermsEn: tenant.contractTermsEn ?? "",
         }}
       />
+      {/* Αποστολέας email: ΜΟΝΟ Διαχειριστής (ίδιος έλεγχος και στο API). */}
+      {viewer.role === "COMPANY_ADMIN" && <EmailSenderSettings />}
     </>
   );
 }

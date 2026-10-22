@@ -12,6 +12,8 @@ export const TIMEOUTS = {
   // Supabase Storage: 8΄΄ signed URLs / 10΄΄ διαγραφή / 30΄΄ ανέβασμα — στο storage.ts.
   /** Stripe (κοινός client): ανά προσπάθεια· τα checkout έχουν δικό τους 8΄΄. */
   stripe: 10_000,
+  /** DNS lookup του «Έλεγχος domain» (ανά ερώτημα A/CNAME). */
+  dns: 5_000,
 } as const;
 
 export class TimeoutError extends Error {

@@ -10,7 +10,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { openStorefront } from "./page";
 import { loadPublicVehicle } from "./resolve";
-import { storefrontPath } from "./slug";
+import { sitePath } from "./slug";
 import { storefrontDictionary } from "./i18n";
 import { headers } from "next/headers";
 import { siteUrl } from "./siteUrlServer";
@@ -82,7 +82,7 @@ const sortOf = (sp: SearchParams): SortOrder => {
 
 function searchBoxData(company: PublicCompany, cat: SiteCatalog, lang: string, initial: SearchCriteria): SearchBoxData {
   return {
-    action: storefrontPath(company.slug, lang, "search"),
+    action: sitePath(company, lang, "search"),
     initial,
     rules: cat.rules,
     locations: cat.locations.map((l) => ({
@@ -188,7 +188,7 @@ export async function storefrontSearchMetadata(p: StorefrontParams, sp: SearchPa
 
 export async function StorefrontSearchPage({ params, searchParams }: { params: StorefrontParams; searchParams: SearchParams }) {
   const { company, companyId, lang } = await openStorefront(params.slug, params.lang, "search", rawQuery(searchParams));
-  if (!hasSearch(searchParams)) redirect(storefrontPath(company.slug, lang));
+  if (!hasSearch(searchParams)) redirect(sitePath(company, lang));
   const cat = await catalogOr404(companyId);
   const d = storefrontDictionary(lang);
 
@@ -203,7 +203,7 @@ export async function StorefrontSearchPage({ params, searchParams }: { params: S
           cat,
           criteria,
           lang,
-          (card) => storefrontPath(company.slug, lang, "book", criteriaToQuery({ ...criteria, type: null }, { g: card.key })),
+          (card) => sitePath(company, lang, "book", criteriaToQuery({ ...criteria, type: null }, { g: card.key })),
           d.unavailable
         );
 
@@ -233,13 +233,13 @@ export async function storefrontBookMetadata(p: StorefrontParams, sp: SearchPara
 export async function StorefrontBookPage({ params, searchParams }: { params: StorefrontParams; searchParams: SearchParams }) {
   const { company, companyId, lang } = await openStorefront(params.slug, params.lang, "book", rawQuery(searchParams));
   const key = first(searchParams.g);
-  if (!hasSearch(searchParams) || !isCardKey(key)) redirect(storefrontPath(company.slug, lang));
+  if (!hasSearch(searchParams) || !isCardKey(key)) redirect(sitePath(company, lang));
   const cat = await catalogOr404(companyId);
   const d = storefrontDictionary(lang);
 
   const criteria = { ...parseCriteria(searchParams), type: null };
   const query = criteriaToQuery(criteria, { g: key });
-  const backHref = storefrontPath(company.slug, lang, "search", criteriaToQuery(criteria));
+  const backHref = sitePath(company, lang, "search", criteriaToQuery(criteria));
   const problems = validateCriteria(criteria, cat.rules);
 
   // Ξανά διαθεσιμότητα + τιμή για ΑΥΤΗ την κάρτα (το link μπορεί να είναι παλιό).
@@ -275,7 +275,7 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
               slug: company.slug,
               cardKey: key,
               criteria: { pl: criteria.pl, dl: criteria.dl, from: criteria.from, to: criteria.to, age: criteria.age },
-              bookPath: storefrontPath(company.slug, lang, "book"),
+              bookPath: sitePath(company, lang, "book"),
               query,
               options: extraOptions(cat.ctx, card.type, lang),
               insurance: insuranceOptions(cat.ctx, card.type, lang, q.days),

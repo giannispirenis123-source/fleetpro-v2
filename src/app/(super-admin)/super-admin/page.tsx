@@ -1667,7 +1667,6 @@ function EditTenantModal({
     status: tenant.status,
     brandColor: tenant.brandColor,
     website: "",
-    customDomain: "",
     // % με έως 2 δεκαδικά (π.χ. «1,5») ↔ basis points στη βάση.
     platformFee: String((tenant.platformFeeBps ?? 0) / 100).replace(".", ","),
   });
@@ -1678,14 +1677,13 @@ function EditTenantModal({
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      // Τα website/customDomain δεν φορτώνονται στη φόρμα: κενά = «δεν
-      // αλλάζουν» (αλλιώς θα σβήνονταν, και το customDomain είναι UNIQUE).
-      const { website, customDomain, platformFee: _fee, ...rest } = form;
+      // Το website δεν φορτώνεται στη φόρμα: κενό = «δεν αλλάζει». Το domain
+      // του site το ορίζει ο Admin της εταιρίας («Η σελίδα μου» → «Domain»).
+      const { website, platformFee: _fee, ...rest } = form;
       const payload = {
         ...rest,
         platformFeeBps: feeBps,
         ...(website.trim() && { website: website.trim() }),
-        ...(customDomain.trim() && { customDomain: customDomain.trim() }),
       };
       const res = await fetch(`/api/tenants/${tenant.id}`, {
         method: "PATCH",
@@ -1737,7 +1735,6 @@ function EditTenantModal({
                 <input value={form.brandColor} onChange={e => setForm(f => ({...f, brandColor: e.target.value}))} />
               </div>
             </label>
-            <label>Custom Domain<input value={form.customDomain} onChange={e => setForm(f => ({...f, customDomain: e.target.value}))} placeholder="mycompany.gr" /></label>
             <label>Website (embed)<input value={form.website} onChange={e => setForm(f => ({...f, website: e.target.value}))} placeholder="https://mycompany.gr" /></label>
             <label>
               Προμήθεια πλατφόρμας στις online πληρωμές (%)

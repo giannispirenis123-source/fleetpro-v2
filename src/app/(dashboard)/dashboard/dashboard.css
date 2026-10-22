@@ -2886,3 +2886,11 @@ input.dash-invalid,
 .dash-ps-legal-preview h2 { font-size: 18px; margin: 18px 0 6px; }
 .dash-ps-legal-preview h3 { font-size: 15.5px; margin: 14px 0 6px; }
 .dash-ps-legal-preview ul, .dash-ps-legal-preview ol { padding-left: 20px; }
+
+/* «Η σελίδα μου» → «Domain» / Ρυθμίσεις → «Αποστολέας email»: βήματα και πίνακας DNS */
+.dash-domain-steps { margin: 0 0 12px; padding-left: 20px; display: grid; gap: 10px; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.dash-domain-dns-wrap { overflow-x: auto; margin-top: 8px; }
+.dash-domain-dns { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+.dash-domain-dns th, .dash-domain-dns td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.dash-domain-dns th { color: var(--text-3); font-weight: 500; font-size: 12px; }
+.dash-domain-dns code { user-select: all; font-size: 12.5px; }

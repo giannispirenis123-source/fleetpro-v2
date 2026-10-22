@@ -14,8 +14,9 @@ import { PlacesTab, ReviewsTab } from "./ContentTabs";
 import { AppearanceTab, BookingTab, ExtrasTab, TrustTab } from "./SettingsTabs";
 import PaymentsTab from "./PaymentsTab";
 import LegalTab from "./LegalTab";
+import DomainTab from "./DomainTab";
 
-export const TABS = ["page", "appearance", "groups", "locations", "rates", "promotions", "ages", "extras", "places", "reviews", "booking", "payments", "trust", "legal"] as const;
+export const TABS = ["page", "appearance", "groups", "locations", "rates", "promotions", "ages", "extras", "places", "reviews", "booking", "payments", "trust", "legal", "domain"] as const;
 export type TabKey = (typeof TABS)[number];
 
 const LABEL: Record<TabKey, string> = {
@@ -33,6 +34,7 @@ const LABEL: Record<TabKey, string> = {
   payments: "tabPayments",
   trust: "tabTrust",
   legal: "tabLegal",
+  domain: "tabDomain",
 };
 
 export default function StorefrontTabs({ page }: { page: React.ReactNode }) {
@@ -81,6 +83,7 @@ export default function StorefrontTabs({ page }: { page: React.ReactNode }) {
         {tab === "payments" && <PaymentsTab />}
         {tab === "trust" && <TrustTab />}
         {tab === "legal" && <LegalTab />}
+        {tab === "domain" && <DomainTab />}
       </div>
     </>
   );

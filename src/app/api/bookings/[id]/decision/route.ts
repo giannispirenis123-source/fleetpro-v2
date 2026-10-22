@@ -25,6 +25,7 @@ import { loadBlockingBookings } from "@/lib/public/availability";
 import { nowLocal } from "@/lib/public/search";
 import { windowOfBooking } from "@/lib/bookingDecision";
 import { BOOKING_PAYMENT_INCLUDE, toBookingDTO } from "@/lib/bookings";
+import { emailFromForTenant } from "@/lib/emailSenderServer";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -126,7 +127,7 @@ export const POST = withPermission(
         viewer!,
         parsed.data,
         prismaDecisionStore(tenantId, id, viewer!.userId),
-        prismaMessageDeps(tenantId, id, viewer!.userId, origin)
+        prismaMessageDeps(tenantId, id, viewer!.userId, origin, await emailFromForTenant(tenantId))
       );
       if (result.status === 200) {
         const row = await db.booking.findFirst({

@@ -28,6 +28,7 @@ import {
 } from "@/lib/contractEmail";
 import { sendContractEmail, type EmailSendDeps } from "@/lib/contractEmailSend";
 import { TIMEOUTS, withTimeout } from "@/lib/withTimeout";
+import { emailFromForTenant } from "@/lib/emailSenderServer";
 
 const schema = z.object({ lang: z.enum(EMAIL_LANGS) });
 
@@ -47,7 +48,8 @@ export const POST = withPermission(
 
       const deps: EmailSendDeps = {
         apiKey: process.env.RESEND_API_KEY,
-        from: process.env.EMAIL_FROM,
+        // Αποστολέας της εταιρίας αν είναι επαληθευμένος, αλλιώς EMAIL_FROM (emailSender.ts).
+        from: await emailFromForTenant(viewer!.tenantId),
         loadContract: async () => {
           const c = await db.contract.findFirst({
             where: { ...contractScope(viewer!), id },

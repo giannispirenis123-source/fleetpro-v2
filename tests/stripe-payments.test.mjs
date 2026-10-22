@@ -324,8 +324,12 @@ test("διαθεσιμότητα: AWAITING_PAYMENT κρατά το όχημα Μ
 });
 
 test("όλα τα ερωτήματα συγκρούσεων εξαιρούν τη ληγμένη αναμονή (site, dashboard, walk-in)", () => {
-  for (const f of ["../src/lib/public/availability.ts", "../src/lib/bookingConflicts.ts", "../src/lib/walkIn.ts"]) {
-    assert.match(readFileSync(new URL(f, import.meta.url), "utf8"), /notExpiredHold\(/, f);
+  // ΕΝΑ ερώτημα για όλα τα κανάλια (loadBlockingBookings) — εκεί το notExpiredHold.
+  assert.match(readFileSync(new URL("../src/lib/public/availability.ts", import.meta.url), "utf8"), /notExpiredHold\(now\)/);
+  for (const f of ["../src/lib/bookingConflicts.ts", "../src/lib/walkIn.ts"]) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    assert.match(src, /loadBlockingBookings\(/, f);
+    assert.doesNotMatch(src, /booking\.findMany\(/, f);
   }
   assert.deepEqual(P.notExpiredHold(new Date(0)), { NOT: { status: "PENDING", paymentStatus: "AWAITING_PAYMENT", paymentExpiresAt: { lte: new Date(0) } } });
 });

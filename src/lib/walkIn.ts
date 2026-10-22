@@ -7,7 +7,6 @@
 // Server-only: εισάγει db.
 
 import { z } from "zod";
-import { notExpiredHold } from "./public/payments";
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
 import type { Viewer } from "./authz";
@@ -25,7 +24,8 @@ import {
   type MatchableCustomer,
   type SearchQuery,
 } from "./customerMatch";
-import { CONFLICT_STATUSES, findConflicts } from "./bookings";
+import { blockedVehicleIds, loadBlockingBookings, windowOf } from "./public/availability";
+import { tenantNowLocal } from "./bookingConflicts";
 import { splitVatInclusive, type VatSplit } from "./invoices";
 import { toDisplayBreakdown, type DisplayBreakdown, type PriceBreakdown } from "./pricing";
 import type { QuoteLine } from "./public/pricing";
@@ -211,8 +211,9 @@ export interface WalkInVehicle {
 }
 
 /**
- * Τα οχήματα που είναι ελεύθερα στο διάστημα, με τον ΙΔΙΟ έλεγχο
- * σύγκρουσης/προετοιμασίας των κρατήσεων (findConflicts). Ένα ερώτημα για
+ * Τα οχήματα που είναι ελεύθερα στο διάστημα, με τον ΙΔΙΟ κανόνα με το site
+ * και τον έλεγχο σύγκρουσης (src/lib/public/availability.ts): ίδιο ερώτημα,
+ * καταστάσεις, προετοιμασία, καθυστερήσεις, αλλαγές οχήματος. Ένα ερώτημα για
  * όλο τον στόλο αντί για ένα ανά όχημα.
  */
 export async function loadWalkInVehicles(
@@ -220,58 +221,31 @@ export async function loadWalkInVehicles(
   window: { pickupDate: string; pickupTime: string; returnDate: string; returnTime: string },
   includeUnavailable: boolean
 ): Promise<WalkInVehicle[]> {
-  // Η προετοιμασία μπορεί να «περάσει» στην επόμενη ημέρα: κοιτάμε και
-  // κρατήσεις που επιστρέφουν λίγες ημέρες πριν την παραλαβή.
-  const from = new Date(`${window.pickupDate}T00:00:00.000Z`);
-  from.setUTCDate(from.getUTCDate() - 3);
-  const until = new Date(`${window.returnDate}T00:00:00.000Z`);
-
-  const [tenant, vehicles, bookings] = await Promise.all([
+  const now = new Date();
+  const from = `${window.pickupDate}T${window.pickupTime}`;
+  const to = `${window.returnDate}T${window.returnTime}`;
+  const [tenant, vehicles, bookings, nowL] = await Promise.all([
     db.tenant.findUnique({ where: { id: tenantId }, select: { prepTimeMinutes: true } }),
     db.vehicle.findMany({
       where: { tenantId, isActive: true, status: { notIn: ["MAINTENANCE", "INACTIVE"] } },
       orderBy: [{ brand: "asc" }, { model: "asc" }, { plate: "asc" }],
       select: { id: true, brand: true, model: true, plate: true, dailyRate: true },
     }),
-    db.booking.findMany({
-      where: {
-        tenantId,
-        status: { in: CONFLICT_STATUSES as never[] },
-        returnDate: { gte: from },
-        pickupDate: { lte: until },
-        // Ληγμένη αναμονή online πληρωμής: δεν κρατά πια το όχημα.
-        ...notExpiredHold(new Date()),
-      },
-      select: {
-        id: true,
-        vehicleId: true,
-        bookingNumber: true,
-        pickupDate: true,
-        pickupTime: true,
-        returnDate: true,
-        returnTime: true,
-      },
-    }),
+    loadBlockingBookings(db, tenantId, { from, to }, now),
+    tenantNowLocal(db, tenantId, now),
   ]);
 
-  const byVehicle = new Map<string, typeof bookings>();
-  for (const b of bookings) {
-    const list = byVehicle.get(b.vehicleId) ?? [];
-    list.push(b);
-    byVehicle.set(b.vehicleId, list);
-  }
+  const interval = windowOf({ from, to });
+  const blocked = interval
+    ? blockedVehicleIds(
+        { companyId: tenantId, vehicles: [], bookings, from, to, prepMinutes: tenant?.prepTimeMinutes ?? 0, now: nowL, instantMs: now.getTime() },
+        interval
+      )
+    : new Set<string>();
 
   const out: WalkInVehicle[] = [];
   for (const v of vehicles) {
-    const others = (byVehicle.get(v.id) ?? []).map((r) => ({
-      id: r.id,
-      bookingNumber: r.bookingNumber,
-      pickupDate: r.pickupDate.toISOString().slice(0, 10),
-      pickupTime: r.pickupTime,
-      returnDate: r.returnDate.toISOString().slice(0, 10),
-      returnTime: r.returnTime,
-    }));
-    const available = findConflicts(window, others, tenant?.prepTimeMinutes ?? 0).length === 0;
+    const available = !!interval && !blocked.has(v.id);
     if (!available && !includeUnavailable) continue;
     out.push({
       id: v.id,

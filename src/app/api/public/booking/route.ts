@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 // Δημόσια υποβολή κράτησης (χωρίς login). Η εταιρία ΜΟΝΟ από το slug
 // (resolveStorefrontCompany)· όλοι οι έλεγχοι, η τιμή και η διαθεσιμότητα
 // ξανά στον server (src/lib/public/bookingSubmit.ts). Ποσά από τον browser
-// δεν διαβάζονται. Καμία IP δεν αποθηκεύεται.
+// δεν διαβάζονται. Καμία IP δεν αποθηκεύεται (μόνο hash για το όριο).
 
 import { NextRequest, NextResponse } from "next/server";
 import { submitPublicBooking } from "@/lib/public/bookingSubmit";
@@ -15,7 +15,9 @@ const NO_STORE = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
-    const r = await submitPublicBooking(body, new Date(), publicOrigin(req));
+    // Όπως στο /api/public/quote: πρώτη διεύθυνση του x-forwarded-for (Vercel).
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+    const r = await submitPublicBooking(body, new Date(), publicOrigin(req), ip);
     if (r.ok) return NextResponse.json({ success: true, data: { code: r.code, url: r.url } }, { status: 201, headers: NO_STORE });
     return NextResponse.json(
       { success: false, message: r.message, fieldErrors: r.fieldErrors ?? [], ageUpdate: r.ageUpdate ?? null },

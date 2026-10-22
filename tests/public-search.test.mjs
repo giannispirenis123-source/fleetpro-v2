@@ -141,7 +141,7 @@ test("διαθέσιμα: επιστροφή στην ώρα της νέας π�
 });
 
 test("διαθέσιμα: αλλαγή οχήματος στο συμβόλαιο κλείνει και το δεύτερο όχημα", () => {
-  const c = count([bk("a1", "ACTIVE", "2026-07-09T10:00", "2026-07-12T10:00", { extraVehicleIds: ["a2"] })]);
+  const c = count([bk("a1", "ACTIVE", "2026-07-09T10:00", "2026-07-12T10:00", { vehicleChanges: [{ vehicleId: "a2", date: "2026-07-10" }] })]);
   assert.equal(c.get("g.A"), 1);
 });
 
@@ -196,6 +196,7 @@ test("ΕΝΑ ερώτημα ανά αναζήτηση, φιλτραρισμέν�
   assert.ok(!("plate" in calls[0].select) && !("customerId" in calls[0].select), "μόνο τα απαραίτητα πεδία");
   assert.deepEqual(rows[0], {
     id: "b1",
+    bookingNumber: undefined,
     tenantId: "T1",
     vehicleId: "a1",
     status: "ACTIVE",
@@ -203,7 +204,7 @@ test("ΕΝΑ ερώτημα ανά αναζήτηση, φιλτραρισμέν�
     pickupTime: "10:00",
     returnDate: "2026-07-12",
     returnTime: null,
-    extraVehicleIds: ["a2"],
+    vehicleChanges: [{ vehicleId: "a2", date: "" }],
     paymentStatus: undefined,
     paymentExpiresMs: null,
   });

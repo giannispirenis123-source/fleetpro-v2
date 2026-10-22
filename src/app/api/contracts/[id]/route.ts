@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 //  · DRAFT      → όλα. Αν αλλάξουν στοιχεία παραλαβής ενώ υπάρχουν
 //                 υπογραφές, οι υπογραφές σβήνονται (άλλαξε ό,τι υπέγραψαν).
 //  · SIGNED     → μόνο ζημιές παράδοσης (κείμενο), αλλαγές οχήματος, παρατηρήσεις.
+//  Νέα αλλαγή οχήματος: το όχημα πρέπει να είναι ελεύθερο (contractVehicleChange.ts) → αλλιώς 409.
 //  (Οι φωτογραφίες ζημιών έχουν δικό τους route: …/photos.)
 //  · COMPLETED  → τίποτα.
 
@@ -24,6 +25,8 @@ import {
 } from "@/lib/priceOverride";
 import { anySigned, licensePathsOf, readDrivers, readPhotos } from "@/lib/contracts";
 import { removeObjects } from "@/lib/storage";
+import { lockKeyFor } from "@/lib/public/bookingPlan";
+import { addedVehicleChanges, assertVehicleChangesFree, VehicleChangeConflictError } from "@/lib/contractVehicleChange";
 import { CardKeyError, nextCardNumbersEnc } from "@/lib/cardCrypto";
 import { readExtrasSnapshot } from "@/lib/pricing";
 import {
@@ -188,10 +191,15 @@ export const PATCH = withPermission(
         data.damageNotesReturn = patch.damageNotesReturn || null;
       }
       if (patch.notes !== undefined) data.notes = patch.notes || null;
+      // Νέα αλλαγή οχήματος: το νέο όχημα ελέγχεται μέσα στην transaction (κλείδωμα εταιρίας).
+      let addedChanges: { vehicleId: string; date: string }[] = [];
+      const changeLabels = new Map<string, string>();
       if (patch.vehicleChanges !== undefined) {
         const resolved = await resolveVehicleChanges(tenantId, patch.vehicleChanges);
         if (!resolved.ok) return badRequest(resolved.message);
         data.vehicleChanges = resolved.changes as unknown as Prisma.InputJsonValue;
+        addedChanges = addedVehicleChanges(current.vehicleChanges, resolved.changes);
+        for (const c of resolved.changes) changeLabels.set(c.vehicleId, `${c.label} (${c.plate})`);
       }
 
       /* ── Στοιχεία παραλαβής — μόνο σε πρόχειρο ── */
@@ -252,6 +260,12 @@ export const PATCH = withPermission(
       let orphans: string[] = [];
       try {
         await db.$transaction(async (tx) => {
+          if (addedChanges.length > 0) {
+            // ΙΔΙΟ κλείδωμα με site/dashboard/walk-in: καμία κράτηση δεν παίρνει
+            // το όχημα ανάμεσα στον έλεγχο και την αποθήκευση.
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKeyFor(tenantId)}))`;
+            await assertVehicleChangesFree(tx, { tenantId, bookingId: current.bookingId, changes: addedChanges, labels: changeLabels });
+          }
           // Οι φωτογραφίες διπλώματος: πάντα οι τρέχουσες της βάσης (όχι
           // όσες διάβασε η φόρμα). Αφαιρεμένος οδηγός → σβήνονται τα αρχεία του.
           if (data.drivers !== undefined) {
@@ -282,6 +296,7 @@ export const PATCH = withPermission(
           if (result.count === 0) throw new Error(STALE);
         });
       } catch (error) {
+        if (error instanceof VehicleChangeConflictError) return conflict(error.message);
         if (error instanceof Error && error.message === STALE) {
           return conflict("Το συμβόλαιο άλλαξε στο μεταξύ. Φόρτωσε ξανά και δοκίμασε.");
         }

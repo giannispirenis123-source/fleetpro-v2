@@ -88,8 +88,9 @@ function prismaStore(
 /**
  * `origin` = το deployment που εξυπηρετεί το site (για τα success/cancel URL
  * του Stripe). Με online πληρωμή το `url` είναι η σελίδα πληρωμής του Stripe.
+ * `clientIp` = για το όριο ανά client (αποθηκεύεται ΜΟΝΟ ως hash στο rate_limits).
  */
-export async function submitPublicBooking(body: unknown, now = new Date(), origin = ""): Promise<SubmitResult> {
+export async function submitPublicBooking(body: unknown, now = new Date(), origin = "", clientIp = "unknown"): Promise<SubmitResult> {
   const parsed = publicBookingSchema.safeParse(body);
   if (!parsed.success) return { ok: false, status: 400, message: msg("Μη έγκυρα στοιχεία.", "Invalid data.") };
   const input: PublicBookingInput = parsed.data;
@@ -132,10 +133,12 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
   }
 
   // Όρια κατάχρησης (στη βάση, με hash κλειδιά).
+  // Ανά IP (hash, όχι IP) σε ΟΛΟ το site, ανά email στην εταιρία, ανά εταιρία.
+  const okClient = await hitLimit(dbCounterStore, LIMITS.bookingPerClient, clientIp, now);
   const okEmail = await hitLimit(dbCounterStore, LIMITS.bookingPerEmail, `${resolved.companyId}|${contact.contact.email}`, now);
   const okTenant = await hitLimit(dbCounterStore, LIMITS.bookingPerTenant, resolved.companyId, now);
   const okCheckout = !online || (await hitLimit(dbCounterStore, LIMITS.checkoutPerTenant, resolved.companyId, now));
-  if (!okEmail || !okTenant || !okCheckout) {
+  if (!okClient || !okEmail || !okTenant || !okCheckout) {
     return { ok: false, status: 429, message: msg("Πολλές υποβολές. Δοκιμάστε ξανά σε λίγο ή επικοινωνήστε μαζί μας.", "Too many submissions. Please try again later or contact us.") };
   }
 

@@ -36,6 +36,9 @@ const NO_WRAPPER = {
   "/public/booking": "δημόσια κράτηση: εταιρία ΜΟΝΟ από το slug, rate limits",
   "/public/quote": "δημόσια τιμή: εταιρία ΜΟΝΟ από το slug",
   "/stripe/connect/webhook": "υπογραφή Stripe (STRIPE_CONNECT_WEBHOOK_SECRET)",
+  "/auth/signup": "αυτόματη εγγραφή (δημόσιο): SELF_SIGNUP_ENABLED, rate limits, ουδέτερη απάντηση",
+  "/auth/verify-email": "επαλήθευση email (δημόσιο): SELF_SIGNUP_ENABLED, token μίας χρήσης, rate limit",
+  "/auth/resend-verification": "νέος σύνδεσμος (δημόσιο): SELF_SIGNUP_ENABLED, rate limits, ουδέτερη απάντηση",
 };
 
 const ALL = routes();
@@ -67,7 +70,7 @@ test("routes χωρίς wrapper που θέλουν σύνδεση ελέγχο�
 });
 
 test("Super Admin routes: μόνο SUPER_ADMIN", () => {
-  for (const r of ["tenants/route.ts", "tenants/[id]/route.ts", "super-admin/platform-discounts/route.ts", "super-admin/platform-discounts/[id]/route.ts", "plans/route.ts"]) {
+  for (const r of ["tenants/route.ts", "tenants/[id]/route.ts", "super-admin/platform-discounts/route.ts", "super-admin/platform-discounts/[id]/route.ts", "plans/route.ts", "super-admin/signup-cleanup/route.ts"]) {
     const src = readFileSync(join(API, r), "utf8");
     assert.match(src, /\["SUPER_ADMIN"\]/, r);
   }

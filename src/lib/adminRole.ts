@@ -121,3 +121,27 @@ export function permissionsBeyondActor(
 /** Κωδικός ΑΛΛΟΥ χρήστη: μόνο Διαχειριστής εταιρίας. */
 export const canSetOthersPassword = (actor: { role: string; id: string }, targetId: string): boolean =>
   actor.id === targetId || actor.role === ADMIN_ROLE;
+
+/* ─────────────────────────────────────────────
+   Οριστική διαγραφή χρήστη (SQL 35)
+   ───────────────────────────────────────────── */
+
+export const DELETE_MSG = {
+  onlyAdmin: "Οριστική διαγραφή κάνει μόνο ο Διαχειριστής της εταιρίας",
+  self: "Δεν μπορείτε να διαγράψετε τον εαυτό σας",
+  lastAdmin: "Η εταιρία πρέπει να έχει τουλάχιστον έναν ενεργό διαχειριστή",
+} as const;
+
+/**
+ * Οριστική διαγραφή: ΜΟΝΟ ενεργός Διαχειριστής της ΙΔΙΑΣ εταιρίας (Staff/
+ * Partner → 403, ακόμη και με users.delete). Χρήστης άλλης εταιρίας → 404
+ * (ούτε μαρτυρούμε ότι υπάρχει). Όχι ο εαυτός. Όχι ο τελευταίος ενεργός
+ * Διαχειριστής. `otherActiveAdmins`: οι ΑΛΛΟΙ ενεργοί διαχειριστές.
+ */
+export function canHardDelete(actor: RoleActor, target: RoleTarget | null, otherActiveAdmins: number): RoleDecision {
+  if (!isCompanyAdmin(actor)) return deny(403, DELETE_MSG.onlyAdmin);
+  if (!target || target.tenantId !== actor.tenantId) return deny(404, MSG.notFound);
+  if (target.id === actor.id) return deny(403, DELETE_MSG.self);
+  if (target.role === ADMIN_ROLE && target.isActive && otherActiveAdmins === 0) return deny(400, DELETE_MSG.lastAdmin);
+  return ALLOW;
+}

@@ -763,3 +763,11 @@ export function photoLockOf(
   if (group === "PICKUP" && (status !== "DRAFT" || anySigned(drivers))) return "signed";
   return null;
 }
+
+/** Συντάκτης που διαγράφηκε οριστικά (SQL 35) — δίγλωσσο, όπως το έγγραφο. */
+export const DELETED_USER_LABEL = "Διαγραμμένος χρήστης / Deleted user";
+
+/** Το όνομα του συντάκτη για εμφάνιση: ποτέ όνομα διαγραμμένου χρήστη. */
+export const issuerName = (c: { createdByName: string | null; createdByDeleted?: boolean | null }): string | null =>
+  c.createdByDeleted ? DELETED_USER_LABEL : c.createdByName;
+

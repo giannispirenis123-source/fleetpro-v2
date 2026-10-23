@@ -116,6 +116,8 @@ export interface BookingDTO {
   /** Ποιος συνεργάτης έφερε την κράτηση· null όταν την έγραψε η εταιρία. */
   partnerId: string | null;
   partnerName: string | null;
+  /** Ο συνεργάτης διαγράφηκε οριστικά (SQL 35) → «Διαγραμμένος χρήστης». */
+  partnerDeleted: boolean;
   /**
    * Το ποσοστό του συνεργάτη ΤΩΡΑ. Δεν αποθηκεύεται στην κράτηση: αν
    * αλλάξει, όλα τα σύνολα ενημερώνονται μόνα τους.
@@ -127,6 +129,8 @@ export interface BookingDTO {
   /** Ποιος χρήστης καταχώρησε την κράτηση· null στις παλιές. */
   createdById: string | null;
   createdByName: string | null;
+  /** Ο συντάκτης διαγράφηκε οριστικά (SQL 35) → «Διαγραμμένος χρήστης». */
+  createdByDeleted: boolean;
 
   /** Πληρωμή (SQL 27): NULL = κράτηση dashboard/παλιά· PICKUP | ONLINE. */
   paymentMethod: string | null;
@@ -278,11 +282,13 @@ export function toBookingDTO(b: BookingWithRelations): BookingDTO {
 
     partnerId: b.partnerId,
     partnerName: b.partner?.name ?? null,
+    partnerDeleted: b.partnerDeleted ?? false,
     partnerCommissionRate: rate,
     partnerCommission,
 
     createdById: b.createdById,
     createdByName: b.createdBy?.name ?? null,
+    createdByDeleted: b.createdByDeleted ?? false,
   };
 }
 

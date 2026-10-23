@@ -525,6 +525,11 @@ model Booking {
   // έφερε. Οι παλιές κρατήσεις μένουν NULL.
   createdById String?
 
+  // Ο χρήστης (συντάκτης / συνεργάτης) διαγράφηκε οριστικά (SQL 35): το FK
+  // έγινε NULL και η εφαρμογή δείχνει «Διαγραμμένος χρήστης».
+  createdByDeleted Boolean @default(false)
+  partnerDeleted   Boolean @default(false)
+
   // Source (web, phone, walk-in, partner)
   source String @default("manual")
 
@@ -627,6 +632,8 @@ model Contract {
   // Ποιος υπάλληλος το έφτιαξε — το όνομα κρατιέται ως snapshot.
   createdById   String?
   createdByName String?
+  // Ο συντάκτης διαγράφηκε οριστικά (SQL 35): όνομα/id σβήνονται → «Διαγραμμένος χρήστης».
+  createdByDeleted Boolean @default(false)
 
   // Snapshot εταιρίας, κράτησης, οχήματος, extras, ασφάλειας (με excess) και
   // όρων ΕΛ/EN. Ανανεώνεται όσο δεν υπάρχει καμία υπογραφή· μετά παγώνει.
@@ -964,7 +971,8 @@ model Notification {
 model ActivityLog {
   id        String  @id @default(cuid())
   tenantId  String?
-  userId    String
+  // null = ο χρήστης διαγράφηκε οριστικά (SQL 35) → «Διαγραμμένος χρήστης».
+  userId    String?
   action    String // "booking.created", "vehicle.updated", "contract.signed"
   entity    String? // "Booking", "Vehicle", etc.
   entityId  String?
@@ -976,7 +984,7 @@ model ActivityLog {
   createdAt DateTime @default(now())
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User    @relation(fields: [userId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, entity, entityId, createdAt(sort: Desc)])
   @@map("activity_logs")

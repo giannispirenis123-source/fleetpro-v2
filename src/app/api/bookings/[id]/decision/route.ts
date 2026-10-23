@@ -79,7 +79,7 @@ export const GET = withPermission(
           where: { tenantId, entity: "Booking", entityId: id },
           orderBy: { createdAt: "desc" },
           take: 20,
-          select: { action: true, createdAt: true, user: { select: { name: true } } },
+          select: { action: true, createdAt: true, userId: true, user: { select: { name: true } } },
         }),
       ]);
       if (!ctx) return notFound("Η κράτηση δεν βρέθηκε");
@@ -99,7 +99,8 @@ export const GET = withPermission(
             message: { ...ctx.data, reasonCode: ctx.reasonCode, note: ctx.note },
             contact: { email: ctx.customerEmail, phone: ctx.customerPhone },
             notifications: notifications.map((n) => ({ ...n, createdAt: n.createdAt.toISOString() })),
-            history: history.map((h) => ({ action: h.action, at: h.createdAt.toISOString(), by: h.user?.name ?? null })),
+            // userId = null ΜΟΝΟ μετά από οριστική διαγραφή (SQL 35) → «Διαγραμμένος χρήστης».
+            history: history.map((h) => ({ action: h.action, at: h.createdAt.toISOString(), by: h.user?.name ?? null, byDeleted: h.userId === null })),
           },
         },
         { headers: noStore }

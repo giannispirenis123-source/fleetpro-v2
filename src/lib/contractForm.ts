@@ -32,6 +32,7 @@ import {
 import type { Viewer } from "./authz";
 import { readExtrasSnapshot } from "./pricing";
 import { discountOfBooking, priceBooking } from "./bookingPricing";
+import { issuerName } from "./contracts";
 import { countDays } from "./bookings";
 import { bookingScope } from "./authz";
 import {
@@ -784,7 +785,7 @@ export function toContractDTO(c: ContractWithBooking): ContractDTO {
     bookingId: c.bookingId,
     bookingNumber: c.booking.bookingNumber,
     bookingStatus: c.booking.status,
-    createdByName: c.createdByName,
+    createdByName: issuerName(c),
     snapshot: withRentalOverride(readSnapshot(c.snapshot)),
     drivers,
     pickupLocation: c.pickupLocation ?? "",
@@ -1047,6 +1048,7 @@ export async function loadContractList(
         bookingId: true,
         // ΟΧΙ drivers: περιέχει τις υπογραφές (base64) — η λίστα θέλει μόνο πλήθη.
         createdByName: true,
+        createdByDeleted: true,
         createdAt: true,
         customer: { select: { firstName: true, lastName: true } },
         booking: {
@@ -1084,7 +1086,7 @@ export async function loadContractList(
         returnDate: dateOnly(r.booking.returnDate),
         drivers: c.drivers,
         signedDrivers: c.signed,
-        createdByName: r.createdByName,
+        createdByName: issuerName(r),
         createdAt: r.createdAt.toISOString(),
       };
     }),

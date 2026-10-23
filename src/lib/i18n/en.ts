@@ -44,6 +44,16 @@ export const en: Dictionary = {
     hidePassword: "Hide password",
   },
 
+  account: {
+    title: "My account",
+    subtitle: "Your details, the app language and sign out.",
+    menu: "Account menu",
+    name: "Name",
+    email: "Email",
+    role: "Role",
+    company: "Company",
+  },
+
   sidebar: {
     overview: "Overview",
     bookings: "Bookings",

@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useT, useLocale } from "@/lib/i18n/I18nProvider";
+import { usePathname } from "next/navigation";
+import { useT } from "@/lib/i18n/I18nProvider";
 import { can, type PermissionMap } from "@/lib/permissions";
-import { LOCALES, type Locale } from "@/lib/i18n/locale";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -20,13 +19,13 @@ import {
   UserCog,
   Settings,
   PackagePlus,
-  LogOut,
   Menu,
   X,
   Zap,
   Globe,
 } from "lucide-react";
 import type { ModuleKey } from "@/lib/entitlementsCore";
+import AccountMenu from "./AccountMenu";
 
 type Role = "COMPANY_ADMIN" | "STAFF" | "PARTNER" | string;
 
@@ -69,22 +68,16 @@ const NAV: NavItem[] = [
   { href: "/dashboard/storefront", labelKey: "storefront", icon: Globe, permission: "settings.edit", adminOnly: true, module: "publicSite" },
 ];
 
-const ROLE_LABEL_KEY: Record<string, string> = {
-  COMPANY_ADMIN: "sidebar.roleCompanyAdmin",
-  STAFF: "sidebar.roleStaff",
-  PARTNER: "sidebar.rolePartner",
-};
-
-const LOCALE_SHORT: Record<Locale, string> = { el: "ΕΛ", en: "EN" };
-
 export default function DashboardSidebar({
   name,
+  email,
   role,
   permissions,
   companyName,
   modules,
 }: {
   name: string;
+  email: string;
   role: Role;
   permissions: PermissionMap;
   companyName: string;
@@ -92,32 +85,8 @@ export default function DashboardSidebar({
   modules: Record<ModuleKey, boolean>;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const tr = useT();
-  const locale = useLocale();
   const [open, setOpen] = useState(false);
-  const [savingLocale, startSavingLocale] = useTransition();
-
-  // Αποθηκεύει τη γλώσσα στον χρήστη και ανανεώνει, ώστε ο server
-  // να ξαναφτιάξει τη σελίδα στη νέα γλώσσα.
-  const changeLocale = (next: Locale) => {
-    if (next === locale || savingLocale) return;
-    startSavingLocale(async () => {
-      await fetch("/api/users/me/locale", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locale: next }),
-      });
-      router.refresh();
-    });
-  };
-
-  const initials = name
-    .split(" ")
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 
   // Οι ενότητες «σύντομα» μένουν ορατές σε όλους ως ένδειξη τού τι
   // έρχεται· οι υπόλοιπες μόνο σε όποιον έχει το δικαίωμα προβολής.
@@ -128,11 +97,6 @@ export default function DashboardSidebar({
         !(it.hideForPartner && role === "PARTNER") &&
         !(it.adminOnly && role !== "COMPANY_ADMIN"))
   );
-
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/login";
-  };
 
   return (
     <>
@@ -149,6 +113,8 @@ export default function DashboardSidebar({
           <Zap size={18} />
         </div>
         <span className="dash-brand-name">FleetPro</span>
+        {/* Λογαριασμός: σταθερά ορατός στο κινητό, χωρίς να ανοίξει το μενού. */}
+        <AccountMenu name={name} email={email} role={role} variant="topbar" />
       </div>
 
       {/* Overlay */}
@@ -176,6 +142,9 @@ export default function DashboardSidebar({
             <X size={18} />
           </button>
         </div>
+
+        {/* Λογαριασμός: στην ΚΟΡΥΦΗ του sidebar (desktop) — πάντα ορατός. */}
+        <AccountMenu name={name} email={email} role={role} variant="sidebar" onNavigate={() => setOpen(false)} />
 
         <nav className="dash-nav">
           {items.map((it) => {
@@ -222,39 +191,6 @@ export default function DashboardSidebar({
           })}
         </nav>
 
-        <div className="dash-lang" role="group" aria-label={tr("common.language")}>
-          {LOCALES.map((code) => (
-            <button
-              key={code}
-              type="button"
-              className={`dash-lang-btn ${locale === code ? "active" : ""}`}
-              onClick={() => changeLocale(code)}
-              disabled={savingLocale}
-              aria-pressed={locale === code}
-              title={tr(code === "el" ? "common.greek" : "common.english")}
-            >
-              {LOCALE_SHORT[code]}
-            </button>
-          ))}
-        </div>
-
-        <div className="dash-user">
-          <div className="dash-user-avatar">{initials || "?"}</div>
-          <div className="dash-user-info">
-            <div className="dash-user-name">{name}</div>
-            <div className="dash-user-role">
-              {ROLE_LABEL_KEY[role] ? tr(ROLE_LABEL_KEY[role]) : role}
-            </div>
-          </div>
-          <button
-            className="dash-logout"
-            onClick={handleLogout}
-            aria-label={tr("common.logout")}
-            title={tr("common.logout")}
-          >
-            <LogOut size={18} />
-          </button>
-        </div>
       </aside>
     </>
   );

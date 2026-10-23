@@ -16,6 +16,7 @@
   left: 0;
   width: 260px;
   height: 100vh;
+  height: 100dvh;
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
@@ -111,11 +112,11 @@
   border-radius: 5px;
 }
 
-/* ---------- Language toggle ---------- */
+/* ---------- Language toggle (μέσα στο μενού λογαριασμού / «Ο λογαριασμός μου») ---------- */
 .dash-lang {
   display: flex;
   gap: 4px;
-  margin: 0 14px 10px;
+  margin: 6px 0;
   padding: 3px;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -148,13 +149,6 @@
   opacity: 0.6;
 }
 
-.dash-user {
-  border-top: 1px solid var(--border);
-  padding: 14px;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
 .dash-user-avatar {
   width: 38px;
   height: 38px;
@@ -183,21 +177,86 @@
   font-size: 11.5px;
   color: var(--text-4);
 }
-.dash-logout {
+/* ---------- Μενού λογαριασμού (σταθερό: κορυφή sidebar / μπάρα κινητού) ---------- */
+.dash-account {
+  position: relative;
+}
+.dash-account--sidebar {
+  padding: 10px 10px 0;
+}
+.dash-account--topbar {
+  margin-left: auto;
+  min-width: 0;
+}
+.dash-account-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 9px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dash-account-btn:hover { background: var(--hover); }
+.dash-account-btn .dash-user-avatar { width: 32px; height: 32px; font-size: 12.5px; }
+.dash-account-who { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.dash-account-caret { color: var(--text-4); flex-shrink: 0; }
+.dash-account--topbar .dash-account-btn { padding: 4px 8px 4px 4px; gap: 8px; }
+.dash-account--topbar .dash-account-who { max-width: 140px; }
+.dash-account--topbar .dash-user-role { display: none; }
+.dash-account-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 10px;
+  right: 10px;
+  z-index: 60;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-dropdown);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dash-account--topbar .dash-account-pop {
+  left: auto;
+  right: 0;
+  width: 260px;
+  max-width: calc(100vw - 32px);
+}
+.dash-account-head { padding: 6px 8px 8px; border-bottom: 1px solid var(--border); margin-bottom: 4px; min-width: 0; }
+.dash-account-email { font-size: 12px; color: var(--text-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-account-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
   background: none;
   border: none;
-  color: var(--text-4);
+  text-align: left;
   cursor: pointer;
-  padding: 8px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  transition: background 0.15s, color 0.15s;
+  text-decoration: none;
 }
-.dash-logout:hover {
-  background: var(--bad-bg);
-  color: var(--bad-icon);
-}
+.dash-account-item:hover { background: var(--hover); }
+.dash-account-logout { color: var(--bad-fg); }
+.dash-account-logout:hover { background: var(--bad-bg); }
+.dash-account-card { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 18px; }
+.dash-account-dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 14px; min-width: 0; }
+.dash-account-dl dt { color: var(--text-4); }
+.dash-account-dl dd { margin: 0; overflow-wrap: anywhere; }
+.dash-lang--page { max-width: 360px; margin: 8px 0 20px; }
+.dash-account-page-logout { display: inline-flex; align-items: center; gap: 8px; }
 
 /* ---------- Mobile top bar ---------- */
 .dash-topbar {
@@ -451,6 +510,10 @@
   }
   .dash-topbar {
     display: flex;
+  }
+  /* Στο κινητό ο λογαριασμός ζει στη μπάρα — όχι διπλός μέσα στο μενού. */
+  .dash-account--sidebar {
+    display: none;
   }
   .dash-main {
     margin-left: 0;

@@ -1,5 +1,7 @@
 # FleetPro v2 — Handoff
 
+> **23/10/2026 — Ανοιχτό PR «Ο λογαριασμός μου» / σταθερό μενού λογαριασμού** (branch `claude/account-menu`, από main). Χωρίς SQL, χωρίς env.
+
 > **22/10/2026 — Ανοιχτό PR αυτόματης εγγραφής εταιρίας** (branch `ccr-e4dd73a0-1hur4n`, §«Αυτόματη εγγραφή» στο τέλος). Θέλει **SQL `34`** ΠΡΙΝ το preview και env `SELF_SIGNUP_ENABLED=true` (+ `SIGNUP_TEST_EMAILS=1` μόνο για E2E) **μόνο στο Preview**. Επόμενος ελεύθερος αριθμός SQL: `35`.
 
 **Ημερομηνία:** 19/10/2026 · **main:** `8d42225` (merge του PR #28 — μέρη/κριτικές, σειρά αρχικής, υποχρεωτική επιστροφή· SQL 26 έτρεξε). **Ανοιχτό:** `claude/stripe-connect-payments` (PR #29) — **online πληρωμές με Stripe Connect** (§5.10, §5.10.1). SQL `27` έτρεξε (`8|3|2|10|0`)· **θέλει SQL `28` ΠΡΙΝ τη δοκιμή** της 2ης φάσης. Env `STRIPE_SECRET_KEY`, `STRIPE_CONNECT_WEBHOOK_SECRET` μπήκαν. Επόμενος ελεύθερος αριθμός SQL: `29`.
@@ -880,4 +882,13 @@ npm test                # unit tests (node:test, χωρίς εξάρτηση)
 - **SQL 34:** `users.emailVerifiedAt` (DEFAULT now(): όσοι φτιάχνονται από Super Admin/«Χρήστες»/seed είναι επαληθευμένοι· **backfill μόνο τη στιγμή που προστίθεται η στήλη** → κανείς υπάρχων δεν κλειδώνεται, και 2η εκτέλεση δεν «επαληθεύει» εκκρεμείς εγγραφές), `email_verification_tokens`, `tenants.signupSource` (default `manual` + CHECK), `onboardingState` (jsonb), `cleanupFlaggedAt`. Verification: `1 | 1 | 2 | 3 | 1 | 0 | 0`.
 - **Tests:** `tests/self-signup.test.mjs` (28). E2E: `tests/e2e/self-signup.e2e.mjs` (Playwright, `BASE_URL=… node --test …`· δες την κεφαλίδα του αρχείου) — τοπικά 9/9.
 - **Γνωστοί περιορισμοί:** καμία τιμή/πλάνο/όριο (έρχονται με τις συνδρομές)· η εταιρία από εγγραφή φαίνεται «STARTER/Δοκιμαστική 14ημ.» στον Super Admin επειδή αυτές είναι οι ΥΠΑΡΧΟΥΣΕΣ προεπιλογές· με `EMAIL_FROM=onboarding@resend.dev` το Resend στέλνει μόνο στο email του λογαριασμού Resend (για πραγματικούς χρήστες θέλει επαληθευμένο domain)· ανεπιβεβαίωτοι λογαριασμοί μόνο σημαίνονται, η διαγραφή είναι χειροκίνητη· ένας άλλος μπορεί να «πιάσει» ένα email χωρίς επαλήθευση για έως 7 ημέρες (ο πραγματικός κάτοχος παίρνει μόνο το ουδέτερο email — καθάρισμα από Super Admin).
+
+## «Ο λογαριασμός μου» και σταθερό μενού λογαριασμού (PR account-menu, χωρίς SQL/env)
+
+- **Αίτιο του παλιού προβλήματος:** γλώσσα και αποσύνδεση ήταν στο ΚΑΤΩ μέρος του sidebar (`height: 100vh`). Στο κινητό το sidebar κρύβεται πίσω από το ☰ και το `100vh` είναι ψηλότερο από την ορατή οθόνη (μπάρα του browser), άρα έπεφταν κάτω από το fold.
+- **Τώρα:** `AccountMenu.tsx` (avatar + όνομα → μενού με όνομα/email, «Ο λογαριασμός μου», ΕΛ/EN, Αποσύνδεση). Desktop: στην ΚΟΡΥΦΗ του sidebar. Κινητό (≤900px): στη sticky μπάρα, δεξιά του ☰ — ορατό χωρίς κύλισμα και χωρίς να ανοίξει το μενού (το αντίγραφο του sidebar κρύβεται, όχι διπλά). Το sidebar πήρε και `height: 100dvh`.
+- **Σελίδα `/dashboard/account`** για ΟΛΟΥΣ τους ρόλους (κανένα δικαίωμα, μόνο ενεργός χρήστης, μόνο ο ίδιος): όνομα, email, ρόλος, εταιρία, γλώσσα, Αποσύνδεση.
+- **Ίδιοι μηχανισμοί, μόνο νέα θέση (`useAccountActions.ts`):** γλώσσα → `PATCH /api/users/me/locale` + refresh· αποσύνδεση → `POST /api/auth/logout` → `/login`. Κανένα νέο API, καμία αλλαγή δικαιωμάτων.
+- **Super Admin:** η μπάρα αποσύνδεσης του κινητού έγινε sticky. Onboarding: ίδιο layout με το dashboard (καλύπτεται). Δημόσιο site/εγγραφή: δεν έχουν αποσύνδεση.
+- **Tests:** `tests/account-menu.test.mjs` (στατικοί)· E2E `tests/e2e/account-menu.e2e.mjs` (Admin/Staff/Partner × 360/390/430px + desktop) — τοπικά 12/12.
 

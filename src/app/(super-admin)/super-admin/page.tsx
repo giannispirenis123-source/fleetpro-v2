@@ -27,7 +27,6 @@ import {
   Globe,
   CreditCard,
   Tag,
-  LogOut,
   ChevronDown,
   Activity,
   Zap,
@@ -35,6 +34,8 @@ import {
   PlayCircle,
 } from "lucide-react";
 import { useT } from "@/lib/i18n/I18nProvider";
+import AccountMenu from "@/components/account/AccountMenu";
+import { useSuperAdminUser } from "./SuperAdminUser";
 import {
   PLAN_PRICES,
   discountedPrice,
@@ -163,6 +164,7 @@ function computeStats(list: Tenant[]): PlatformStats {
 // ─── Main Component ──────────────────────
 
 export default function SuperAdminDashboard() {
+  const me = useSuperAdminUser();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -259,11 +261,6 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.href = "/login";
-  };
-
   return (
     <div className="sa-root">
       {/* ── Sidebar ──────────────────────── */}
@@ -273,6 +270,10 @@ export default function SuperAdminDashboard() {
           <span>FleetPro</span>
           <span className="sa-badge">Super Admin</span>
         </div>
+
+        {/* Λογαριασμός: ΚΟΡΥΦΗ του sidebar (desktop). Χωρίς «Ο λογαριασμός μου»:
+            ο Super Admin δεν έχει τέτοια σελίδα. */}
+        <AccountMenu name={me.name} email={me.email} role="SUPER_ADMIN" variant="sidebar" accountHref={null} />
 
         <nav className="sa-nav">
           {[
@@ -304,28 +305,16 @@ export default function SuperAdminDashboard() {
           ))}
         </nav>
 
-        <div className="sa-sidebar-footer">
-          <div className="sa-user-info">
-            <div className="sa-user-avatar">SA</div>
-            <div>
-              <div className="sa-user-name">Super Admin</div>
-              <div className="sa-user-email">admin@fleetpro.gr</div>
-            </div>
-          </div>
-          <button className="sa-logout" onClick={handleLogout}>
-            <LogOut size={14} />
-          </button>
-        </div>
       </aside>
 
       {/* ── Main Content ─────────────────── */}
       <main className="sa-main">
-        {/* Στο κινητό η πλαϊνή στήλη κρύβεται: αποσύνδεση εδώ. */}
+        {/* Στο κινητό η πλαϊνή στήλη κρύβεται: σταθερή μπάρα με το ΙΔΙΟ μενού λογαριασμού. */}
         <div className="sa-mobile-bar">
-          <span className="sa-user-name">Super Admin</span>
-          <button className="sa-mobile-logout" onClick={handleLogout}>
-            <LogOut size={14} /> Αποσύνδεση
-          </button>
+          <span className="sa-mobile-brand">
+            <Zap size={16} className="sa-logo-icon" /> FleetPro
+          </span>
+          <AccountMenu name={me.name} email={me.email} role="SUPER_ADMIN" variant="topbar" accountHref={null} />
         </div>
         {/* Stats Bar */}
         {stats && (
@@ -2161,40 +2150,15 @@ const superAdminStyles = `
   .sa-nav-item:hover { background: var(--border); color: var(--text); }
   .sa-nav-item.active { background: var(--primary-bg); color: var(--primary-soft); font-weight: 600; }
 
-  .sa-sidebar-footer {
-    padding: 12px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .sa-user-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
-  .sa-user-avatar {
-    width: 30px; height: 30px;
-    background: var(--primary);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: #fff;
-    flex-shrink: 0;
-  }
-  .sa-user-name { font-size: 12px; font-weight: 600; color: var(--text); }
-  .sa-user-email { font-size: 10px; color: var(--text-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-  .sa-logout {
-    background: none; border: none; color: var(--text-4); cursor: pointer;
-    padding: 6px; border-radius: 6px;
-    transition: all 0.15s;
-  }
-  .sa-logout:hover { background: var(--border); color: var(--text); }
-
   /* ── Main ── */
   .sa-main {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    overflow: hidden;
+    /* clip (όχι hidden): δεν γίνεται «scroll container», άρα η μπάρα του
+       κινητού μένει πραγματικά sticky. */
+    overflow: clip;
   }
 
   /* ── Stats Bar ── */
@@ -2750,10 +2714,7 @@ const superAdminStyles = `
       /* Αποσύνδεση πάντα ορατή στο κινητό, και με κύλισμα. */
       position: sticky; top: 0; z-index: 20;
     }
-    .sa-mobile-logout {
-      display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px;
-      border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer;
-    }
+    .sa-mobile-brand { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--text); }
     .sa-stats-bar { grid-template-columns: repeat(2, 1fr); }
   }
 `;

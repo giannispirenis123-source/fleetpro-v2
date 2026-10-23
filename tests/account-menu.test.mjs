@@ -9,6 +9,8 @@ import { readFileSync, existsSync } from "node:fs";
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 const D = "src/app/(dashboard)/dashboard";
+const C = "src/components/account";
+const SA = "src/app/(super-admin)/super-admin";
 
 test("το μενού λογαριασμού μπαίνει στη σταθερή μπάρα κινητού ΚΑΙ στην κορυφή του sidebar", () => {
   const sb = read(`${D}/DashboardSidebar.tsx`);
@@ -29,7 +31,7 @@ test("όχι διπλά: η παλιά γλώσσα/αποσύνδεση στο 
 });
 
 test("ίδιοι μηχανισμοί: γλώσσα στο /api/users/me/locale, αποσύνδεση στο /api/auth/logout — κανένα νέο API", () => {
-  const a = read(`${D}/useAccountActions.ts`);
+  const a = read(`${C}/useAccountActions.ts`);
   assert.match(a, /fetch\("\/api\/users\/me\/locale", \{\s*method: "PATCH"/);
   assert.match(a, /fetch\("\/api\/auth\/logout", \{ method: "POST" \}\)/);
   assert.equal(existsSync(new URL("../src/app/api/account", import.meta.url)), false);
@@ -53,11 +55,49 @@ test("κείμενα από τα λεξικά el/en", () => {
     const s = read(f);
     assert.match(s, new RegExp(`account: \\{\\s*title: "${title}"`));
   }
-  for (const f of [`${D}/AccountMenu.tsx`, `${D}/account/AccountClient.tsx`]) {
+  for (const f of [`${C}/AccountMenu.tsx`, `${D}/account/AccountClient.tsx`]) {
     assert.doesNotMatch(read(f), />\s*(Αποσύνδεση|Logout|Sign out)\s*</, f);
   }
 });
 
-test("super admin: η αποσύνδεση του κινητού μένει σταθερή στην κορυφή", () => {
-  assert.match(read("src/app/(super-admin)/super-admin/page.tsx"), /\.sa-mobile-bar \{[^}]*position: sticky; top: 0;/);
+test("ΕΝΑ component μενού: dashboard ΚΑΙ Super Admin χρησιμοποιούν το ίδιο AccountMenu", () => {
+  assert.match(read(`${D}/DashboardSidebar.tsx`), /import AccountMenu from "@\/components\/account\/AccountMenu";/);
+  const sa = read(`${SA}/page.tsx`);
+  assert.match(sa, /import AccountMenu from "@\/components\/account\/AccountMenu";/);
+  assert.equal(existsSync(new URL(`../${D}/AccountMenu.tsx`, import.meta.url)), false, "όχι δεύτερο αντίγραφο");
+  // Το CSS του μενού ζει μαζί του (το super-admin δεν φορτώνει το dashboard.css)
+  assert.match(read(`${C}/AccountMenu.tsx`), /import "\.\/account-menu\.css";/);
+  assert.match(read(`${C}/account-menu.css`), /\.dash-account-pop \{/);
+});
+
+test("Super Admin: πραγματικό όνομα/email από τη συνεδρία, όχι σταθερά κείμενα", () => {
+  const sa = read(`${SA}/page.tsx`);
+  assert.doesNotMatch(sa, /admin@fleetpro\.gr/);
+  assert.doesNotMatch(sa, /sa-user-name">Super Admin</);
+  assert.match(sa, /<AccountMenu name=\{me\.name\} email=\{me\.email\} role="SUPER_ADMIN" variant="sidebar" accountHref=\{null\} \/>/);
+  assert.match(sa, /<AccountMenu name=\{me\.name\} email=\{me\.email\} role="SUPER_ADMIN" variant="topbar" accountHref=\{null\} \/>/);
+  const layout = read(`${SA}/layout.tsx`);
+  assert.match(layout, /db\.user\.findUnique\(\{ where: \{ id: session\.userId \}, select: \{ name: true, email: true \} \}\)/);
+});
+
+test("Super Admin: χωρίς «Ο λογαριασμός μου» (δεν υπάρχει σελίδα), χωρίς πρόσβαση στο dashboard εταιρίας", () => {
+  const menu = read(`${C}/AccountMenu.tsx`);
+  assert.match(menu, /\{accountHref && \(\s*<Link\s*href=\{accountHref\}/);
+  // Το middleware συνεχίζει να στέλνει τον Super Admin από /dashboard στο /super-admin
+  assert.match(read("src/middleware.ts"), /pathname === "\/dashboard" && session\.role === "SUPER_ADMIN"/);
+  assert.match(read(`${D}/layout.tsx`), /if \(session\.role === "SUPER_ADMIN"\) redirect\("\/super-admin"\);/);
+});
+
+test("Super Admin: όχι διπλά — το παλιό σκέτο κουμπί και το footer αφαιρέθηκαν, η μπάρα κινητού sticky", () => {
+  const sa = read(`${SA}/page.tsx`);
+  assert.doesNotMatch(sa, /sa-mobile-logout|sa-sidebar-footer|className="sa-logout"|handleLogout|\/api\/auth\/logout/);
+  assert.match(sa, /\.sa-mobile-bar \{[^}]*position: sticky; top: 0;/);
+  // overflow: clip στο .sa-main — αλλιώς το sticky δεν δουλεύει μέσα του
+  assert.match(sa, /\.sa-main \{[^}]*overflow: clip;/);
+});
+
+test("ρόλος Super Admin στο μενού από τα λεξικά", () => {
+  assert.match(read(`${C}/useAccountActions.ts`), /SUPER_ADMIN: "sidebar\.roleSuperAdmin"/);
+  assert.match(read("src/lib/i18n/el.ts"), /roleSuperAdmin: "Super Admin"/);
+  assert.match(read("src/lib/i18n/en.ts"), /roleSuperAdmin: "Super Admin"/);
 });

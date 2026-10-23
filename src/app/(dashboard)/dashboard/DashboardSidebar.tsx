@@ -25,7 +25,7 @@ import {
   Globe,
 } from "lucide-react";
 import type { ModuleKey } from "@/lib/entitlementsCore";
-import AccountMenu from "./AccountMenu";
+import AccountMenu from "@/components/account/AccountMenu";
 
 type Role = "COMPANY_ADMIN" | "STAFF" | "PARTNER" | string;
 

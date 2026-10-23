@@ -1,7 +1,8 @@
 "use client";
 
-// Ενέργειες λογαριασμού για το μενού λογαριασμού και τη σελίδα «Ο λογαριασμός
-// μου». ΙΔΙΟΙ μηχανισμοί με πριν (μόνο άλλαξε η θέση τους στο UI):
+// src/components/account/useAccountActions.ts
+// Ενέργειες λογαριασμού για το μενού λογαριασμού (dashboard + Super Admin) και
+// τη σελίδα «Ο λογαριασμός μου». ΙΔΙΟΙ μηχανισμοί με πριν (μόνο άλλαξε η θέση τους στο UI):
 //  · γλώσσα: PATCH /api/users/me/locale (αποθήκευση στον χρήστη) + refresh·
 //  · αποσύνδεση: POST /api/auth/logout → /login.
 
@@ -43,6 +44,7 @@ export const ROLE_LABEL_KEY: Record<string, string> = {
   COMPANY_ADMIN: "sidebar.roleCompanyAdmin",
   STAFF: "sidebar.roleStaff",
   PARTNER: "sidebar.rolePartner",
+  SUPER_ADMIN: "sidebar.roleSuperAdmin",
 };
 
 export const initialsOf = (name: string) =>

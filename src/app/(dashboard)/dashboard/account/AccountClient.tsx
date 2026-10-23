@@ -5,7 +5,7 @@
 import { LogOut } from "lucide-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { LOCALES } from "@/lib/i18n/locale";
-import { LOCALE_SHORT, ROLE_LABEL_KEY, initialsOf, useAccountActions } from "../useAccountActions";
+import { LOCALE_SHORT, ROLE_LABEL_KEY, initialsOf, useAccountActions } from "@/components/account/useAccountActions";
 
 export default function AccountClient({
   name,

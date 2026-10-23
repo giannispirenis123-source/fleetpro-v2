@@ -72,6 +72,7 @@ export const el = {
     roleCompanyAdmin: "Διαχειριστής",
     roleStaff: "Προσωπικό",
     rolePartner: "Συνεργάτης",
+    roleSuperAdmin: "Super Admin",
   },
 
   dashboard: {

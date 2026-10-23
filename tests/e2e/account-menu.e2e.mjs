@@ -1,9 +1,9 @@
 // tests/e2e/account-menu.e2e.mjs — μενού λογαριασμού σε Admin/Staff/Partner,
 // κινητό (360/390/430) και desktop. ΔΕΝ τρέχει με `npm test`.
 //
-//   BASE_URL=… ADMIN_EMAIL=… STAFF_EMAIL=… PARTNER_EMAIL=… PASSWORD=… \
+//   BASE_URL=… ADMIN_EMAIL=… STAFF_EMAIL=… PARTNER_EMAIL=… SUPER_EMAIL=… PASSWORD=… \
 //   node --test tests/e2e/account-menu.e2e.mjs
-// (PASSWORD κοινός για τους τρεις λογαριασμούς δοκιμής· PLAYWRIGHT_MODULE αν χρειάζεται.)
+// (PASSWORD κοινός για τους λογαριασμούς δοκιμής· PLAYWRIGHT_MODULE αν χρειάζεται.)
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -82,3 +82,66 @@ for (const [label, email] of ROLES) {
     await ctx.close();
   });
 }
+
+/* ── Super Admin: το ΙΔΙΟ μενού, χωρίς «Ο λογαριασμός μου» ── */
+const SUPER = process.env.SUPER_EMAIL;
+const esc = (v) => v.replace(/[.+]/g, "\\$&");
+
+for (const width of [360, 390, 430]) {
+  test(`Super Admin @${width}px: μενού ορατό χωρίς κύλισμα, σωστό email, γλώσσα, αποσύνδεση`, async (t) => {
+    if (!SUPER) return t.skip("θέλει SUPER_EMAIL");
+    const ctx = await session(SUPER, { width, height: 740 });
+    const page = await ctx.newPage();
+    await page.goto("/super-admin");
+    await page.locator(".sa-table, .sa-empty, .sa-loading").first().waitFor();
+    await page.mouse.wheel(0, 2000);
+    const btn = page.getByTestId("account-menu-topbar");
+    assert.ok(await inViewport(page, btn), "κουμπί λογαριασμού ορατό (sticky)");
+    assert.equal(await page.getByTestId("account-menu-sidebar").isVisible(), false, "όχι διπλό");
+    assert.equal(await page.getByText("admin@fleetpro.gr").count(), 0, "όχι σταθερό email");
+    await btn.click();
+    const pop = page.locator(".dash-account--topbar .dash-account-pop");
+    assert.ok(await inViewport(page, pop), "το μενού χωράει στην οθόνη");
+    assert.match(await pop.innerText(), new RegExp(esc(SUPER)));
+    assert.equal(await pop.getByRole("menuitem", { name: /λογαριασμός μου|My account/ }).count(), 0, "χωρίς «Ο λογαριασμός μου»");
+    // Γλώσσα: EN → αποθηκεύεται στον χρήστη (νέο token) → ΕΛ
+    const [res] = await Promise.all([
+      page.waitForResponse((r) => r.url().endsWith("/api/users/me/locale")),
+      pop.getByRole("button", { name: "EN" }).click(),
+    ]);
+    assert.equal(res.status(), 200);
+    await page.getByRole("button", { name: "EN", pressed: true }).waitFor();
+    await page.getByRole("button", { name: "ΕΛ", pressed: false }).click();
+    await page.getByRole("button", { name: "ΕΛ", pressed: true }).waitFor();
+    // Αποσύνδεση
+    await page.getByRole("menuitem", { name: "Αποσύνδεση" }).click();
+    await page.waitForURL(/\/login/);
+    assert.equal((await ctx.request.get("/api/auth/me")).status(), 401, "η συνεδρία έκλεισε");
+    await ctx.close();
+  });
+}
+
+test("Super Admin desktop: μενού στην κορυφή, σωστό email, αποσύνδεση", async (t) => {
+  if (!SUPER) return t.skip("θέλει SUPER_EMAIL");
+  const ctx = await session(SUPER, { width: 1280, height: 720 });
+  const page = await ctx.newPage();
+  await page.goto("/super-admin");
+  const btn = page.getByTestId("account-menu-sidebar");
+  assert.ok(await inViewport(page, btn));
+  assert.equal(await page.getByTestId("account-menu-topbar").isVisible(), false);
+  await btn.click();
+  const pop = page.locator(".dash-account--sidebar .dash-account-pop");
+  assert.match(await pop.innerText(), new RegExp(esc(SUPER)));
+  assert.equal(await pop.getByRole("menuitem", { name: /λογαριασμός μου/ }).count(), 0);
+  await pop.getByRole("menuitem", { name: "Αποσύνδεση" }).click();
+  await page.waitForURL(/\/login/);
+  assert.equal((await ctx.request.get("/api/auth/me")).status(), 401);
+  // Ο Super Admin ΔΕΝ μπαίνει στο dashboard εταιρίας
+  await ctx.close();
+  const again = await session(SUPER, { width: 1280, height: 720 });
+  const p2 = await again.newPage();
+  await p2.goto("/dashboard/account");
+  assert.match(p2.url(), /\/super-admin|\/login/);
+  await again.close();
+});
+

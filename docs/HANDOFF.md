@@ -1,6 +1,6 @@
 # FleetPro v2 — Handoff
 
-> **23/10/2026 — Ανοιχτό PR «Ο λογαριασμός μου» / σταθερό μενού λογαριασμού** (branch `claude/account-menu`, από main). Χωρίς SQL, χωρίς env.
+> **23/10/2026 — PR #42 «Ο λογαριασμός μου» merged.** Συνέχεια (μενού λογαριασμού και στον Super Admin) στο ίδιο branch `claude/account-menu`, από το main μετά το merge — θέλει νέο PR για να μπει. Χωρίς SQL, χωρίς env.
 
 > **22/10/2026 — Ανοιχτό PR αυτόματης εγγραφής εταιρίας** (branch `ccr-e4dd73a0-1hur4n`, §«Αυτόματη εγγραφή» στο τέλος). Θέλει **SQL `34`** ΠΡΙΝ το preview και env `SELF_SIGNUP_ENABLED=true` (+ `SIGNUP_TEST_EMAILS=1` μόνο για E2E) **μόνο στο Preview**. Επόμενος ελεύθερος αριθμός SQL: `35`.
 
@@ -889,6 +889,6 @@ npm test                # unit tests (node:test, χωρίς εξάρτηση)
 - **Τώρα:** `AccountMenu.tsx` (avatar + όνομα → μενού με όνομα/email, «Ο λογαριασμός μου», ΕΛ/EN, Αποσύνδεση). Desktop: στην ΚΟΡΥΦΗ του sidebar. Κινητό (≤900px): στη sticky μπάρα, δεξιά του ☰ — ορατό χωρίς κύλισμα και χωρίς να ανοίξει το μενού (το αντίγραφο του sidebar κρύβεται, όχι διπλά). Το sidebar πήρε και `height: 100dvh`.
 - **Σελίδα `/dashboard/account`** για ΟΛΟΥΣ τους ρόλους (κανένα δικαίωμα, μόνο ενεργός χρήστης, μόνο ο ίδιος): όνομα, email, ρόλος, εταιρία, γλώσσα, Αποσύνδεση.
 - **Ίδιοι μηχανισμοί, μόνο νέα θέση (`useAccountActions.ts`):** γλώσσα → `PATCH /api/users/me/locale` + refresh· αποσύνδεση → `POST /api/auth/logout` → `/login`. Κανένα νέο API, καμία αλλαγή δικαιωμάτων.
-- **Super Admin:** η μπάρα αποσύνδεσης του κινητού έγινε sticky. Onboarding: ίδιο layout με το dashboard (καλύπτεται). Δημόσιο site/εγγραφή: δεν έχουν αποσύνδεση.
-- **Tests:** `tests/account-menu.test.mjs` (στατικοί)· E2E `tests/e2e/account-menu.e2e.mjs` (Admin/Staff/Partner × 360/390/430px + desktop) — τοπικά 12/12.
+- **Super Admin (συνέχεια, branch `claude/account-menu` μετά το merge του #42):** το ΙΔΙΟ `AccountMenu` (μεταφέρθηκε στο `src/components/account/` μαζί με το `useAccountActions.ts` και το δικό του `account-menu.css`, γιατί το super-admin δεν φορτώνει το `dashboard.css`). Όνομα/email του συνδεδεμένου από τη βάση (`super-admin/layout.tsx` → `SuperAdminUser.tsx` context) — όχι πια τα σταθερά «Super Admin» / «admin@fleetpro.gr». Desktop: κορυφή του sidebar· κινητό (≤600px): sticky μπάρα. Χωρίς «Ο λογαριασμός μου» (`accountHref={null}` — ο Super Admin δεν έχει σελίδα και δεν μπαίνει στο dashboard εταιρίας). Αφαιρέθηκαν το footer του sidebar και το σκέτο κουμπί «Αποσύνδεση». Διόρθωση: το `.sa-main` είχε `overflow: hidden`, που ακύρωνε το sticky της μπάρας του κινητού → `overflow: clip`. Onboarding: ίδιο layout με το dashboard (καλύπτεται). Δημόσιο site/εγγραφή: δεν έχουν αποσύνδεση.
+- **Tests:** `tests/account-menu.test.mjs` (στατικοί)· E2E `tests/e2e/account-menu.e2e.mjs` (Admin/Staff/Partner/Super Admin × 360/390/430px + desktop) — τοπικά 16/16.
 

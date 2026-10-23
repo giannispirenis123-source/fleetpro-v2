@@ -73,6 +73,7 @@ export const en: Dictionary = {
     roleCompanyAdmin: "Administrator",
     roleStaff: "Staff",
     rolePartner: "Partner",
+    roleSuperAdmin: "Super Admin",
   },
 
   dashboard: {

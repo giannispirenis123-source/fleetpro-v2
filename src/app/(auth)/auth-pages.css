@@ -1,0 +1,66 @@
+/* src/app/(auth)/auth-pages.css — εγγραφή, επαλήθευση email, νομικά πλατφόρμας. */
+.signup-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  background: var(--bg);
+  color: var(--text);
+}
+.signup-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 24px;
+  box-shadow: var(--shadow-card);
+}
+.signup-card--wide { max-width: 720px; }
+.signup-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.signup-brand { font-weight: 800; font-size: 18px; color: var(--text); text-decoration: none; }
+.signup-lang { display: flex; gap: 4px; }
+.signup-lang button {
+  background: none; border: 1px solid var(--border); color: var(--text-4);
+  font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 6px; cursor: pointer;
+}
+.signup-lang button.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.signup-card h1 { font-size: 22px; font-weight: 800; margin: 0 0 6px; }
+.signup-sub { font-size: 13px; color: var(--text-4); margin: 0 0 20px; line-height: 1.5; }
+.signup-form { display: flex; flex-direction: column; gap: 14px; }
+.signup-label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.signup-input {
+  background: var(--bg); border: 1px solid var(--hover-2); border-radius: 10px;
+  padding: 11px 13px; color: var(--text); font-size: 14px; font-family: inherit; width: 100%;
+}
+.signup-input:focus { outline: none; border-color: var(--primary); }
+.signup-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-3); line-height: 1.45; }
+.signup-check input { margin-top: 3px; }
+.signup-check a, .signup-foot a, .signup-link { color: var(--primary-soft); }
+/* Honeypot: εκτός οθόνης (όχι display:none — κάποια bots το προσπερνούν). */
+.signup-hp { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+.signup-btn {
+  background: var(--primary); color: #fff; border: none; border-radius: 10px;
+  padding: 12px; font-size: 14px; font-weight: 700; cursor: pointer; min-height: 44px;
+}
+.signup-btn:hover:not(:disabled) { background: var(--primary-hover); }
+.signup-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.signup-btn--ghost { background: none; border: 1px solid var(--border-strong); color: var(--text); }
+.signup-btn--ghost:hover:not(:disabled) { background: var(--hover); }
+.signup-error {
+  background: var(--bad-bg); border: 1px solid var(--bad-border); color: var(--bad-fg);
+  border-radius: 8px; padding: 10px 12px; font-size: 13px;
+}
+.signup-ok {
+  background: var(--primary-bg); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.5;
+}
+.signup-foot { margin-top: 18px; font-size: 13px; color: var(--text-4); text-align: center; }
+.signup-sep { border: none; border-top: 1px solid var(--border); margin: 22px 0 16px; }
+.signup-h2 { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
+.legal-draft {
+  background: var(--bad-bg); border: 1px solid var(--bad-border); color: var(--bad-fg);
+  border-radius: 8px; padding: 12px; font-size: 13px; font-weight: 700; margin-bottom: 18px;
+}
+.legal-body { font-size: 14px; line-height: 1.65; color: var(--text-2); }

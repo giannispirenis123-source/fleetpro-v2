@@ -22,6 +22,7 @@ export async function loadViewer(session: JWTPayload): Promise<Viewer | null> {
       role: true,
       tenantId: true,
       isActive: true,
+      emailVerifiedAt: true,
       permissions: true,
       tenant: { select: { status: true } },
     },

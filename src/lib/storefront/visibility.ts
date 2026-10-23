@@ -8,11 +8,12 @@
 //
 // Ανοιχτή = υπάρχει slug ΚΑΙ tenants."storefrontEnabled" (ο διακόπτης «Η σελίδα
 // είναι ενεργή») ΚΑΙ το πακέτο έχει publicSite ΚΑΙ η εταιρία δεν είναι
-// ανασταλμένη/ακυρωμένη.
+// ανασταλμένη/ακυρωμένη ΚΑΙ (εταιρία από /signup, SQL 34) ο Διαχειριστής
+// έχει επαληθεύσει το email του.
 
 import { resolveEntitlements } from "../entitlementsCore";
 
-export type HiddenReason = "unknown_slug" | "no_slug" | "disabled" | "no_public_site" | "suspended";
+export type HiddenReason = "unknown_slug" | "no_slug" | "disabled" | "no_public_site" | "suspended" | "unverified";
 
 export type Visibility = { open: true } | { open: false; reason: HiddenReason };
 
@@ -22,6 +23,8 @@ export interface VisibilitySource {
   status: string;
   /** Από resolveEntitlements (πακέτο + overrides). */
   publicSite: boolean;
+  /** Εγγραφή (/signup) χωρίς ακόμη επαληθευμένο email. Λείπει = όχι. */
+  pendingVerification?: boolean;
 }
 
 const HIDDEN_STATUSES = new Set(["SUSPENDED", "CANCELLED"]);
@@ -30,6 +33,7 @@ export function storefrontVisibility(t: VisibilitySource | null): Visibility {
   if (!t) return { open: false, reason: "unknown_slug" };
   if (!t.storefrontSlug) return { open: false, reason: "no_slug" };
   if (HIDDEN_STATUSES.has(t.status)) return { open: false, reason: "suspended" };
+  if (t.pendingVerification) return { open: false, reason: "unverified" };
   if (!t.publicSite) return { open: false, reason: "no_public_site" };
   if (!t.storefrontEnabled) return { open: false, reason: "disabled" };
   return { open: true };
@@ -45,6 +49,7 @@ export const HIDDEN_REASON_TEXT: Record<HiddenReason, { el: string; en: string }
   },
   no_public_site: { el: "Το πακέτο της εταιρίας δεν περιλαμβάνει δημόσια σελίδα.", en: "The company plan does not include a public site." },
   suspended: { el: "Η εταιρία είναι σε αναστολή.", en: "The company is suspended." },
+  unverified: { el: "Το email της εγγραφής δεν έχει επαληθευτεί ακόμη.", en: "The sign-up email has not been verified yet." },
 };
 
 /** Η γραμμή της εταιρίας όπως τη φέρνει το resolveStorefrontCompany. */
@@ -54,6 +59,10 @@ export interface StorefrontRow {
   status: string;
   entitlementPlan: Parameters<typeof resolveEntitlements>[0];
   entitlementOverrides: unknown;
+  /** SQL 34 — 'self_signup' = από την αυτόματη εγγραφή. */
+  signupSource?: string;
+  /** Πόσοι χρήστες της εταιρίας έχουν επαληθευμένο email. */
+  _count?: { users: number };
 }
 
 /** Γραμμή βάσης → ανοιχτή ή ο λόγος (πακέτο + overrides μέσω resolveEntitlements). */
@@ -64,5 +73,6 @@ export function storefrontRowVisibility(row: StorefrontRow | null): Visibility {
     storefrontEnabled: row.storefrontEnabled,
     status: row.status,
     publicSite: resolveEntitlements(row.entitlementPlan, row.entitlementOverrides as never).modules.publicSite,
+    pendingVerification: row.signupSource === "self_signup" && (row._count?.users ?? 0) === 0,
   });
 }

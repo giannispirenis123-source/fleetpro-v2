@@ -247,6 +247,14 @@ model Tenant {
   depositPercent         Int      @default(30)
   // Προμήθεια πλατφόρμας σε basis points — ΜΟΝΟ ο Super Admin τη βλέπει/αλλάζει.
   platformFeeBps         Int      @default(0)
+
+  // Αυτόματη εγγραφή (SQL 34): 'manual' (Super Admin) | 'self_signup' (/signup).
+  signupSource     String    @default("manual")
+  // Πρόοδος του onboarding — βλ. src/lib/signup/onboarding.ts. null = καμία λίστα.
+  onboardingState  Json?
+  // Σήμανση από τον Super Admin για καθάρισμα (ανεπιβεβαίωτη εγγραφή > 7 ημέρες).
+  cleanupFlaggedAt DateTime?
+
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -280,6 +288,7 @@ model Tenant {
   entitlementPlan   Plan?                 @relation(fields: [planKey], references: [key], onDelete: SetNull)
 
   @@index([planKey])
+  @@index([signupSource, createdAt])
   @@map("tenants")
 }
 
@@ -295,6 +304,10 @@ model User {
   avatarUrl    String?
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
+  // Επαλήθευση email (SQL 34). Προεπιλογή now(): όσοι φτιάχνονται από Super
+  // Admin / «Χρήστες» είναι επαληθευμένοι. ΜΟΝΟ η εγγραφή (/signup) γράφει null
+  // — και τότε ούτε login ούτε dashboard μέχρι τον σύνδεσμο του email.
+  emailVerifiedAt DateTime? @default(now())
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -317,8 +330,24 @@ model User {
   partnerBookings Booking[]     @relation("PartnerBookings")
   // Οι κρατήσεις που καταχώρησε ο ίδιος, όποιος ρόλος κι αν είναι.
   createdBookings Booking[]     @relation("CreatedBookings")
+  emailVerificationTokens EmailVerificationToken[]
 
   @@map("users")
+}
+
+// Σύνδεσμος επαλήθευσης email (SQL 34): ΜΟΝΟ το hash του token, 24 ώρες, μίας χρήσης.
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
 }
 
 model Session {

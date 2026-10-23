@@ -2747,6 +2747,8 @@ const superAdminStyles = `
     .sa-mobile-bar {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
       padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
+      /* Αποσύνδεση πάντα ορατή στο κινητό, και με κύλισμα. */
+      position: sticky; top: 0; z-index: 20;
     }
     .sa-mobile-logout {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px;

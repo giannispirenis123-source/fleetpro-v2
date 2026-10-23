@@ -31,11 +31,13 @@ export default async function DashboardLayout({
   if (!viewer) redirect("/login");
 
   // Όνομα εταιρίας για το sidebar
-  const [tenant, entitlements, onboarding] = await Promise.all([
+  const [tenant, me, entitlements, onboarding] = await Promise.all([
     db.tenant.findUnique({
       where: { id: session.tenantId },
       select: { name: true },
     }),
+    // Όνομα/email για το μενού λογαριασμού — από τη βάση (όχι από το JWT).
+    db.user.findUnique({ where: { id: viewer.userId }, select: { name: true, email: true } }),
     getEntitlements(session.tenantId),
     // Πρόοδος onboarding (μόνο εταιρίες από /signup) — μόνο για τον Διαχειριστή.
     viewer.role === "COMPANY_ADMIN" ? onboardingBanner(session.tenantId) : Promise.resolve(null),
@@ -47,7 +49,8 @@ export default async function DashboardLayout({
     <I18nProvider locale={locale}>
       <div className="dash-shell">
         <DashboardSidebar
-          name={session.name}
+          name={me?.name ?? session.name}
+          email={me?.email ?? session.email}
           role={session.role}
           permissions={viewer.permissions}
           companyName={tenant?.name ?? t("common.myCompany", locale)}

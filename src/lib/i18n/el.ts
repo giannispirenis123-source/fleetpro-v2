@@ -43,6 +43,16 @@ export const el = {
     hidePassword: "Απόκρυψη κωδικού",
   },
 
+  account: {
+    title: "Ο λογαριασμός μου",
+    subtitle: "Τα στοιχεία σου, η γλώσσα της εφαρμογής και η αποσύνδεση.",
+    menu: "Μενού λογαριασμού",
+    name: "Όνομα",
+    email: "Email",
+    role: "Ρόλος",
+    company: "Εταιρία",
+  },
+
   sidebar: {
     overview: "Πίνακας",
     bookings: "Κρατήσεις",

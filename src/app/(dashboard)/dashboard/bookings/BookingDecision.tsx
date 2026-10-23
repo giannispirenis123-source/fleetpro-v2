@@ -34,7 +34,7 @@ interface DecisionInfo {
   message: Omit<MessageData, "kind">;
   contact: { email: string | null; phone: string | null };
   notifications: { kind: string; channel: string; result: string; error: string | null; createdAt: string }[];
-  history: { action: string; at: string; by: string | null }[];
+  history: { action: string; at: string; by: string | null; byDeleted?: boolean }[];
 }
 
 function useDecisionInfo(bookingId: string, tr: Tr) {
@@ -412,10 +412,10 @@ export function MessageModal({
             {info.history.map((h, i) => (
               <li key={i}>
                 <span>{fmtWhen(h.at, locale)}</span> · {tr(`decision.action_${h.action.replace(/^booking\./, "")}`)}
-                {h.by && (
+                {(h.by || h.byDeleted) && (
                   <>
                     {" "}
-                    · {tr("decision.historyBy")} {h.by}
+                    · {tr("decision.historyBy")} {h.by ?? tr("common.deletedUser")}
                   </>
                 )}
               </li>

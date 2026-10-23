@@ -14,6 +14,7 @@ export const en: Dictionary = {
     menu: "Menu",
     close: "Close",
     comingSoon: "soon",
+    deletedUser: "Deleted user",
     myCompany: "My company",
     notInPlan: "Not included in your plan",
     notInPlanShort: "not in plan",
@@ -1212,6 +1213,13 @@ export const en: Dictionary = {
     confirmDeactivateTitle: "Deactivate user",
     confirmDeactivateBody:
       "The user will no longer be able to sign in. Their history is kept and you can reactivate them later.",
+    delete: "Delete permanently",
+    confirmDeleteTitle: "Delete user permanently",
+    confirmDeleteBody:
+      "This action is PERMANENT and cannot be undone. The user is removed from the company completely and their email becomes free. Bookings, contracts and history are kept, showing “Deleted user” instead of the name. If you only want to stop them signing in, use “Deactivate” instead.",
+    confirmDeleteType: "Type DELETE to confirm",
+    confirmDeleteWord: "DELETE",
+    lastAdminDelete: "The last Administrator cannot be deleted",
     errorMissing: "Enter a name and an email",
     errorPassword: "The password needs at least 8 characters",
     errorSave: "Could not save",

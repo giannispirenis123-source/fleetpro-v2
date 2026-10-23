@@ -1432,7 +1432,7 @@ export default function ContractEditor({
             {/* ── Αλλαγή τιμής (contracts.price) ── */}
             {manualRental !== null && savedOverride && !priceDirty && (
               <p className="dash-form-note dash-price-who">
-                {tr("contracts.priceSetBy")} {savedOverride.userName || "—"}
+                {tr("contracts.priceSetBy")} {savedOverride.userName || (savedOverride.userDeleted ? tr("common.deletedUser") : "—")}
                 {savedOverride.at &&
                   ` · ${new Date(savedOverride.at).toLocaleString(INTL[locale] ?? "el-GR", { timeZone: "Europe/Athens" })}`}
                 {savedOverride.reason && ` · ${savedOverride.reason}`}

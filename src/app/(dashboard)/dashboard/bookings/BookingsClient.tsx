@@ -824,10 +824,10 @@ function BookingCard({
             {formatPrepTime(prepMinutes, locale)}
           </span>
         )}
-        {b.createdByName && (
+        {(b.createdByName || b.createdByDeleted) && (
           <span className="dash-booking-ready dash-muted">
             <UserRound size={13} /> {tr("bookings.createdBy")}:{" "}
-            {b.createdByName}
+            {b.createdByName ?? tr("common.deletedUser")}
           </span>
         )}
       </div>
@@ -861,11 +861,11 @@ function BookingCard({
             value={eur(view.insuranceCost, locale)}
           />
         )}
-        {b.partnerId && (
+        {(b.partnerId || b.partnerDeleted) && (
           <PriceRow
             label={
               <>
-                <Handshake size={12} /> {b.partnerName ?? tr("bookings.partner")}
+                <Handshake size={12} /> {b.partnerDeleted ? tr("common.deletedUser") : (b.partnerName ?? tr("bookings.partner"))}
                 {b.partnerCommissionRate > 0 && ` · ${b.partnerCommissionRate}%`}
               </>
             }

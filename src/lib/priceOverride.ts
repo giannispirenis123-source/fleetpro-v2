@@ -38,6 +38,8 @@ export interface PriceOverride {
   diff?: number;
   userId?: string;
   userName?: string;
+  /** Ο χρήστης διαγράφηκε οριστικά (SQL 35): userId/userName αφαιρέθηκαν. */
+  userDeleted?: boolean;
   /** ISO */
   at?: string;
   reason?: string;
@@ -111,6 +113,7 @@ export function readPriceOverride(v: unknown): PriceOverride | undefined {
     diff: num(o.diff),
     userId: str(o.userId),
     userName: str(o.userName),
+    ...(o.userDeleted === true ? { userDeleted: true } : {}),
     at: str(o.at),
     reason: str(o.reason),
   };

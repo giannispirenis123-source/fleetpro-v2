@@ -15,6 +15,7 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
@@ -93,6 +94,7 @@ export default function UsersClient({
   const [editing, setEditing] = useState<UserDTO | null>(null);
   const [permissionsFor, setPermissionsFor] = useState<UserDTO | null>(null);
   const [deactivating, setDeactivating] = useState<UserDTO | null>(null);
+  const [deleting, setDeleting] = useState<UserDTO | null>(null);
   /** Προαγωγή σε / υποβιβασμός από Διαχειριστή — πάντα με επιβεβαίωση. */
   const [roleChange, setRoleChange] = useState<{ user: UserDTO; to: string } | null>(null);
   const [error, setError] = useState("");
@@ -183,6 +185,7 @@ export default function UsersClient({
               onEdit={() => setEditing(u)}
               onPermissions={() => setPermissionsFor(u)}
               onDeactivate={() => setDeactivating(u)}
+              onDelete={() => setDeleting(u)}
               onPromote={() => setRoleChange({ user: u, to: ADMIN_ROLE })}
               onDemote={() => setRoleChange({ user: u, to: "STAFF" })}
               lastAdmin={countOf("COMPANY_ADMIN") <= 1}
@@ -245,6 +248,18 @@ export default function UsersClient({
         />
       )}
 
+      {deleting && (
+        <DeleteUserModal
+          user={deleting}
+          tr={tr}
+          onClose={() => setDeleting(null)}
+          onDone={(id) => {
+            setUsers((prev) => prev.filter((x) => x.id !== id));
+            setDeleting(null);
+          }}
+        />
+      )}
+
       {deactivating && (
         <DeactivateModal
           user={deactivating}
@@ -273,6 +288,7 @@ function UserCard({
   onEdit,
   onPermissions,
   onDeactivate,
+  onDelete,
   onPromote,
   onDemote,
   lastAdmin,
@@ -285,6 +301,7 @@ function UserCard({
   onEdit: () => void;
   onPermissions: () => void;
   onDeactivate: () => void;
+  onDelete: () => void;
   onPromote: () => void;
   onDemote: () => void;
   /** Μόνο ένας ενεργός διαχειριστής: δεν υποβιβάζεται (και ο server το κόβει). */
@@ -389,6 +406,18 @@ function UserCard({
               aria-label={tr("users.deactivate")}
             >
               <Ban size={16} />
+            </button>
+          )}
+          {!isSelf && (
+            <button
+              className="dash-icon-btn dash-icon-btn--danger"
+              onClick={onDelete}
+              disabled={isAdmin && u.isActive && lastAdmin}
+              title={isAdmin && u.isActive && lastAdmin ? tr("users.lastAdminDelete") : tr("users.delete")}
+              aria-label={tr("users.delete")}
+              data-testid="user-delete"
+            >
+              <Trash2 size={16} />
             </button>
           )}
         </div>
@@ -989,3 +1018,78 @@ function DeactivateModal({
     </div>
   );
 }
+
+/* ─────────────────────────────────────────────
+   Οριστική διαγραφή (DELETE /api/users/[id])
+   ───────────────────────────────────────────── */
+
+function DeleteUserModal({
+  user,
+  tr,
+  onClose,
+  onDone,
+}: {
+  user: UserDTO;
+  tr: (key: string) => string;
+  onClose: () => void;
+  onDone: (id: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [typed, setTyped] = useState("");
+  // Δεκτό και με τόνους/πεζά («διαγραφή»).
+  const plain = (v: string) => v.normalize("NFD").replace(/\p{M}/gu, "").trim().toUpperCase();
+  const confirmed = plain(typed) === plain(tr("users.confirmDeleteWord"));
+
+  const run = async () => {
+    if (busy || !confirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/users/${user.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || tr("users.errorSave"));
+        return;
+      }
+      onDone(user.id);
+    } catch {
+      setError(tr("users.errorConnection"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="dash-modal-overlay" onClick={onClose}>
+      <div className="dash-modal dash-modal--sm" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true">
+        <div className="dash-modal-header">
+          <h2>{tr("users.confirmDeleteTitle")}</h2>
+          <button className="dash-modal-close" onClick={onClose} aria-label={tr("users.cancel")}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="dash-modal-body">
+          <p className="dash-confirm-vehicle">{user.name}</p>
+          <div className="dash-form-error">
+            <AlertTriangle size={14} /> {tr("users.confirmDeleteBody")}
+          </div>
+          <label className="dash-field" style={{ marginTop: 12 }}>
+            {tr("users.confirmDeleteType")}
+            <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" data-testid="user-delete-confirm" />
+          </label>
+          {error && <div className="dash-form-error">{error}</div>}
+        </div>
+        <div className="dash-modal-footer">
+          <button className="dash-btn" onClick={onClose}>
+            {tr("users.cancel")}
+          </button>
+          <button className="dash-btn dash-btn--danger" onClick={run} disabled={busy || !confirmed}>
+            <Trash2 size={16} /> {busy ? tr("users.saving") : tr("users.delete")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+

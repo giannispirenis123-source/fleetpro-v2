@@ -168,3 +168,14 @@ test("AUDIT ✓: UNIQUE (tenantId, bookingNumber) — SQL 30, με επανάλ�
   assert.match(read("src/lib/bookingNumberRetry.ts"), /export async function withBookingNumberRetry/);
 });
 test.todo("AUDIT: η ποσότητα των πρόσθετων κρατιέται στην επανατιμολόγηση (requestFromBooking qty) — αλλάζει τιμές, θέλει απόφαση");
+
+test("DELETE /api/users/[id] (οριστική διαγραφή): φύλακας στον server + μόνο Διαχειριστής ίδιας εταιρίας", () => {
+  const src = readFileSync(join(API, "users/[id]/route.ts"), "utf8");
+  assert.match(src, /export const DELETE = withAuth\(/);
+  assert.equal("/users/[id]" in NO_WRAPPER, false);
+  // Ο ρόλος/η εταιρία από τον viewer (βάση), ΠΟΤΕ από body/URL — εκτός από το id του στόχου.
+  assert.match(src, /hardDeleteCompanyUser\(\{ id: viewer\.userId, role: viewer\.role, tenantId: viewer\.tenantId \}, params!\.id\)/);
+  const lib = readFileSync(join(ROOT, "src/lib/userDelete.ts"), "utf8");
+  assert.match(lib, /where: \{ id: targetId, tenantId \}/, "στόχος μόνο της ίδιας εταιρίας");
+  assert.match(lib, /if \(!isCompanyAdmin\(actor\) \|\| !tenantId\) return \{ ok: false, status: 403/);
+});

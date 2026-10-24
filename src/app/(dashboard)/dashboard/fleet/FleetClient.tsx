@@ -2,6 +2,7 @@
 
 import { formatEuros } from "@/lib/public/money";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Car,
   Plus,
@@ -133,6 +134,7 @@ export default function FleetClient({
   initialVehicles,
   role,
   limitMessage,
+  upgradeHref = null,
   publicSite,
   groups,
 }: {
@@ -140,6 +142,8 @@ export default function FleetClient({
   role: string;
   /** Το πακέτο δεν επιτρέπει άλλο όχημα (μήνυμα από τον server) — αλλιώς null. */
   limitMessage: string | null;
+  /** Στο όριο του πλάνου: σύνδεσμος «Αναβάθμιση» (μόνο εταιρίες με συνδρομή). */
+  upgradeHref?: string | null;
   /** Το πακέτο έχει δημόσια σελίδα → φαίνεται ο διακόπτης «Εμφάνιση». */
   publicSite: boolean;
   /** Ομάδες του site (SQL 21) για το πεδίο «Ομάδα». */
@@ -197,7 +201,17 @@ export default function FleetClient({
       </div>
 
       {canManage && limitMessage && (
-        <p className="dash-form-note dash-limit-note">{limitMessage}</p>
+        <p className="dash-form-note dash-limit-note">
+          {limitMessage}
+          {upgradeHref && (
+            <>
+              {" "}
+              <Link className="dash-btn dash-btn--primary dash-btn--sm" href={upgradeHref} data-testid="upgrade-plan">
+                {tr("billing.upgrade")}
+              </Link>
+            </>
+          )}
+        </p>
       )}
 
       {/* Φίλτρα + αναζήτηση */}

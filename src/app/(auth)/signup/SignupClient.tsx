@@ -5,14 +5,30 @@
 // εδώ φεύγουν μόνο τα πεδία της φόρμας. Μετά την υποβολή: ΙΔΙΟ μήνυμα σε κάθε
 // περίπτωση (καμία αποκάλυψη αν το email υπάρχει).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { t } from "@/lib/i18n";
 import type { SignupLang } from "@/lib/signup/signup";
 
-export default function SignupClient({ initialLang }: { initialLang: SignupLang }) {
+export default function SignupClient({ initialLang, billing = false }: { initialLang: SignupLang; billing?: boolean }) {
   const [lang, setLang] = useState<SignupLang>(initialLang);
   const tr = (k: string) => t(`signup.${k}`, lang);
-  const [form, setForm] = useState({ companyName: "", ownerName: "", email: "", password: "", website: "" });
+  const [form, setForm] = useState({ companyName: "", ownerName: "", email: "", password: "", website: "", founderCode: "" });
+  // Πρόγραμμα πρώτων εταιριών: ΜΟΝΟ ο αριθμός θέσεων από το δημόσιο endpoint.
+  const [spots, setSpots] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!billing) return;
+    let alive = true;
+    fetch("/api/public/founding-spots", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive && d && typeof d.remaining === "number") setSpots(d.remaining);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [billing]);
   const [accept, setAccept] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -33,7 +49,7 @@ export default function SignupClient({ initialLang }: { initialLang: SignupLang 
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, acceptTerms: accept, lang }),
+        body: JSON.stringify({ ...form, founderCode: spots && spots > 0 ? form.founderCode : "", acceptTerms: accept, lang }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -74,6 +90,11 @@ export default function SignupClient({ initialLang }: { initialLang: SignupLang 
           <>
             <h1>{tr("title")}</h1>
             <p className="signup-sub">{tr("subtitle")}</p>
+            {billing && spots !== null && (
+              <div className={`signup-founder ${spots > 0 ? "" : "is-closed"}`} role="status" data-testid="founder-banner">
+                {spots > 0 ? tr("founderBanner").replace("{n}", String(spots)) : tr("founderClosed")}
+              </div>
+            )}
             <form className="signup-form" onSubmit={submit} noValidate>
               <label className="signup-label">
                 {tr("companyName")}
@@ -91,6 +112,14 @@ export default function SignupClient({ initialLang }: { initialLang: SignupLang 
                 {tr("password")}
                 <input className="signup-input" name="password" type="password" value={form.password} onChange={set("password")} minLength={8} maxLength={200} autoComplete="new-password" required />
               </label>
+              {billing && spots !== null && spots > 0 && (
+                <label className="signup-label">
+                  {tr("founderCode")}
+                  <input className="signup-input" name="founderCode" value={form.founderCode} onChange={set("founderCode")} maxLength={40} autoComplete="off" autoCapitalize="characters" spellCheck={false} />
+                  <span className="signup-hint">{tr("founderCodeHint")}</span>
+                </label>
+              )}
+              {billing && !form.founderCode.trim() && <p className="signup-hint">{tr("trialNote")}</p>}
               {/* Honeypot — οι άνθρωποι δεν το βλέπουν ούτε το συμπληρώνουν. */}
               <div className="signup-hp" aria-hidden="true">
                 <label>

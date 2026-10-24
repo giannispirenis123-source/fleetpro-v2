@@ -87,6 +87,11 @@ export default function DashboardSidebar({
   const pathname = usePathname();
   const tr = useT();
   const [open, setOpen] = useState(false);
+  // Μενού λογαριασμού: «Συνδρομή» μόνο για τον Διαχειριστή, «Πες μας τη γνώμη σου» για όλους.
+  const accountLinks = [
+    ...(role === "COMPANY_ADMIN" ? [{ href: "/dashboard/billing", labelKey: "account.menuBilling", icon: "billing" as const }] : []),
+    { href: "/dashboard/feedback", labelKey: "account.menuFeedback", icon: "feedback" as const },
+  ];
 
   // Οι ενότητες «σύντομα» μένουν ορατές σε όλους ως ένδειξη τού τι
   // έρχεται· οι υπόλοιπες μόνο σε όποιον έχει το δικαίωμα προβολής.
@@ -114,7 +119,7 @@ export default function DashboardSidebar({
         </div>
         <span className="dash-brand-name">FleetPro</span>
         {/* Λογαριασμός: σταθερά ορατός στο κινητό, χωρίς να ανοίξει το μενού. */}
-        <AccountMenu name={name} email={email} role={role} variant="topbar" />
+        <AccountMenu name={name} email={email} role={role} variant="topbar" links={accountLinks} />
       </div>
 
       {/* Overlay */}
@@ -144,7 +149,7 @@ export default function DashboardSidebar({
         </div>
 
         {/* Λογαριασμός: στην ΚΟΡΥΦΗ του sidebar (desktop) — πάντα ορατός. */}
-        <AccountMenu name={name} email={email} role={role} variant="sidebar" onNavigate={() => setOpen(false)} />
+        <AccountMenu name={name} email={email} role={role} variant="sidebar" onNavigate={() => setOpen(false)} links={accountLinks} />
 
         <nav className="dash-nav">
           {items.map((it) => {

@@ -8,7 +8,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, LogOut, UserRound } from "lucide-react";
+import { ChevronDown, CreditCard, LogOut, MessageSquare, UserRound } from "lucide-react";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { LOCALES } from "@/lib/i18n/locale";
 import { LOCALE_SHORT, ROLE_LABEL_KEY, initialsOf, useAccountActions } from "./useAccountActions";
@@ -21,6 +21,7 @@ export default function AccountMenu({
   variant,
   onNavigate,
   accountHref = "/dashboard/account",
+  links = [],
 }: {
   name: string;
   email: string;
@@ -30,6 +31,8 @@ export default function AccountMenu({
   onNavigate?: () => void;
   /** Η σελίδα «Ο λογαριασμός μου»· null = δεν υπάρχει (π.χ. Super Admin) → χωρίς σύνδεσμο. */
   accountHref?: string | null;
+  /** Επιπλέον σύνδεσμοι (π.χ. «Συνδρομή», «Πες μας τη γνώμη σου») — μόνο στο dashboard. */
+  links?: { href: string; labelKey: string; icon: "billing" | "feedback" }[];
 }) {
   const tr = useT();
   const { locale, changeLocale, savingLocale, logout } = useAccountActions();
@@ -95,6 +98,23 @@ export default function AccountMenu({
               <UserRound size={16} /> {tr("account.title")}
             </Link>
           )}
+          {links.map((l) => {
+            const Icon = l.icon === "billing" ? CreditCard : MessageSquare;
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="dash-account-item"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  onNavigate?.();
+                }}
+              >
+                <Icon size={16} /> {tr(l.labelKey)}
+              </Link>
+            );
+          })}
           <div className="dash-lang" role="group" aria-label={tr("common.language")}>
             {LOCALES.map((code) => (
               <button

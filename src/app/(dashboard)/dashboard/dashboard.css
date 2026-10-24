@@ -2846,3 +2846,37 @@ input.dash-invalid,
   .dash-onb-head { flex-wrap: wrap; }
   .dash-onb-preview { height: 320px; }
 }
+
+/* ---------- Συνδρομή (SQL 36) ---------- */
+.dash-billing-banner {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; font-size: 14px;
+  border: 1px solid var(--border); background: var(--primary-bg); color: var(--text);
+}
+.dash-billing-banner > span { flex: 1; min-width: 200px; }
+.dash-billing-banner--read_only { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-fg); }
+.dash-billing-banner--past_due { background: rgba(245, 158, 11, 0.12); color: var(--warn-fg); }
+.dash-billing-banner-note { font-weight: 600; }
+.dash-billing-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; font-size: 14px; }
+.dash-billing-dl dt { color: var(--text-3); font-weight: 600; }
+.dash-billing-dl dd { margin: 0; }
+.dash-billing-founder {
+  display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; margin-bottom: 14px;
+  border-radius: 10px; background: var(--violet-bg); color: var(--violet-fg); font-size: 13.5px;
+}
+.dash-billing-plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin: 14px 0; }
+.dash-billing-plan {
+  display: flex; flex-direction: column; gap: 10px; padding: 16px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+}
+.dash-billing-plan.is-selected { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.dash-billing-plan h3 { margin: 0; font-size: 16px; }
+.dash-billing-price { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.dash-billing-price strong { font-size: 22px; }
+.dash-billing-price s { color: var(--text-4); }
+.dash-billing-price span { color: var(--text-3); font-size: 12.5px; }
+.dash-billing-founder-note { margin: 0; font-size: 12px; color: var(--violet-fg); }
+.dash-billing-plan ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.dash-billing-plan li { display: flex; align-items: center; gap: 6px; }
+.dash-billing-plan .dash-btn { margin-top: auto; }
+.dash-billing-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }

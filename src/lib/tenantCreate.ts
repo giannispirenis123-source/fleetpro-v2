@@ -32,6 +32,12 @@ export interface NewTenantInput {
   storefrontSlug?: string | null;
   signupSource?: SignupSource;
   onboardingState?: Prisma.InputJsonValue;
+  /**
+   * Μόνο /signup με ενεργό Billing (SQL 36): 'founder_trial' (κωδικός ιδρυτή,
+   * 30 ημ. χωρίς κάρτα από το ΠΡΩΤΟ όχημα) ή 'awaiting_checkout' (14 ημ. με
+   * κάρτα στο Stripe Checkout). Χωρίς αυτό: 'exempt', όπως πάντα.
+   */
+  billingStatus?: "founder_trial" | "awaiting_checkout";
   admin: {
     name: string;
     email: string;
@@ -57,7 +63,9 @@ export async function createTenantWithAdmin(
       plan: input.plan ?? "STARTER",
       planKey: input.planKey ?? DEFAULT_PLAN_KEY,
       status: "TRIAL",
-      trialEndsAt: new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+      // Με συνδρομή η λήξη της δοκιμής ορίζεται αργότερα (πρώτο όχημα / Stripe).
+      trialEndsAt: input.billingStatus ? null : new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+      ...(input.billingStatus ? { billingStatus: input.billingStatus } : {}),
       signupSource: input.signupSource ?? "manual",
       ...(input.storefrontSlug ? { storefrontSlug: input.storefrontSlug } : {}),
       ...(input.onboardingState !== undefined ? { onboardingState: input.onboardingState } : {}),

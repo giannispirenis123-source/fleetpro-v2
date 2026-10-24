@@ -10,6 +10,7 @@ import { generateInvoiceCode } from "../invoiceCode";
 import { nextBookingNumber } from "../bookingCreate";
 import { withBookingNumberRetry } from "../bookingNumberRetry";
 import { resolveStorefrontCompany } from "../storefront/resolve";
+import { tenantReadOnly } from "../billing/access";
 import { sitePath } from "../storefront/slug";
 import { basePathForOrigin } from "../storefront/siteUrl";
 import { loadBlockingBookings } from "./availability";
@@ -101,6 +102,17 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
 
   const resolved = await resolveStorefrontCompany(input.slug);
   if (!resolved) return { ok: false, status: 404, message: msg("Η σελίδα δεν βρέθηκε.", "Page not found.") };
+  // Συνδρομή σε «μόνο ανάγνωση» (SQL 36): η σελίδα μένει ορατή, νέες κρατήσεις όχι.
+  if (await tenantReadOnly(resolved.companyId, now)) {
+    return {
+      ok: false,
+      status: 409,
+      message: msg(
+        "Οι online κρατήσεις δεν είναι διαθέσιμες αυτή τη στιγμή. Επικοινωνήστε απευθείας με την εταιρία.",
+        "Online bookings are not available right now. Please contact the company directly."
+      ),
+    };
+  }
   const cat = await loadSiteCatalog(resolved.companyId);
   if (!cat) return { ok: false, status: 404, message: msg("Η σελίδα δεν βρέθηκε.", "Page not found.") };
   const c = input.criteria;

@@ -50,6 +50,15 @@ export const LIMITS = {
   verifyResendPerEmail: { scope: "verify-resend-email", max: 3, windowMinutes: 60 },
   /** Δοκιμές συνδέσμου επαλήθευσης ανά IP (το token είναι 256 bit — δίχτυ ασφαλείας). */
   verifyPerIp: { scope: "verify-ip", max: 30, windowMinutes: 15 },
+  /** Κωδικός ιδρυτή στην εγγραφή: προσπάθειες ανά IP (κάθε κωδικός, σωστός ή λάθος). */
+  founderCodePerIp: { scope: "founder-code-ip", max: 10, windowMinutes: 60 },
+  /** Δημόσιος μετρητής θέσεων του προγράμματος ιδρυτών ανά IP. */
+  foundingSpotsPerIp: { scope: "founding-spots-ip", max: 60, windowMinutes: 10 },
+  /** Συνδρομή: νέα Stripe Checkout / Πύλη / συγχρονισμός ανά εταιρία. */
+  billingCheckoutPerTenant: { scope: "billing-checkout", max: 10, windowMinutes: 60 },
+  billingSyncPerTenant: { scope: "billing-sync", max: 30, windowMinutes: 60 },
+  /** «Πες μας τη γνώμη σου» ανά χρήστη. */
+  feedbackPerUser: { scope: "feedback-user", max: 5, windowMinutes: 60 },
 } as const satisfies Record<string, Limit>;
 
 /** Κλειδί χωρίς προσωπικά δεδομένα: scope + hash(μυστικό + τιμή). */

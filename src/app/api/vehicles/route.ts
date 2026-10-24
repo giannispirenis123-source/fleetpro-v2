@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { ok, created, badRequest, serverError, forbidden, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { checkWithinLimit } from "@/lib/entitlements";
+import { startFounderClockIfNeeded } from "@/lib/billing/billingServer";
 import {
   FUEL_TYPES,
   VEHICLE_CATEGORIES,
@@ -105,7 +106,8 @@ export const POST = withPermission(
         if (!group) return badRequest("Η ομάδα δεν βρέθηκε");
       }
 
-      // Όριο οχημάτων του πακέτου (null = απεριόριστο) — πάντα εδώ, στον server.
+      // Όριο οχημάτων του πακέτου/πλάνου (null = απεριόριστο) — πάντα εδώ, στον
+      // server. Τα όρια ζουν στη βάση (plans.limits.maxVehicles, SQL 20/36).
       const limit = await checkWithinLimit(session.tenantId!, "vehicles");
       if (!limit.ok) return forbidden(limit.message);
 
@@ -144,6 +146,9 @@ export const POST = withPermission(
           notes: data.notes || null,
         },
       });
+
+      // Δοκιμή ιδρυτή (SQL 36): το ρολόι των 30 ημερών ξεκινά με το ΠΡΩΤΟ όχημα.
+      await startFounderClockIfNeeded(session.tenantId!);
 
       return created({ vehicle: toVehicleDTO(vehicle) });
     } catch (error) {

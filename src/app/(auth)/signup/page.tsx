@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { selfSignupEnabled } from "@/lib/signup/flag";
 import { signupLang } from "@/lib/signup/signup";
+import { billingReady } from "@/lib/billing/billingServer";
 import SignupClient from "./SignupClient";
 import "../auth-pages.css";
 
@@ -14,5 +15,6 @@ export const metadata: Metadata = { title: "FleetPro", robots: { index: false, f
 
 export default function SignupPage({ searchParams }: { searchParams: { lang?: string } }) {
   if (!selfSignupEnabled()) notFound();
-  return <SignupClient initialLang={signupLang(searchParams.lang)} />;
+  // Συνδρομές (SQL 36): χωρίς ρυθμισμένο Billing δεν φαίνονται δοκιμή/πρόγραμμα ιδρυτών.
+  return <SignupClient initialLang={signupLang(searchParams.lang)} billing={billingReady()} />;
 }

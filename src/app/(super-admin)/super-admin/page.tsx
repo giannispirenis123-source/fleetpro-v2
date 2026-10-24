@@ -72,6 +72,11 @@ interface Tenant {
   emailVerified?: boolean;
   /** Σημάνθηκε για καθάρισμα (ανεπιβεβαίωτη εγγραφή > 7 ημέρες). */
   cleanupFlaggedAt?: string | null;
+  /** Συνδρομή (SQL 36): exempt | founder_trial | awaiting_checkout | κατάσταση Stripe. */
+  billingStatus?: string;
+  billingInterval?: "month" | "year";
+  /** Θέση στο πρόγραμμα «Πρώτες 10 εταιρίες» (1–10) ή null. */
+  founderSlot?: number | null;
   _count: {
     users: number;
     vehicles: number;
@@ -105,7 +110,23 @@ interface TenantUser {
 const PLAN_LABELS: Record<SubscriptionPlan, string> = {
   STARTER: "Starter",
   PRO: "Pro",
-  ENTERPRISE: "Enterprise",
+  // Το παλιό ENTERPRISE αντιστοιχεί στο πλάνο Business (SQL 36).
+  ENTERPRISE: "Business",
+};
+
+/** Κατάσταση συνδρομής (SQL 36) — ετικέτες Super Admin. */
+const BILLING_LABELS: Record<string, string> = {
+  exempt: "Εκτός χρέωσης",
+  founder_trial: "Δοκιμή ιδρυτή",
+  awaiting_checkout: "Αναμονή κάρτας",
+  trialing: "Δοκιμή (κάρτα)",
+  active: "Ενεργή",
+  past_due: "Απλήρωτη",
+  unpaid: "Απλήρωτη",
+  canceled: "Ακυρωμένη",
+  incomplete: "Μη ολοκληρωμένη",
+  incomplete_expired: "Έληξε",
+  paused: "Σε παύση",
 };
 
 /** Κατά προσέγγιση ύψος του μενού ενεργειών, για να κρίνουμε αν χωράει. */
@@ -180,8 +201,21 @@ export default function SuperAdminDashboard() {
   // Εταιρία της οποίας βλέπουμε τους χρήστες (λίστα + reset κωδικού).
   const [usersOfTenant, setUsersOfTenant] = useState<Tenant | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "tenants" | "stats" | "discounts" | "settings"
+    "tenants" | "stats" | "discounts" | "founding" | "feedback" | "settings"
   >("tenants");
+  // Μετρητής θέσεων του προγράμματος ιδρυτών (SQL 36).
+  const [founding, setFounding] = useState<FoundingView | null>(null);
+  const loadFounding = useCallback(async () => {
+    try {
+      const res = await fetch("/api/super-admin/founding");
+      if (res.ok) setFounding((await res.json()).data);
+    } catch {
+      /* ο μετρητής είναι βοηθητικός */
+    }
+  }, []);
+  useEffect(() => {
+    loadFounding();
+  }, [loadFounding]);
 
   // ─── Φόρτωση εταιριών από το API ───
   const loadTenants = useCallback(async () => {
@@ -288,6 +322,8 @@ export default function SuperAdminDashboard() {
               label: "Εκπτώσεις",
               icon: <Tag size={16} />,
             },
+            { id: "founding", label: "Πρώτες εταιρίες", icon: <Zap size={16} /> },
+            { id: "feedback", label: "Γνώμες", icon: <Activity size={16} /> },
             {
               id: "settings",
               label: "Ρυθμίσεις",
@@ -413,7 +449,7 @@ export default function SuperAdminDashboard() {
                   <option value="ALL">Όλα τα πλάνα</option>
                   <option value="STARTER">Starter</option>
                   <option value="PRO">Pro</option>
-                  <option value="ENTERPRISE">Enterprise</option>
+                  <option value="ENTERPRISE">Business</option>
                 </select>
                 <select
                   className="sa-select"
@@ -442,6 +478,14 @@ export default function SuperAdminDashboard() {
 
             {cleanup && <div className="sa-load-error">{cleanup.message}</div>}
 
+            {founding?.program && (
+              <div className="sa-founding-strip" data-testid="founding-counter">
+                Πρώτες εταιρίες: <strong>{founding.program.claimed}/{founding.program.maxSlots}</strong> θέσεις · απομένουν{" "}
+                <strong>{founding.program.remaining}</strong>
+                {!founding.program.active && " · το πρόγραμμα είναι κλειστό"}
+              </div>
+            )}
+
             {loadError && (
               <div className="sa-load-error">
                 <AlertTriangle size={15} /> {loadError}
@@ -465,6 +509,8 @@ export default function SuperAdminDashboard() {
                     <tr>
                       <th>Εταιρία</th>
                       <th>Πλάνο</th>
+                      <th>Συνδρομή</th>
+                      <th>Ιδρυτής</th>
                       <th>Κατάσταση</th>
                       <th>Οχήματα</th>
                       <th>Χρήστες</th>
@@ -522,6 +568,18 @@ export default function SuperAdminDashboard() {
         {activeTab === "discounts" && (
           <div className="sa-content">
             <PlatformDiscountsView tenants={tenants} />
+          </div>
+        )}
+
+        {activeTab === "founding" && (
+          <div className="sa-content">
+            <FoundingAdminView view={founding} onChange={setFounding} reload={loadFounding} />
+          </div>
+        )}
+
+        {activeTab === "feedback" && (
+          <div className="sa-content">
+            <FeedbackAdminView />
           </div>
         )}
 
@@ -635,6 +693,13 @@ function TenantRow({
           {PLAN_LABELS[tenant.plan]}
         </span>
       </td>
+      <td>
+        <span className="sa-source" data-testid="billing-status">
+          {BILLING_LABELS[tenant.billingStatus ?? "exempt"] ?? tenant.billingStatus}
+          {tenant.billingStatus && tenant.billingStatus !== "exempt" && tenant.billingInterval === "year" ? " · ετήσια" : ""}
+        </span>
+      </td>
+      <td>{tenant.founderSlot ? <span className="sa-plan-badge pro">#{tenant.founderSlot}</span> : "—"}</td>
       <td>
         <div className="sa-status-wrap">
           <span className={`sa-status ${status.color}`}>
@@ -1242,6 +1307,219 @@ function PlatformDiscountModal({
   );
 }
 
+// ─── Πρώτες εταιρίες (SQL 36) ─────────────
+
+interface FoundingView {
+  program: { maxSlots: number; claimed: number; remaining: number; active: boolean } | null;
+  codes: { id: string; label: string | null; maxClaims: number; claimedCount: number; active: boolean; expiresAt: string | null; createdAt: string }[];
+  claims: { slot: number; claimedAt: string; codeLabel: string | null; tenantId: string | null; tenantName: string | null }[];
+  notices: { tenantId: string; tenantName: string; endsAt: string; subject: string; text: string }[];
+}
+
+function FoundingAdminView({
+  view,
+  onChange,
+  reload,
+}: {
+  view: FoundingView | null;
+  onChange: (v: FoundingView) => void;
+  reload: () => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [maxClaims, setMaxClaims] = useState(1);
+  const [expiresOn, setExpiresOn] = useState("");
+  const [created, setCreated] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const createCode = async () => {
+    setBusy(true);
+    setError("");
+    setCreated(null);
+    try {
+      const res = await fetch("/api/super-admin/founding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim() || undefined, maxClaims, expiresOn: expiresOn || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || "Σφάλμα");
+        return;
+      }
+      // Ο κωδικός φαίνεται ΜΟΝΟ τώρα — στη βάση μένει μόνο το hash.
+      setCreated(data.data.code);
+      setLabel("");
+      reload();
+    } catch {
+      setError("Σφάλμα σύνδεσης");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const patch = async (body: Record<string, unknown>) => {
+    setError("");
+    const res = await fetch("/api/super-admin/founding", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) onChange(data.data);
+    else setError(data.message || "Σφάλμα");
+  };
+
+  if (!view?.program) {
+    return <div className="sa-load-error">Το πρόγραμμα δεν βρέθηκε — έτρεξε το SQL 36;</div>;
+  }
+  const p = view.program;
+  return (
+    <>
+      <div className="sa-toolbar">
+        <h1 className="sa-page-title">Πρώτες 10 εταιρίες</h1>
+      </div>
+      <div className="sa-founding-strip">
+        Θέσεις: <strong>{p.claimed}/{p.maxSlots}</strong> · απομένουν <strong>{p.remaining}</strong> ·{" "}
+        {p.active ? "ανοιχτό" : "κλειστό"}{" "}
+        <button className="sa-btn-ghost" onClick={() => patch({ programActive: !p.active })}>
+          {p.active ? "Κλείσιμο προγράμματος" : "Άνοιγμα προγράμματος"}
+        </button>
+      </div>
+
+      <div className="sa-settings-card">
+        <h3>Νέος κωδικός ιδρυτή</h3>
+        <div className="sa-form-grid">
+          <label>Ετικέτα (για εσένα, π.χ. όνομα εταιρίας)<input value={label} maxLength={120} onChange={(e) => setLabel(e.target.value)} /></label>
+          <label>Μέγιστες χρήσεις<input type="number" min={1} max={10} value={maxClaims} onChange={(e) => setMaxClaims(Math.min(10, Math.max(1, Number(e.target.value) || 1)))} /></label>
+          <label>Λήξη (προαιρετικά)<input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} /></label>
+        </div>
+        <button className="sa-btn-primary" style={{ marginTop: 12 }} onClick={createCode} disabled={busy}>
+          {busy ? "Δημιουργία..." : "Δημιουργία κωδικού"}
+        </button>
+        {created && (
+          <div className="sa-founding-code" data-testid="founder-code-created">
+            Κωδικός: <code>{created}</code> — αντίγραψέ τον τώρα· δεν θα ξαναφανεί.
+          </div>
+        )}
+        {error && <div className="sa-error">{error}</div>}
+      </div>
+
+      <div className="sa-table-wrap" style={{ marginTop: 16 }}>
+        <table className="sa-table">
+          <thead>
+            <tr><th>Ετικέτα</th><th>Χρήσεις</th><th>Λήξη</th><th>Κατάσταση</th><th></th></tr>
+          </thead>
+          <tbody>
+            {view.codes.map((c) => (
+              <tr key={c.id} className="sa-table-row">
+                <td>{c.label || "—"}</td>
+                <td className="sa-num">{c.claimedCount}/{c.maxClaims}</td>
+                <td className="sa-date">{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString("el-GR") : "—"}</td>
+                <td>{c.active ? "Ενεργός" : "Ανενεργός"}</td>
+                <td>
+                  <button className="sa-btn-ghost" onClick={() => patch({ codeId: c.id, codeActive: !c.active })}>
+                    {c.active ? "Απενεργοποίηση" : "Ενεργοποίηση"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {view.codes.length === 0 && <div className="sa-empty"><p>Δεν υπάρχουν κωδικοί</p></div>}
+      </div>
+
+      <h2 className="sa-section-title" style={{ marginTop: 24 }}>Διεκδικήσεις</h2>
+      <div className="sa-table-wrap">
+        <table className="sa-table">
+          <thead>
+            <tr><th>Θέση</th><th>Εταιρία</th><th>Κωδικός</th><th>Ημερομηνία</th></tr>
+          </thead>
+          <tbody>
+            {view.claims.map((c) => (
+              <tr key={c.slot} className="sa-table-row">
+                <td className="sa-num">#{c.slot}</td>
+                <td>{c.tenantName ?? "(διαγραμμένη εταιρία)"}</td>
+                <td>{c.codeLabel || "—"}</td>
+                <td className="sa-date">{new Date(c.claimedAt).toLocaleDateString("el-GR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="sa-section-title" style={{ marginTop: 24 }}>Ειδοποιήσεις λήξης έκπτωσης (30 ημέρες πριν)</h2>
+      {view.notices.length === 0 ? (
+        <p className="sa-founding-note">Καμία δεν οφείλεται τώρα.</p>
+      ) : (
+        view.notices.map((n) => (
+          <div key={n.tenantId} className="sa-settings-card">
+            <h3>{n.tenantName} · λήξη {new Date(n.endsAt).toLocaleDateString("el-GR")}</h3>
+            <p className="sa-founding-note">
+              Μόνο κείμενο: η αποστολή σε πελάτες θέλει επαληθευμένο domain στο Resend.
+            </p>
+            <pre className="sa-founding-pre">{n.subject}{"\n\n"}{n.text}</pre>
+          </div>
+        ))
+      )}
+    </>
+  );
+}
+
+// ─── Γνώμες εταιριών (SQL 36) ─────────────
+
+interface FeedbackItem {
+  id: string;
+  tenantName: string | null;
+  userName: string | null;
+  helpedMost: string | null;
+  missing: string | null;
+  vehicleCount: number | null;
+  createdAt: string;
+}
+
+function FeedbackAdminView() {
+  const [items, setItems] = useState<FeedbackItem[] | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/super-admin/feedback")
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) setItems(d.data.items);
+        else setError(d.message || "Σφάλμα");
+      })
+      .catch(() => setError("Σφάλμα σύνδεσης"));
+  }, []);
+  return (
+    <>
+      <div className="sa-toolbar">
+        <h1 className="sa-page-title">Γνώμες εταιριών</h1>
+        <span className="sa-count">{items?.length ?? 0}</span>
+      </div>
+      {error && <div className="sa-load-error">{error}</div>}
+      <div className="sa-table-wrap">
+        <table className="sa-table">
+          <thead>
+            <tr><th>Εταιρία</th><th>Τι βοήθησε</th><th>Τι έλειψε</th><th>Οχήματα</th><th>Ημερομηνία</th></tr>
+          </thead>
+          <tbody>
+            {(items ?? []).map((f) => (
+              <tr key={f.id} className="sa-table-row">
+                <td>{f.tenantName ?? "—"}<div className="sa-tenant-slug">{f.userName ?? ""}</div></td>
+                <td className="sa-feedback-text">{f.helpedMost ?? "—"}</td>
+                <td className="sa-feedback-text">{f.missing ?? "—"}</td>
+                <td className="sa-num">{f.vehicleCount ?? "—"}</td>
+                <td className="sa-date">{new Date(f.createdAt).toLocaleDateString("el-GR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {items && items.length === 0 && <div className="sa-empty"><p>Καμία γνώμη ακόμα</p></div>}
+      </div>
+    </>
+  );
+}
+
 // ─── Platform Settings View ───────────────
 
 function PlatformSettingsView() {
@@ -1723,7 +2001,11 @@ function EditTenantModal({
     website: "",
     // % με έως 2 δεκαδικά (π.χ. «1,5») ↔ basis points στη βάση.
     platformFee: String((tenant.platformFeeBps ?? 0) / 100).replace(".", ","),
+    // Συνδρομή (SQL 36): χειροκίνητα μόνο οι καταστάσεις πριν από το Stripe.
+    billingStatus: tenant.billingStatus ?? "exempt",
+    trialEndsOn: tenant.trialEndsAt ? tenant.trialEndsAt.slice(0, 10) : "",
   });
+  const stripeManaged = !["exempt", "founder_trial", "awaiting_checkout"].includes(tenant.billingStatus ?? "exempt");
   const [loading, setLoading] = useState(false);
   const feeBps = Math.round(Number(form.platformFee.trim().replace(",", ".") || "0") * 100);
   const feeValid = Number.isInteger(feeBps) && feeBps >= 0 && feeBps <= 5000;
@@ -1733,11 +2015,16 @@ function EditTenantModal({
     try {
       // Το website δεν φορτώνεται στη φόρμα: κενό = «δεν αλλάζει». Το domain
       // του site το ορίζει ο Admin της εταιρίας («Η σελίδα μου» → «Domain»).
-      const { website, platformFee: _fee, ...rest } = form;
+      const { website, platformFee: _fee, billingStatus, trialEndsOn, ...rest } = form;
       const payload = {
         ...rest,
         platformFeeBps: feeBps,
         ...(website.trim() && { website: website.trim() }),
+        // Με συνδρομή στο Stripe η κατάσταση/δοκιμή έρχονται ΜΟΝΟ από το Stripe.
+        ...(!stripeManaged && {
+          billingStatus,
+          ...(trialEndsOn !== (tenant.trialEndsAt ? tenant.trialEndsAt.slice(0, 10) : "") && { trialEndsOn: trialEndsOn || null }),
+        }),
       };
       const res = await fetch(`/api/tenants/${tenant.id}`, {
         method: "PATCH",
@@ -1769,7 +2056,7 @@ function EditTenantModal({
               <select value={form.plan} onChange={e => setForm(f => ({...f, plan: e.target.value as SubscriptionPlan}))}>
                 <option value="STARTER">Starter</option>
                 <option value="PRO">Pro</option>
-                <option value="ENTERPRISE">Enterprise</option>
+                <option value="ENTERPRISE">Business</option>
               </select>
             </label>
             <label>Πακέτο (λειτουργίες)
@@ -1790,6 +2077,23 @@ function EditTenantModal({
               </div>
             </label>
             <label>Website (embed)<input value={form.website} onChange={e => setForm(f => ({...f, website: e.target.value}))} placeholder="https://mycompany.gr" /></label>
+            <label>Συνδρομή
+              <select value={form.billingStatus} disabled={stripeManaged} onChange={e => setForm(f => ({...f, billingStatus: e.target.value}))}>
+                {stripeManaged && <option value={form.billingStatus}>{BILLING_LABELS[form.billingStatus] ?? form.billingStatus} (Stripe)</option>}
+                <option value="exempt">Εκτός χρέωσης</option>
+                <option value="founder_trial">Δοκιμή ιδρυτή (χωρίς κάρτα)</option>
+                <option value="awaiting_checkout">Αναμονή κάρτας (Checkout)</option>
+              </select>
+              <small>
+                {stripeManaged
+                  ? "Η συνδρομή είναι στο Stripe: αλλαγές από το Stripe (ή από την εταιρία στη «Διαχείριση συνδρομής»)."
+                  : "Πλάνο συνδρομής = «Πακέτο»: Starter / Pro / Business (όρια από τη βάση)."}
+              </small>
+            </label>
+            <label>Λήξη δοκιμής
+              <input type="date" value={form.trialEndsOn} disabled={stripeManaged} onChange={e => setForm(f => ({...f, trialEndsOn: e.target.value}))} />
+              <small>Κενό = χωρίς ημερομηνία (δοκιμή ιδρυτή: ξεκινά με το πρώτο όχημα).</small>
+            </label>
             <label>
               Προμήθεια πλατφόρμας στις online πληρωμές (%)
               <input inputMode="decimal" value={form.platformFee} onChange={e => setForm(f => ({...f, platformFee: e.target.value}))} placeholder="0" aria-invalid={!feeValid} />
@@ -2717,4 +3021,12 @@ const superAdminStyles = `
     .sa-mobile-brand { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--text); }
     .sa-stats-bar { grid-template-columns: repeat(2, 1fr); }
   }
+
+  .sa-founding-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--text-3); margin: 0 0 14px; }
+  .sa-founding-strip strong { color: var(--text); }
+  .sa-founding-code { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--primary-bg); font-size: 13px; }
+  .sa-founding-code code { font-size: 15px; font-weight: 700; letter-spacing: 1px; user-select: all; }
+  .sa-founding-note { font-size: 12.5px; color: var(--text-4); margin: 4px 0 10px; }
+  .sa-founding-pre { white-space: pre-wrap; font-size: 12.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin: 0; }
+  .sa-feedback-text { max-width: 320px; white-space: pre-wrap; font-size: 12.5px; }
 `;

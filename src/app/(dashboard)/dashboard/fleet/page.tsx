@@ -17,7 +17,7 @@ export default async function FleetPage() {
 
   // Αρχική λίστα από τη βάση: η σελίδα έρχεται ήδη γεμάτη, χωρίς loading state.
   // Από εκεί και πέρα τη λίστα τη συντηρεί ο client μετά από κάθε αλλαγή.
-  const [vehicles, entitlements, limit, groups] = await Promise.all([
+  const [vehicles, entitlements, limit, groups, billing] = await Promise.all([
     db.vehicle.findMany({
       where: { tenantId: session.tenantId, isActive: true },
       orderBy: [{ brand: "asc" }, { model: "asc" }],
@@ -29,6 +29,8 @@ export default async function FleetPage() {
       orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
       select: { id: true, code: true, name: true, isActive: true },
     }),
+    // Εταιρία με συνδρομή (SQL 36): στο όριο φαίνεται «Αναβάθμιση» → «Συνδρομή».
+    db.tenant.findUnique({ where: { id: session.tenantId }, select: { billingStatus: true } }),
   ]);
 
   return (
@@ -36,6 +38,7 @@ export default async function FleetPage() {
       initialVehicles={vehicles.map(toVehicleDTO)}
       role={session.role}
       limitMessage={limit.ok ? null : limit.message}
+      upgradeHref={!limit.ok && billing && billing.billingStatus !== "exempt" ? "/dashboard/billing" : null}
       publicSite={entitlements.modules.publicSite}
       groups={groups.map((g) => ({
         id: g.id,

@@ -65,11 +65,17 @@ export const GET = withAuth(async (req) => {
           },
           // «Email επαληθευμένο»: τουλάχιστον ένας χρήστης με emailVerifiedAt.
           users: { where: { emailVerifiedAt: { not: null } }, select: { id: true }, take: 1 },
+          // Πρόγραμμα ιδρυτών (SQL 36): μόνο ο αριθμός θέσης.
+          founderClaim: { select: { slotNumber: true } },
         },
       }),
       db.tenant.count({ where }),
     ]);
-    const tenants = rows.map(({ users, onboardingState: _onboarding, ...t }) => ({ ...t, emailVerified: users.length > 0 }));
+    const tenants = rows.map(({ users, onboardingState: _onboarding, founderClaim, ...t }) => ({
+      ...t,
+      emailVerified: users.length > 0,
+      founderSlot: founderClaim?.slotNumber ?? null,
+    }));
 
     return ok({ tenants, total, page: Math.ceil(skip / limit) + 1, limit });
   } catch (error) {

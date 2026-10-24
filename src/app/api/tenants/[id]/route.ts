@@ -3,8 +3,10 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { withAuth, ok, notFound, badRequest, serverError, noContent, logError } from "@/lib/api";
+import { SUBSCRIPTION_PLAN_OF, isBillingPlanKey } from "@/lib/billing/core";
 
 const updateTenantSchema = z.object({
   name: z.string().min(2).optional(),
@@ -24,6 +26,11 @@ const updateTenantSchema = z.object({
   planKey: z.string().min(1).nullable().optional(),
   // Προμήθεια πλατφόρμας στις online πληρωμές (basis points, 100 = 1%) — ΜΟΝΟ Super Admin.
   platformFeeBps: z.number().int().min(0).max(5000).optional(),
+  // Συνδρομή (SQL 36) — ΧΕΙΡΟΚΙΝΗΤΑ μόνο οι καταστάσεις πριν από το Stripe.
+  // Οι καταστάσεις του Stripe (trialing/active/…) έρχονται ΜΟΝΟ από το webhook.
+  billingStatus: z.enum(["exempt", "founder_trial", "awaiting_checkout"]).optional(),
+  // Λήξη δοκιμής "YYYY-MM-DD" (τέλος ημέρας ώρα Ελλάδας) ή null = καμία.
+  trialEndsOn: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional(),
 });
 
 // GET /api/tenants/[id]
@@ -83,9 +90,19 @@ export const PATCH = withAuth(
         if (!plan) return badRequest("Άγνωστο πακέτο");
       }
 
+      const { trialEndsOn, ...rest } = parsed.data;
+      const data: Prisma.TenantUpdateInput = { ...rest };
+      // Πλάνο συνδρομής → και το παλιό enum "plan" (εμφάνιση/MRR) ακολουθεί.
+      if (isBillingPlanKey(rest.planKey) && !rest.plan) data.plan = SUBSCRIPTION_PLAN_OF[rest.planKey];
+      if (trialEndsOn !== undefined) {
+        data.trialEndsAt = trialEndsOn ? new Date(`${trialEndsOn}T21:00:00.000Z`) : null;
+        // Χειροκίνητη δοκιμή ιδρυτή με ημερομηνία = το ρολόι θεωρείται ξεκινημένο.
+        if (trialEndsOn) data.trialStartedAt = new Date();
+      }
+
       const tenant = await db.tenant.update({
         where: { id: params!.id },
-        data: parsed.data,
+        data,
       });
 
       return ok(tenant);

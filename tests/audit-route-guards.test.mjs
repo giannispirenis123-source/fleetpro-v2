@@ -39,6 +39,8 @@ const NO_WRAPPER = {
   "/auth/signup": "αυτόματη εγγραφή (δημόσιο): SELF_SIGNUP_ENABLED, rate limits, ουδέτερη απάντηση",
   "/auth/verify-email": "επαλήθευση email (δημόσιο): SELF_SIGNUP_ENABLED, token μίας χρήσης, rate limit",
   "/auth/resend-verification": "νέος σύνδεσμος (δημόσιο): SELF_SIGNUP_ENABLED, rate limits, ουδέτερη απάντηση",
+  "/billing/webhook": "υπογραφή Stripe (STRIPE_BILLING_WEBHOOK_SECRET) — ξεχωριστό από το Connect",
+  "/public/founding-spots": "δημόσιο: ΜΟΝΟ ο αριθμός θέσεων ιδρυτών, SELF_SIGNUP_ENABLED, rate limit ανά IP",
 };
 
 const ALL = routes();
@@ -70,7 +72,7 @@ test("routes χωρίς wrapper που θέλουν σύνδεση ελέγχο�
 });
 
 test("Super Admin routes: μόνο SUPER_ADMIN", () => {
-  for (const r of ["tenants/route.ts", "tenants/[id]/route.ts", "super-admin/platform-discounts/route.ts", "super-admin/platform-discounts/[id]/route.ts", "plans/route.ts", "super-admin/signup-cleanup/route.ts"]) {
+  for (const r of ["tenants/route.ts", "tenants/[id]/route.ts", "super-admin/platform-discounts/route.ts", "super-admin/platform-discounts/[id]/route.ts", "plans/route.ts", "super-admin/signup-cleanup/route.ts", "super-admin/founding/route.ts", "super-admin/feedback/route.ts"]) {
     const src = readFileSync(join(API, r), "utf8");
     assert.match(src, /\["SUPER_ADMIN"\]/, r);
   }
@@ -179,3 +181,16 @@ test("DELETE /api/users/[id] (οριστική διαγραφή): φύλακας
   assert.match(lib, /where: \{ id: targetId, tenantId \}/, "στόχος μόνο της ίδιας εταιρίας");
   assert.match(lib, /if \(!isCompanyAdmin\(actor\) \|\| !tenantId\) return \{ ok: false, status: 403/);
 });
+
+test("Συνδρομές (SQL 36): /api/billing/* μόνο Διαχειριστής, εταιρία από το session", () => {
+  for (const r of ["billing/route.ts", "billing/checkout/route.ts", "billing/portal/route.ts", "billing/plan/route.ts", "billing/sync/route.ts"]) {
+    const src = readFileSync(join(API, r), "utf8");
+    assert.match(src, /= withAuth\(/, r);
+    assert.match(src, /\["COMPANY_ADMIN"\]\);\s*$/, r);
+    assert.match(src, /session\.tenantId!/, r);
+    assert.doesNotMatch(src, /tenantId:\s*body|body\.tenantId/, r);
+  }
+  // Κάθε φρουρούμενο route περνά από τον έλεγχο «μόνο ανάγνωση».
+  assert.match(read("src/lib/api.ts"), /viewer\.readOnly && !readOnlyAllows\(req\.method, req\.nextUrl\.pathname\)/);
+});
+

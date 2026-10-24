@@ -108,6 +108,18 @@ interface TenantUser {
 
 // ─── Constants ───────────────────────────
 
+type SaTab = "tenants" | "stats" | "discounts" | "founding" | "feedback" | "settings";
+
+/** Οι ενότητες του Super Admin — ΜΙΑ λίστα για το πλαϊνό μενού (desktop) και τη μπάρα του κινητού. */
+const SA_TABS: { id: SaTab; label: string; icon: React.ReactNode }[] = [
+  { id: "tenants", label: "Εταιρίες", icon: <Building2 size={16} /> },
+  { id: "stats", label: "Στατιστικά", icon: <BarChart3 size={16} /> },
+  { id: "discounts", label: "Εκπτώσεις", icon: <Tag size={16} /> },
+  { id: "founding", label: "Πρώτες εταιρίες", icon: <Zap size={16} /> },
+  { id: "feedback", label: "Γνώμες", icon: <Activity size={16} /> },
+  { id: "settings", label: "Ρυθμίσεις", icon: <Shield size={16} /> },
+];
+
 const PLAN_LABELS: Record<SubscriptionPlan, string> = {
   STARTER: "Starter",
   PRO: "Pro",
@@ -201,9 +213,7 @@ export default function SuperAdminDashboard() {
   const [loadError, setLoadError] = useState("");
   // Εταιρία της οποίας βλέπουμε τους χρήστες (λίστα + reset κωδικού).
   const [usersOfTenant, setUsersOfTenant] = useState<Tenant | null>(null);
-  const [activeTab, setActiveTab] = useState<
-    "tenants" | "stats" | "discounts" | "founding" | "feedback" | "settings"
-  >("tenants");
+  const [activeTab, setActiveTab] = useState<SaTab>("tenants");
   // Μετρητής θέσεων του προγράμματος ιδρυτών (SQL 36).
   const [founding, setFounding] = useState<FoundingView | null>(null);
   const loadFounding = useCallback(async () => {
@@ -311,30 +321,11 @@ export default function SuperAdminDashboard() {
         <AccountMenu name={me.name} email={me.email} role="SUPER_ADMIN" variant="sidebar" accountHref={null} />
 
         <nav className="sa-nav">
-          {[
-            {
-              id: "tenants",
-              label: "Εταιρίες",
-              icon: <Building2 size={16} />,
-            },
-            { id: "stats", label: "Στατιστικά", icon: <BarChart3 size={16} /> },
-            {
-              id: "discounts",
-              label: "Εκπτώσεις",
-              icon: <Tag size={16} />,
-            },
-            { id: "founding", label: "Πρώτες εταιρίες", icon: <Zap size={16} /> },
-            { id: "feedback", label: "Γνώμες", icon: <Activity size={16} /> },
-            {
-              id: "settings",
-              label: "Ρυθμίσεις",
-              icon: <Shield size={16} />,
-            },
-          ].map((item) => (
+          {SA_TABS.map((item) => (
             <button
               key={item.id}
               className={`sa-nav-item ${activeTab === item.id ? "active" : ""}`}
-              onClick={() => setActiveTab(item.id as typeof activeTab)}
+              onClick={() => setActiveTab(item.id)}
             >
               {item.icon}
               {item.label}
@@ -352,6 +343,27 @@ export default function SuperAdminDashboard() {
             <Zap size={16} className="sa-logo-icon" /> FleetPro
           </span>
           <AccountMenu name={me.name} email={me.email} role="SUPER_ADMIN" variant="topbar" accountHref={null} />
+          {/* Στο κινητό (≤768px) οι ΙΔΙΕΣ ενότητες με το πλαϊνό μενού, σε οριζόντια μπάρα με κύλισμα. */}
+          <nav className="sa-mobile-tabs" aria-label="Ενότητες Super Admin">
+            {SA_TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`sa-mobile-tab ${activeTab === item.id ? "active" : ""}`}
+                aria-current={activeTab === item.id ? "page" : undefined}
+                onClick={(e) => {
+                  setActiveTab(item.id);
+                  // Η ενεργή καρτέλα ολόκληρη ορατή στη μπάρα· η σελίδα από την αρχή.
+                  e.currentTarget.scrollIntoView({ inline: "center", block: "nearest" });
+                  window.scrollTo({ top: 0 });
+                }}
+                data-testid={`sa-tab-${item.id}`}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            ))}
+          </nav>
         </div>
         {/* Stats Bar */}
         {stats && (
@@ -3011,15 +3023,28 @@ const superAdminStyles = `
     .sa-form-grid { grid-template-columns: 1fr; }
   }
   .sa-mobile-bar { display: none; }
-  @media (max-width: 600px) {
+  @media (max-width: 768px) {
     .sa-sidebar { display: none; }
     .sa-mobile-bar {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
-      /* Αποσύνδεση πάντα ορατή στο κινητό, και με κύλισμα. */
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px;
+      padding: 10px 16px 0; border-bottom: 1px solid var(--border); background: var(--surface);
+      /* Αποσύνδεση και ενότητες πάντα ορατές στο κινητό, και με κύλισμα. */
       position: sticky; top: 0; z-index: 20;
     }
     .sa-mobile-brand { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--text); }
+    .sa-mobile-tabs {
+      flex: 1 0 100%; display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none; margin: 0 -16px; padding: 0 16px 8px;
+    }
+    .sa-mobile-tabs::-webkit-scrollbar { display: none; }
+    .sa-mobile-tab {
+      flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+      padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+      color: var(--text-3); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer;
+    }
+    .sa-mobile-tab.active { background: var(--primary-bg); border-color: var(--primary); color: var(--primary-soft); font-weight: 700; }
+  }
+  @media (max-width: 600px) {
     .sa-stats-bar { grid-template-columns: repeat(2, 1fr); }
   }
 

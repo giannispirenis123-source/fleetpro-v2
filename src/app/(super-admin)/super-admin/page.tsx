@@ -213,6 +213,8 @@ export default function SuperAdminDashboard() {
   const [loadError, setLoadError] = useState("");
   // Εταιρία της οποίας βλέπουμε τους χρήστες (λίστα + reset κωδικού).
   const [usersOfTenant, setUsersOfTenant] = useState<Tenant | null>(null);
+  // Οριστική διαγραφή εταιρίας (επιβεβαίωση με το ακριβές όνομα).
+  const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
   const [activeTab, setActiveTab] = useState<SaTab>("tenants");
   // Μετρητής θέσεων του προγράμματος ιδρυτών (SQL 36).
   const [founding, setFounding] = useState<FoundingView | null>(null);
@@ -551,6 +553,10 @@ export default function SuperAdminDashboard() {
                           setShowTenantMenu(null);
                         }}
                         onStatusChange={(status) => changeStatus(tenant, status)}
+                        onDelete={() => {
+                          setDeletingTenant(tenant);
+                          setShowTenantMenu(null);
+                        }}
                       />
                     ))}
                   </tbody>
@@ -626,10 +632,30 @@ export default function SuperAdminDashboard() {
         />
       )}
 
+      {deletingTenant && (
+        <DeleteTenantModal
+          tenant={deletingTenant}
+          onClose={() => setDeletingTenant(null)}
+          onDeleted={(id) => {
+            setTenants((prev) => {
+              const next = prev.filter((t) => t.id !== id);
+              setStats(computeStats(next));
+              return next;
+            });
+            setDeletingTenant(null);
+            loadFounding();
+          }}
+        />
+      )}
+
       {/* Edit Tenant Modal */}
       {selectedTenant && (
         <EditTenantModal
           tenant={selectedTenant}
+          onDelete={() => {
+            setDeletingTenant(selectedTenant);
+            setSelectedTenant(null);
+          }}
           onClose={() => setSelectedTenant(null)}
           onSuccess={(updated) => {
             setTenants((prev) =>
@@ -654,6 +680,7 @@ function TenantRow({
   onEdit,
   onShowUsers,
   onStatusChange,
+  onDelete,
 }: {
   tenant: Tenant;
   showMenu: boolean;
@@ -661,6 +688,7 @@ function TenantRow({
   onEdit: () => void;
   onShowUsers: () => void;
   onStatusChange: (s: TenantStatus) => void;
+  onDelete: () => void;
 }) {
   // Το μενού ανοίγει προς τα κάτω· αν δεν χωράει στο ορατό παράθυρο
   // (τελευταία γραμμή, κοντό παράθυρο), γυρίζει προς τα πάνω.
@@ -779,8 +807,8 @@ function TenantRow({
                     <XCircle size={12} /> Αναστολή
                   </button>
                 )}
-                <button className="danger">
-                  <Trash2 size={12} /> Διαγραφή
+                <button className="danger" onClick={onDelete} data-testid="tenant-delete">
+                  <Trash2 size={12} /> Διαγραφή εταιρίας
                 </button>
               </div>
             )}
@@ -1313,6 +1341,137 @@ function PlatformDiscountModal({
           </button>
           <button className="sa-btn-primary" onClick={handleSubmit} disabled={saving}>
             {saving ? tr("platformDiscounts.saving") : tr("platformDiscounts.save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Οριστική διαγραφή εταιρίας ───────────
+
+interface DeleteSummary {
+  id: string;
+  name: string;
+  counts: { users: number; vehicles: number; bookings: number; contracts: number; invoices: number; customers: number };
+  blocked: string | null;
+  stripeConnect: boolean;
+  founderSlot: number | null;
+}
+
+function DeleteTenantModal({
+  tenant,
+  onClose,
+  onDeleted,
+}: {
+  tenant: Tenant;
+  onClose: () => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [summary, setSummary] = useState<DeleteSummary | null>(null);
+  const [typed, setTyped] = useState("");
+  const [releaseSlot, setReleaseSlot] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch(`/api/tenants/${tenant.id}/deletion`)
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) setSummary(d.data);
+        else setError(d.message || "Σφάλμα");
+      })
+      .catch(() => setError("Σφάλμα σύνδεσης"));
+  }, [tenant.id]);
+
+  // Μόνο βοήθεια στο UI· ο server ελέγχει ξανά το ΑΚΡΙΒΕΣ όνομα.
+  const matches = summary !== null && typed.trim() !== "" && typed.trim() === summary.name.trim();
+
+  const submit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/tenants/${tenant.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmName: typed, releaseFounderSlot: releaseSlot }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(d.message || "Η διαγραφή απέτυχε");
+        return;
+      }
+      onDeleted(tenant.id);
+    } catch {
+      setError("Σφάλμα σύνδεσης");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const c = summary?.counts;
+  return (
+    <div className="sa-modal-overlay" onClick={onClose}>
+      <div className="sa-modal sa-modal--sm" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" data-testid="delete-tenant-modal">
+        <div className="sa-modal-header">
+          <h2>Διαγραφή εταιρίας</h2>
+          <button className="sa-modal-close" onClick={onClose} aria-label="Κλείσιμο">×</button>
+        </div>
+        <div className="sa-modal-body">
+          {!summary && !error && <p className="sa-founding-note">Φόρτωση…</p>}
+          {summary && (
+            <>
+              <p className="sa-delete-warn">
+                Η διαγραφή είναι <strong>ΟΡΙΣΤΙΚΗ</strong>. Σβήνονται ΟΛΑ τα δεδομένα της εταιρίας <strong>{summary.name}</strong> και οι χρήστες της:
+              </p>
+              <ul className="sa-delete-list" data-testid="delete-counts">
+                <li>{c!.users} χρήστες</li>
+                <li>{c!.vehicles} οχήματα</li>
+                <li>{c!.bookings} κρατήσεις</li>
+                <li>{c!.contracts} συμβόλαια</li>
+                <li>{c!.invoices} τιμολόγια</li>
+                <li>{c!.customers} πελάτες</li>
+              </ul>
+              {summary.blocked && <div className="sa-error" role="alert">{summary.blocked}</div>}
+              {summary.stripeConnect && (
+                <div className="sa-load-error">
+                  Η εταιρία έχει συνδεδεμένο λογαριασμό Stripe Connect. Ο λογαριασμός στο Stripe ΔΕΝ διαγράφεται· μόνο η σύνδεση εδώ.
+                </div>
+              )}
+              {summary.founderSlot !== null && (
+                <label className="sa-pd-check sa-delete-check">
+                  <input type="checkbox" checked={releaseSlot} onChange={(e) => setReleaseSlot(e.target.checked)} />
+                  Απελευθέρωση θέσης ιδρυτή #{summary.founderSlot} (αλλιώς η θέση μένει πιασμένη)
+                </label>
+              )}
+              {!summary.blocked && (
+                <label className="sa-label sa-delete-confirm">
+                  Γράψε ακριβώς το όνομα της εταιρίας για επιβεβαίωση:
+                  <input
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                    placeholder={summary.name}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-testid="delete-confirm-name"
+                  />
+                </label>
+              )}
+            </>
+          )}
+          {error && <div className="sa-error" role="alert">{error}</div>}
+        </div>
+        <div className="sa-modal-footer">
+          <button className="sa-btn-ghost" onClick={onClose}>Ακύρωση</button>
+          <button
+            className="sa-btn-danger"
+            onClick={submit}
+            disabled={busy || !summary || Boolean(summary.blocked) || !matches}
+            data-testid="delete-confirm"
+          >
+            {busy ? "Διαγραφή…" : "Οριστική διαγραφή"}
           </button>
         </div>
       </div>
@@ -1998,10 +2157,12 @@ function EditTenantModal({
   tenant,
   onClose,
   onSuccess,
+  onDelete,
 }: {
   tenant: Tenant;
   onClose: () => void;
   onSuccess: (t: Tenant) => void;
+  onDelete: () => void;
 }) {
   const [form, setForm] = useState({
     name: tenant.name,
@@ -2115,6 +2276,9 @@ function EditTenantModal({
           </div>
         </div>
         <div className="sa-modal-footer">
+          <button className="sa-btn-danger sa-footer-left" onClick={onDelete} data-testid="edit-tenant-delete">
+            <Trash2 size={13} /> Διαγραφή εταιρίας
+          </button>
           <button className="sa-btn-ghost" onClick={onClose}>Ακύρωση</button>
           <button className="sa-btn-primary" onClick={handleSubmit} disabled={loading || !feeValid}>
             {loading ? "Αποθήκευση..." : "Αποθήκευση"}
@@ -3055,4 +3219,36 @@ const superAdminStyles = `
   .sa-founding-note { font-size: 12.5px; color: var(--text-4); margin: 4px 0 10px; }
   .sa-founding-pre { white-space: pre-wrap; font-size: 12.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin: 0; }
   .sa-feedback-text { max-width: 320px; white-space: pre-wrap; font-size: 12.5px; }
+
+  /* Οριστική διαγραφή εταιρίας */
+  .sa-btn-danger {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+    background: var(--danger-btn); color: #fff; border: none; border-radius: 8px;
+    padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .sa-btn-danger:hover:not(:disabled) { background: var(--danger-btn-hover); }
+  .sa-btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+  .sa-footer-left { margin-right: auto; }
+  .sa-delete-warn { font-size: 13px; color: var(--text); margin: 0 0 8px; line-height: 1.5; }
+  .sa-delete-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; color: var(--text-2); display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+  .sa-delete-check { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--text); margin: 12px 0; }
+  .sa-delete-confirm { margin-top: 12px; font-size: 12px; color: var(--text-3); }
+  .sa-delete-confirm input {
+    margin-top: 6px; width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 15px; font-family: inherit;
+  }
+  @media (max-width: 768px) {
+    /* Πίνακες: οριζόντιο κύλισμα ΜΕΣΑ στο πλαίσιο (το .sa-main κόβει ό,τι βγαίνει έξω)
+       και η στήλη ενεργειών (⋮) κολλημένη δεξιά — πάντα ορατή. */
+    .sa-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .sa-table-row td:last-child, .sa-table thead th:last-child {
+      position: sticky; right: 0; background: var(--surface); box-shadow: -6px 0 8px -6px rgba(0,0,0,.15);
+    }
+    /* Το μενού ενεργειών ως φύλλο στο κάτω μέρος της οθόνης (δεν κόβεται από το κύλισμα). */
+    .sa-dropdown, .sa-dropdown.up {
+      position: fixed; left: 12px; right: 12px; bottom: 12px; top: auto; min-width: 0; z-index: 90;
+    }
+    .sa-dropdown button { min-height: 44px; font-size: 14px; }
+    .sa-modal-footer { flex-wrap: wrap; }
+  }
 `;

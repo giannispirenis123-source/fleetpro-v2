@@ -63,7 +63,14 @@ export async function claimFounderSlot(
     RETURNING "id"`;
   if (code.length !== 1) throw new FounderClaimError("invalid");
 
-  const slotNumber = Number(slot[0].claimedCount);
+  // Η μικρότερη ΕΛΕΥΘΕΡΗ θέση (1–10). Συνήθως = μετρητής· διαφέρει μόνο αν
+  // μια θέση απελευθερώθηκε σε διαγραφή εταιρίας. Ασφαλές: η γραμμή του
+  // προγράμματος είναι κλειδωμένη από το UPDATE ως το τέλος της transaction.
+  const free = await tx.$queryRaw<{ n: number }[]>`
+    SELECT min(n)::int AS n FROM generate_series(1, 10) AS n
+     WHERE n NOT IN (SELECT "slotNumber" FROM "founder_claims")`;
+  if (free[0]?.n == null) throw new FounderClaimError("closed");
+  const slotNumber = Number(free[0].n);
   await tx.$executeRaw`
     INSERT INTO "founder_claims" ("id", "codeId", "tenantId", "slotNumber", "claimedAt")
     VALUES (${randomUUID()}, ${code[0].id}, ${tenantId}, ${slotNumber}, ${now})`;

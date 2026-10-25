@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 // src/app/api/tenants/[id]/route.ts
 
-import { NextRequest } from "next/server";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { withAuth, ok, notFound, badRequest, serverError, noContent, logError } from "@/lib/api";
+import { NextResponse } from "next/server";
+import { withAuth, ok, notFound, badRequest, serverError, logError } from "@/lib/api";
+import { TenantDeleteError, deleteTenant } from "@/lib/tenantDelete";
 import { SUBSCRIPTION_PLAN_OF, isBillingPlanKey } from "@/lib/billing/core";
 
 const updateTenantSchema = z.object({
@@ -114,17 +115,25 @@ export const PATCH = withAuth(
   ["SUPER_ADMIN"]
 );
 
-// DELETE /api/tenants/[id] — Μόνιμη διαγραφή (προσοχή!)
+// DELETE /api/tenants/[id] { confirmName, releaseFounderSlot? } — ΟΡΙΣΤΙΚΗ
+// διαγραφή εταιρίας με ΟΛΑ τα δεδομένα και τους χρήστες της (src/lib/tenantDelete.ts).
+// Μόνο με το ΑΚΡΙΒΕΣ όνομα· ζωντανή συνδρομή Stripe → 409.
 export const DELETE = withAuth(
-  async (_req, _session, params) => {
+  async (req, _session, params) => {
     try {
-      await db.tenant.delete({ where: { id: params!.id } });
-      return noContent();
+      const body = (await req.json().catch(() => ({}))) as { confirmName?: unknown; releaseFounderSlot?: unknown };
+      const r = await deleteTenant(params!.id, {
+        confirmName: body.confirmName,
+        releaseFounderSlot: body.releaseFounderSlot === true,
+      });
+      return ok({ deleted: r.id, releasedSlot: r.releasedSlot });
     } catch (error) {
-      logError("tenants/[id]", error);
+      if (error instanceof TenantDeleteError) {
+        return NextResponse.json({ success: false, message: error.message }, { status: error.status });
+      }
+      logError("tenants/[id] delete", error);
       return serverError();
     }
   },
   ["SUPER_ADMIN"]
 );
-

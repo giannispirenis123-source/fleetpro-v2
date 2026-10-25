@@ -98,3 +98,31 @@ export async function destroyImage(config: CloudinaryConfig, publicId: string): 
     return false;
   }
 }
+
+/**
+ * Διαγραφή ΟΛΩΝ των εικόνων κάτω από τον φάκελο fleetpro/{companyId}/ (διαγραφή
+ * εταιρίας). Best effort: ανά σελίδα έως 1000· στο τέλος σβήνονται και οι
+ * (άδειοι) υποφάκελοι. Επιστρέφει null σε επιτυχία ή σύντομο κωδικό σφάλματος.
+ */
+export async function destroyCompanyFolder(config: CloudinaryConfig, companyId: string): Promise<string | null> {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(companyId)) return "bad_id";
+  const options = { cloud_name: config.cloudName, api_key: config.apiKey, api_secret: config.apiSecret };
+  const prefix = `fleetpro/${companyId}/`;
+  try {
+    // Έως 20 σελίδες (20.000 εικόνες) — αρκετό· ό,τι μείνει φαίνεται στα logs.
+    for (let i = 0; i < 20; i++) {
+      const res = (await cloudinary.api.delete_resources_by_prefix(prefix, { ...options, resource_type: "image" })) as {
+        partial?: boolean;
+      };
+      if (!res?.partial) break;
+    }
+    const sub = (await cloudinary.api.sub_folders(`fleetpro/${companyId}`, options).catch(() => ({ folders: [] }))) as {
+      folders?: { path: string }[];
+    };
+    for (const f of sub.folders ?? []) await cloudinary.api.delete_folder(f.path, options).catch(() => undefined);
+    await cloudinary.api.delete_folder(`fleetpro/${companyId}`, options).catch(() => undefined);
+    return null;
+  } catch (e) {
+    return errorCode(e);
+  }
+}

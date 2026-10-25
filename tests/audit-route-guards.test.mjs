@@ -72,7 +72,7 @@ test("routes χωρίς wrapper που θέλουν σύνδεση ελέγχο�
 });
 
 test("Super Admin routes: μόνο SUPER_ADMIN", () => {
-  for (const r of ["tenants/route.ts", "tenants/[id]/route.ts", "super-admin/platform-discounts/route.ts", "super-admin/platform-discounts/[id]/route.ts", "plans/route.ts", "super-admin/signup-cleanup/route.ts", "super-admin/founding/route.ts", "super-admin/feedback/route.ts"]) {
+  for (const r of ["tenants/route.ts", "tenants/[id]/route.ts", "super-admin/platform-discounts/route.ts", "super-admin/platform-discounts/[id]/route.ts", "plans/route.ts", "super-admin/signup-cleanup/route.ts", "super-admin/founding/route.ts", "super-admin/feedback/route.ts", "tenants/[id]/deletion/route.ts"]) {
     const src = readFileSync(join(API, r), "utf8");
     assert.match(src, /\["SUPER_ADMIN"\]/, r);
   }

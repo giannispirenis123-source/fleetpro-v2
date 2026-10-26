@@ -237,6 +237,8 @@ export interface SubscriptionSnapshot {
   status: string;
   priceId: string | null;
   trialEnd: number | null; // unix seconds
+  /** Αρχή της τρέχουσας περιόδου (ώρα του Stripe — και του test clock). */
+  currentPeriodStart?: number | null;
   currentPeriodEnd: number | null;
   cancelAtPeriodEnd: boolean;
 }
@@ -262,6 +264,7 @@ export interface TenantBillingPatch {
 }
 
 const fromUnix = (s: number | null): Date | null => (typeof s === "number" && s > 0 ? new Date(s * 1000) : null);
+const latest = (a: Date, b: Date | null): Date => (b && b.getTime() > a.getTime() ? b : a);
 
 /**
  * Η κατάσταση μιας συνδρομής → αλλαγές στην εταιρία. null = αγνόησε (παλιά
@@ -270,6 +273,10 @@ const fromUnix = (s: number | null): Date | null => (typeof s === "number" && s 
  *
  * · Πλάνο/διάστημα ΜΟΝΟ από price id που ξέρουμε (env). Άγνωστο → δεν αλλάζει.
  * · pastDueSince: μπαίνει την ΠΡΩΤΗ φορά που γίνεται απλήρωτη, σβήνει με πληρωμή.
+ *   Ποτέ ΠΡΙΝ από την αρχή της τρέχουσας περιόδου του Stripe: η αποτυχημένη
+ *   χρέωση γίνεται στην αρχή της περιόδου ή μετά. Έτσι μια παλιά/λάθος «ώρα»
+ *   (π.χ. test clock που δεν ενημερώθηκε ακόμα) δεν «τρώει» τις 7 ημέρες χάρης.
+ *   Στην πραγματική ώρα now ≥ αρχή περιόδου πάντα → καμία αλλαγή.
  * · tenants.status: μόνο TRIAL ↔ ACTIVE (ποτέ δεν πειράζει αναστολή/ακύρωση του Super Admin).
  */
 export function subscriptionPatch(
@@ -291,7 +298,7 @@ export function subscriptionPatch(
     stripeSubId: sub.id,
     currentPeriodEnd: fromUnix(sub.currentPeriodEnd),
     cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
-    pastDueSince: unpaid ? current.pastDueSince ?? now : null,
+    pastDueSince: unpaid ? current.pastDueSince ?? latest(now, fromUnix(sub.currentPeriodStart ?? null)) : null,
   };
   if (status === "trialing") patch.trialEndsAt = fromUnix(sub.trialEnd);
   const price = sub.priceId ? prices[sub.priceId] : undefined;

@@ -211,3 +211,67 @@ test("Super Admin: ένδειξη «Test clock» και «Πλήρης χρέω�
   assert.doesNotMatch(sa, /testClocks|advance/i);
   assert.match(read("src/app/api/tenants/route.ts"), /founderFullCharges: \{ select: \{ stripeInvoiceId: true, amountCents: true \}/);
 });
+
+/* ── Διόρθωση: pastDueSince με ΦΡΕΣΚΙΑ ώρα του clock ── */
+
+test("clock +4 μήνες, αποτυχία πληρωμής → «Απλήρωτη» με 7 ημέρες χάρης· +6 ημ. ακόμα προειδοποίηση· +8 ημ. μόνο ανάγνωση", async () => {
+  const created = new Date("2026-10-26T10:00:00Z"); // όταν φτιάχτηκε το clock (αποθηκευμένη, ΠΑΛΙΑ ώρα)
+  const failAt = new Date("2027-02-25T13:00:00Z"); // ώρα του clock τώρα (Advance στις 25/2 12:00 + 1 ώρα draft)
+  const periodStart = Math.floor(new Date("2027-02-25T12:00:00Z").getTime() / 1000);
+  const d = deps({ clocksOn: true, tenant: { billingStatus: "active", stripeTestClockId: "clock_1", billingClockAt: created } });
+  d.clockTime = async () => failAt;
+  d.retrieveSubscription = async () => ({
+    id: "sub_1", status: "past_due", priceId: "price_sm", trialEnd: null,
+    currentPeriodStart: periodStart, currentPeriodEnd: periodStart + 28 * 86400, cancelAtPeriodEnd: false,
+    customerId: "cus_1", tenantIdMeta: "t1",
+  });
+  d.invoices.in_7 = inv({ id: "in_7", status: "open", billingReason: "subscription_cycle", hasDiscount: true, amountDue: 1950, amountPaid: 0 });
+  await handleBillingEvent(ev("invoice.payment_failed", { id: "in_7", customer: "cus_1" }), d);
+
+  // Η ώρα του clock ενημερώθηκε ΠΡΙΝ από τον υπολογισμό.
+  assert.equal(d.clockUpdates.at(-1)[1].getTime(), failAt.getTime());
+  const since = d.patches.at(-1).pastDueSince;
+  assert.equal(since.getTime(), failAt.getTime(), "pastDueSince = ώρα του clock, όχι η παλιά/πραγματική");
+  const state = { billingStatus: "past_due", trialEndsAt: null, pastDueSince: since };
+  const at = (days) => new Date(failAt.getTime() + days * DAY);
+  const now0 = B.billingAccess(state, at(0));
+  assert.equal(now0.mode, "full");
+  assert.equal(now0.warning, "past_due");
+  assert.equal(B.daysLeft(now0.until, at(0)), 7);
+  assert.equal(B.billingAccess(state, at(6)).mode, "full", "+6 ημέρες: ακόμα προειδοποίηση");
+  assert.deepEqual(B.billingAccess(state, at(8)), { mode: "read_only", reason: "unpaid" }, "+8 ημέρες: μόνο ανάγνωση");
+  // Καμία ψεύτικη «πλήρης χρέωση» για αποτυχημένο τιμολόγιο.
+  assert.equal(d.fullCharges.length, 0);
+});
+
+test("ακόμα και με ΠΑΛΙΑ ώρα (χωρίς φρέσκια ανάγνωση clock) το pastDueSince δεν πάει πριν από την αρχή της περιόδου", () => {
+  const periodStart = new Date("2027-02-25T12:00:00Z");
+  const p = B.subscriptionPatch(
+    { status: "ACTIVE", planKey: "starter", billingInterval: "month", stripeSubId: "sub_1", billingStatus: "active", trialEndsAt: null, pastDueSince: null },
+    { id: "sub_1", status: "past_due", priceId: "price_sm", trialEnd: null, currentPeriodStart: periodStart.getTime() / 1000, currentPeriodEnd: null, cancelAtPeriodEnd: false },
+    CONFIG.prices,
+    new Date("2026-10-26T10:00:00Z")
+  );
+  assert.equal(p.pastDueSince.getTime(), periodStart.getTime());
+});
+
+test("χωρίς clock: καμία αλλαγή — pastDueSince = πραγματική ώρα (≥ αρχή περιόδου), καμία κλήση clock", async () => {
+  const d = deps({ clocksOn: true, isFounder: false, tenant: { billingStatus: "active" } }); // χωρίς stripeTestClockId
+  let called = 0;
+  d.clockTime = async () => (called++, new Date());
+  d.retrieveSubscription = async () => ({
+    id: "sub_1", status: "past_due", priceId: "price_sm", trialEnd: null,
+    currentPeriodStart: Math.floor(new Date("2026-10-31T10:00:00Z").getTime() / 1000), currentPeriodEnd: null, cancelAtPeriodEnd: false,
+    customerId: "cus_1", tenantIdMeta: "t1",
+  });
+  d.invoices.in_f = inv({ id: "in_f", status: "open" });
+  await handleBillingEvent(ev("invoice.payment_failed", { id: "in_f", customer: "cus_1" }), d);
+  assert.equal(called, 0);
+  assert.equal(d.patches[0].pastDueSince.getTime(), new Date("2026-11-01T10:00:00Z").getTime());
+  // Clocks κλειστά (Production) με clock id στη βάση: επίσης καμία κλήση.
+  const p = deps({ clocksOn: false, isFounder: false, tenant: { billingStatus: "active", stripeTestClockId: "clock_1", billingClockAt: new Date(0) } });
+  p.clockTime = async () => (called++, new Date());
+  p.invoices.in_f = inv({ id: "in_f", status: "open" });
+  await handleBillingEvent(ev("invoice.payment_failed", { id: "in_f", customer: "cus_1" }), p);
+  assert.equal(called, 0);
+});

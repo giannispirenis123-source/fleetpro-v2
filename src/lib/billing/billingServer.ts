@@ -77,6 +77,7 @@ export function subscriptionSnapshot(sub: Stripe.Subscription): SubscriptionSnap
     status: sub.status,
     priceId: item?.price?.id ?? null,
     trialEnd: sub.trial_end ?? null,
+    currentPeriodStart: sub.current_period_start ?? null,
     currentPeriodEnd: sub.current_period_end ?? null,
     cancelAtPeriodEnd: sub.cancel_at_period_end === true,
     customerId: typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null,
@@ -442,6 +443,10 @@ export function prismaBillingDeps(): BillingDeps {
       await db.founderFullCharge.createMany({ data: [r], skipDuplicates: true });
     },
     clocksOn: clocksOn(),
+    async clockTime(clockId) {
+      const clock = await stripe().testHelpers.testClocks.retrieve(clockId);
+      return new Date(clock.frozen_time * 1000);
+    },
     async setClockTime(clockId, at) {
       const r = await db.tenant.updateMany({ where: { stripeTestClockId: clockId }, data: { billingClockAt: at } });
       return r.count;

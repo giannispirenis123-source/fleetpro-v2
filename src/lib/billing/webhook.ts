@@ -85,6 +85,8 @@ export interface BillingDeps {
   clocksOn: boolean;
   /** Νέα ώρα ενός test clock → στις εταιρίες του. */
   setClockTime(clockId: string, at: Date): Promise<number>;
+  /** Η ΤΡΕΧΟΥΣΑ ώρα ενός test clock από το Stripe (μόνο με clocksOn). */
+  clockTime?(clockId: string): Promise<Date>;
   now(): Date;
 }
 
@@ -143,6 +145,14 @@ export async function handleBillingEvent(e: BillingEvent, deps: BillingDeps): Pr
   const tenant = await deps.tenantByCustomer(customerId);
   if (!tenant) return "unknown_customer";
   // Η «ώρα» της εταιρίας: του test clock της (μόνο Preview) ή η πραγματική.
+  // Με clock: ΦΡΕΣΚΙΑ ώρα από το Stripe ΠΡΙΝ από κάθε υπολογισμό — το
+  // test_clock.ready φτάνει ΜΕΤΑ τα events της μετακίνησης (ή καθόλου), οπότε
+  // το αποθηκευμένο billingClockAt μπορεί να είναι μήνες πίσω.
+  if (deps.clocksOn && tenant.stripeTestClockId && deps.clockTime) {
+    const fresh = await deps.clockTime(tenant.stripeTestClockId);
+    await deps.setClockTime(tenant.stripeTestClockId, fresh);
+    tenant.billingClockAt = fresh;
+  }
   const now = billingNow(tenant, deps.now(), deps.clocksOn);
 
   let outcome: BillingOutcome;

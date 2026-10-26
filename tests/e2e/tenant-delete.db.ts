@@ -66,6 +66,7 @@ async function seedTenant(key: string, opts: { founderCode?: string } = {}) {
     await tx.activityLog.create({ data: { tenantId: id, userId: x("u"), action: "x", entity: "x", entityId: "x" } });
     await tx.tenantFeedback.create({ data: { tenantId: id, userId: x("u"), vehicleCount: 3 } });
     await tx.founderInvoice.create({ data: { stripeInvoiceId: x("in"), tenantId: id, months: 1 } });
+    await tx.founderFullCharge.create({ data: { stripeInvoiceId: x("full"), tenantId: id, amountCents: 3900 } });
   });
   // Οι υπόλοιποι πίνακες με tenantId: μία γραμμή με τα ελάχιστα (raw, για να μη
   // δένεται το τεστ με κάθε πεδίο). Ό,τι δεν μπαίνει εύκολα γεμίζει από τα παραπάνω.

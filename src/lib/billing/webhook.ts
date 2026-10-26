@@ -17,7 +17,9 @@
 // · Logs: μόνο τύπος event και αποτέλεσμα — ποτέ email, ονόματα, ποσά.
 
 import {
+  billingNow,
   founderDiscountEnd,
+  founderFullCharge,
   founderInvoiceDecision,
   subscriptionPatch,
   type BillingConfig,
@@ -45,12 +47,16 @@ export const BILLING_EVENTS = [
   "invoice.payment_failed",
   "invoice.voided",
   "invoice.marked_uncollectible",
+  // Μόνο με ενεργά test clocks (Preview): η νέα ώρα του clock μετά από «Advance».
+  "test_helpers.test_clock.ready",
 ] as const;
 
 export interface BillingTenant extends TenantBillingRow {
   id: string;
   stripeCustomerId: string | null;
   isFounder: boolean;
+  stripeTestClockId?: string | null;
+  billingClockAt?: Date | null;
 }
 
 export interface FounderInvoiceRecord extends FounderInvoiceRow {
@@ -73,6 +79,12 @@ export interface BillingDeps {
   recordFounderInvoice(r: { tenantId: string; stripeInvoiceId: string; months: number; status: "open" | "paid"; periodEnd: Date | null; paidAt: Date | null }): Promise<void>;
   setFounderInvoiceStatus(stripeInvoiceId: string, tenantId: string, status: "paid" | "void", at: Date): Promise<void>;
   setFounderDiscountEnd(tenantId: string, endsAt: Date | null): Promise<void>;
+  /** Ένδειξη «πλήρης χρέωση χωρίς έκπτωση» — INSERT … ON CONFLICT DO NOTHING. */
+  recordFullCharge(r: { tenantId: string; stripeInvoiceId: string; amountCents: number; billingReason: string | null }): Promise<void>;
+  /** Test clocks ενεργά (Preview + sk_test_ + flag) — βλ. core.ts testClocksEnabled. */
+  clocksOn: boolean;
+  /** Νέα ώρα ενός test clock → στις εταιρίες του. */
+  setClockTime(clockId: string, at: Date): Promise<number>;
   now(): Date;
 }
 
@@ -85,6 +97,7 @@ export type BillingOutcome =
   | "unknown_customer"
   | "mismatch"
   | "stale_subscription"
+  | "full_charge"
   | "noop";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -92,11 +105,11 @@ const idOf = (v: unknown): string | null =>
   str(v) ?? (v && typeof v === "object" ? str((v as Record<string, unknown>).id) : null);
 
 /** Συγχρονισμός μιας συνδρομής στην εταιρία (κοινό για όλα τα events). */
-async function syncSubscription(deps: BillingDeps, tenant: BillingTenant, subId: string): Promise<BillingOutcome> {
+async function syncSubscription(deps: BillingDeps, tenant: BillingTenant, subId: string, now: Date): Promise<BillingOutcome> {
   const sub = await deps.retrieveSubscription(subId);
   if (sub.customerId !== tenant.stripeCustomerId) return "mismatch";
   if (sub.tenantIdMeta && sub.tenantIdMeta !== tenant.id) return "mismatch";
-  const patch = subscriptionPatch(tenant, sub, deps.config.prices, deps.now());
+  const patch = subscriptionPatch(tenant, sub, deps.config.prices, now);
   if (!patch) return "stale_subscription";
   await deps.applyPatch(tenant.id, patch);
   return "applied";
@@ -114,10 +127,23 @@ export async function handleBillingEvent(e: BillingEvent, deps: BillingDeps): Pr
   if (await deps.eventSeen(e.id)) return "duplicate";
 
   const o = e.data.object;
+  if (e.type === "test_helpers.test_clock.ready") {
+    // Μόνο με ενεργά clocks· αλλιώς σαν άγνωστο event (καμία αλλαγή).
+    if (!deps.clocksOn) return "ignored_type";
+    const clockId = str(o.id);
+    const frozen = typeof o.frozen_time === "number" ? new Date(o.frozen_time * 1000) : null;
+    if (!clockId || !frozen) return "noop";
+    const n = await deps.setClockTime(clockId, frozen);
+    await deps.markEvent(e.id, e.type);
+    return n > 0 ? "applied" : "noop";
+  }
+
   const customerId = idOf(o.customer);
   if (!customerId) return "unknown_customer";
   const tenant = await deps.tenantByCustomer(customerId);
   if (!tenant) return "unknown_customer";
+  // Η «ώρα» της εταιρίας: του test clock της (μόνο Preview) ή η πραγματική.
+  const now = billingNow(tenant, deps.now(), deps.clocksOn);
 
   let outcome: BillingOutcome;
   if (e.type === "checkout.session.completed") {
@@ -125,23 +151,28 @@ export async function handleBillingEvent(e: BillingEvent, deps: BillingDeps): Pr
     // Η session πρέπει να είναι της ΙΔΙΑΣ εταιρίας (το client_reference_id το βάζει ο server μας).
     if (str(o.client_reference_id) !== tenant.id) return "mismatch";
     const subId = idOf(o.subscription);
-    outcome = subId ? await syncSubscription(deps, tenant, subId) : "noop";
+    outcome = subId ? await syncSubscription(deps, tenant, subId, now) : "noop";
   } else if (e.type.startsWith("customer.subscription.")) {
     const subId = idOf(o.id);
-    outcome = subId ? await syncSubscription(deps, tenant, subId) : "noop";
+    outcome = subId ? await syncSubscription(deps, tenant, subId, now) : "noop";
   } else {
-    outcome = await handleInvoice(e.type, idOf(o.id), tenant, deps);
+    outcome = await handleInvoice(e.type, idOf(o.id), tenant, deps, now);
   }
 
   await deps.markEvent(e.id, e.type);
   return outcome;
 }
 
-async function handleInvoice(type: string, invoiceId: string | null, tenant: BillingTenant, deps: BillingDeps): Promise<BillingOutcome> {
+async function handleInvoice(
+  type: string,
+  invoiceId: string | null,
+  tenant: BillingTenant,
+  deps: BillingDeps,
+  now: Date
+): Promise<BillingOutcome> {
   if (!invoiceId) return "noop";
   const inv = await deps.retrieveInvoice(invoiceId);
   if (inv.customerId !== tenant.stripeCustomerId) return "mismatch";
-  const now = deps.now();
   let outcome: BillingOutcome = "noop";
 
   if (type === "invoice.created") {
@@ -186,6 +217,17 @@ async function handleInvoice(type: string, invoiceId: string | null, tenant: Bil
       }
     }
     if (outcome === "applied") await refreshFounderEnd(deps, tenant.id);
+    // Ιδρυτής πλήρωσε ΧΩΡΙΣ έκπτωση ενώ απέμεναν μήνες → ένδειξη για τον Super Admin.
+    if (outcome !== "applied" && founderFullCharge(inv, tenant.isFounder, rows, Boolean(row))) {
+      await deps.recordFullCharge({
+        tenantId: tenant.id,
+        stripeInvoiceId: inv.id,
+        amountCents: inv.amountPaid ?? inv.amountDue,
+        billingReason: inv.billingReason,
+      });
+      console.warn(`[FleetPro] Billing: ιδρυτής χρεώθηκε ΧΩΡΙΣ έκπτωση tenant=${tenant.id} invoice=${inv.id}`);
+      outcome = "full_charge";
+    }
   } else if (type === "invoice.voided" || type === "invoice.marked_uncollectible") {
     const rows = await deps.founderInvoices(tenant.id);
     if (rows.some((r) => r.stripeInvoiceId === inv.id)) {
@@ -197,8 +239,8 @@ async function handleInvoice(type: string, invoiceId: string | null, tenant: Bil
 
   // Πληρωμή ή αποτυχία → η κατάσταση της συνδρομής (active / past_due).
   if ((type === "invoice.paid" || type === "invoice.payment_failed") && inv.subscriptionId) {
-    const s = await syncSubscription(deps, tenant, inv.subscriptionId);
-    if (s === "applied") outcome = "applied";
+    const s = await syncSubscription(deps, tenant, inv.subscriptionId, now);
+    if (s === "applied" && outcome !== "full_charge") outcome = "applied";
   }
   return outcome;
 }

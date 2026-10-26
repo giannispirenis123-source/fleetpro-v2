@@ -164,7 +164,7 @@ test("μόνο ανάγνωση στον server: φύλακας withAuth + δη�
   const api = read("src/lib/api.ts");
   assert.match(api, /viewer\.readOnly && !readOnlyAllows\(req\.method, req\.nextUrl\.pathname\)/);
   assert.match(api, /code: "read_only"/);
-  assert.match(read("src/lib/viewer.ts"), /billingAccess\(row\.tenant\)\.mode === "read_only"/);
+  assert.match(read("src/lib/viewer.ts"), /billingAccess\(row\.tenant, billingNow\(row\.tenant, new Date\(\), testClocksEnabled\(process\.env\)\)\)\.mode === "read_only"/);
   const submit = read("src/lib/public/bookingSubmit.ts");
   assert.ok(submit.indexOf("tenantReadOnly(") > 0 && submit.indexOf("tenantReadOnly(") < submit.indexOf("loadSiteCatalog("));
   // Καμία διαγραφή δεδομένων στη ροή συνδρομής.

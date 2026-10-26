@@ -26,6 +26,8 @@ import {
   isBillingPlanKey,
   priceEnvName,
   readBillingConfig,
+  billingNow,
+  testClocksEnabled,
   subscriptionPatch,
   type BillingAccess,
   type BillingConfig,
@@ -51,6 +53,9 @@ export function billingConfig(): BillingConfig {
 }
 
 export const billingReady = (): boolean => billingConfig().ready;
+
+/** Test clocks: ΜΟΝΟ Preview + sk_test_ + STRIPE_BILLING_TEST_CLOCKS=1 (core.ts). */
+export const clocksOn = (): boolean => testClocksEnabled(process.env);
 
 export class BillingError extends Error {
   readonly status: number;
@@ -89,6 +94,7 @@ export function invoiceSnapshot(inv: Stripe.Invoice): InvoiceSnapshot & { custom
     billingReason: inv.billing_reason ?? null,
     subscriptionId: typeof inv.subscription === "string" ? inv.subscription : inv.subscription?.id ?? null,
     amountDue: inv.amount_due ?? 0,
+    amountPaid: inv.amount_paid ?? 0,
     priceId: line?.price?.id ?? null,
     periodEnd: line?.period?.end ?? null,
     hasDiscount: coupons.length > 0 || (inv.discounts?.length ?? 0) > 0,
@@ -129,6 +135,8 @@ const TENANT_BILLING_SELECT = {
   stripeCustomerId: true,
   stripeSubId: true,
   founderDiscountEndsAt: true,
+  stripeTestClockId: true,
+  billingClockAt: true,
   founderClaim: { select: { slotNumber: true } },
 } as const;
 
@@ -152,11 +160,19 @@ export async function syncTenantFromStripe(tenantId: string): Promise<boolean> {
     const list = await stripe().subscriptions.list({ customer: t.stripeCustomerId, status: "all", limit: 1 });
     if (list.data[0]) sub = list.data[0];
   }
+  // Test clock (μόνο Preview): φρέσκια ώρα του clock πριν από τους υπολογισμούς.
+  let clockAt = t.billingClockAt;
+  if (clocksOn() && t.stripeTestClockId) {
+    const clock = await stripe().testHelpers.testClocks.retrieve(t.stripeTestClockId);
+    clockAt = new Date(clock.frozen_time * 1000);
+    await db.tenant.update({ where: { id: t.id }, data: { billingClockAt: clockAt } });
+  }
   if (!sub) return false;
   const snap = subscriptionSnapshot(sub);
   if (snap.customerId !== t.stripeCustomerId) return false;
   if (snap.tenantIdMeta && snap.tenantIdMeta !== t.id) return false;
-  const patch = subscriptionPatch(t, snap, config.prices);
+  const now = billingNow({ stripeTestClockId: t.stripeTestClockId, billingClockAt: clockAt }, new Date(), clocksOn());
+  const patch = subscriptionPatch(t, snap, config.prices, now);
   if (!patch) return false;
   await applyBillingPatch(t.id, patch);
   return true;
@@ -165,12 +181,28 @@ export async function syncTenantFromStripe(tenantId: string): Promise<boolean> {
 /** Πελάτης Stripe της εταιρίας (ένας· idempotency key ανά εταιρία). */
 async function ensureCustomer(t: { id: string; name: string; email: string; stripeCustomerId: string | null }): Promise<string> {
   if (t.stripeCustomerId) return t.stripeCustomerId;
+  // Test clock ΑΝΑ πελάτη (μόνο Preview): ο πελάτης δένεται στο clock ΜΟΝΟ
+  // κατά τη δημιουργία του (το Stripe δεν επιτρέπει αργότερα). Συνδρομές και
+  // τιμολόγια του πελάτη ακολουθούν το clock. Αλλού: ακριβώς όπως πριν.
+  let clock: { id: string; frozen_time: number } | null = null;
+  if (clocksOn()) {
+    clock = await stripe().testHelpers.testClocks.create(
+      { frozen_time: Math.floor(Date.now() / 1000), name: `fleetpro-${t.id}`.slice(0, 300) },
+      { idempotencyKey: `billing-clock-${t.id}` }
+    );
+  }
   const c = await stripe().customers.create(
-    { email: t.email, name: t.name, metadata: { tenantId: t.id } },
-    { idempotencyKey: `billing-customer-${t.id}` }
+    { email: t.email, name: t.name, metadata: { tenantId: t.id }, ...(clock ? { test_clock: clock.id } : {}) },
+    { idempotencyKey: clock ? `billing-customer-clock-${t.id}` : `billing-customer-${t.id}` }
   );
   // Μόνο αν δεν γράφτηκε ήδη από ταυτόχρονο αίτημα.
-  await db.tenant.updateMany({ where: { id: t.id, stripeCustomerId: null }, data: { stripeCustomerId: c.id } });
+  await db.tenant.updateMany({
+    where: { id: t.id, stripeCustomerId: null },
+    data: {
+      stripeCustomerId: c.id,
+      ...(clock ? { stripeTestClockId: clock.id, billingClockAt: new Date(clock.frozen_time * 1000) } : {}),
+    },
+  });
   const fresh = await db.tenant.findUnique({ where: { id: t.id }, select: { stripeCustomerId: true } });
   return fresh?.stripeCustomerId ?? c.id;
 }
@@ -201,7 +233,7 @@ export async function startCheckout(
   if (!priceId) throw new BillingError(503, `Λείπει ${priceEnvName(plan, interval)}.`, "not_configured");
 
   const rows = t.founderClaim ? await db.founderInvoice.findMany({ where: { tenantId }, select: { months: true, status: true } }) : [];
-  const how = checkoutPlan(t, Boolean(t.founderClaim), founderMonthsLeft(rows), now);
+  const how = checkoutPlan(t, Boolean(t.founderClaim), founderMonthsLeft(rows), billingNow(t, now, clocksOn()));
   const customer = await ensureCustomer(t);
 
   const subscription_data: Stripe.Checkout.SessionCreateParams.SubscriptionData = {
@@ -291,6 +323,8 @@ export interface BillingOverview {
   plans: BillingPlanDTO[];
   vehicles: { used: number; limit: number | null };
   founder: null | { slot: number; monthsPaid: number; monthsLeft: number; discountEndsAt: string | null };
+  /** Test clock (μόνο Preview): η ώρα του clock — με αυτήν μετρούν οι ημέρες. */
+  testClockAt: string | null;
 }
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
@@ -310,7 +344,7 @@ export async function billingOverview(tenantId: string, now = new Date()): Promi
       : Promise.resolve([]),
   ]);
   const vehiclesUsed = await db.vehicle.count({ where: { tenantId, isActive: true } });
-  const access = billingAccess(t, now);
+  const access = billingAccess(t, billingNow(t, now, clocksOn()));
   const ready = billingReady();
   const plans: BillingPlanDTO[] = planRows.filter((p) => isBillingPlanKey(p.key)).map((p) => {
     const limits = (p.limits ?? {}) as Record<string, unknown>;
@@ -346,6 +380,7 @@ export async function billingOverview(tenantId: string, now = new Date()): Promi
     canChangePlan: ["founder_trial", "awaiting_checkout"].includes(t.billingStatus),
     plans,
     vehicles: { used: vehiclesUsed, limit: limit.limit },
+    testClockAt: clocksOn() && t.stripeTestClockId && t.billingClockAt ? t.billingClockAt.toISOString() : null,
     founder: t.founderClaim
       ? {
           slot: t.founderClaim.slotNumber,
@@ -402,6 +437,14 @@ export function prismaBillingDeps(): BillingDeps {
     },
     async setFounderDiscountEnd(tenantId, endsAt) {
       await db.tenant.update({ where: { id: tenantId }, data: { founderDiscountEndsAt: endsAt } });
+    },
+    async recordFullCharge(r) {
+      await db.founderFullCharge.createMany({ data: [r], skipDuplicates: true });
+    },
+    clocksOn: clocksOn(),
+    async setClockTime(clockId, at) {
+      const r = await db.tenant.updateMany({ where: { stripeTestClockId: clockId }, data: { billingClockAt: at } });
+      return r.count;
     },
   };
 }

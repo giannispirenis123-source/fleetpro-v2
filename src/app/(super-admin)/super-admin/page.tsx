@@ -78,6 +78,10 @@ interface Tenant {
   billingInterval?: "month" | "year";
   /** Θέση στο πρόγραμμα «Πρώτες 10 εταιρίες» (1–10) ή null. */
   founderSlot?: number | null;
+  /** Test clock του Stripe (μόνο Preview, SQL 37). */
+  stripeTestClockId?: string | null;
+  /** Τιμολόγια ιδρυτή πληρωμένα ΧΩΡΙΣ έκπτωση (SQL 37). */
+  founderFullCharges?: { stripeInvoiceId: string; amountCents: number }[];
   _count: {
     users: number;
     vehicles: number;
@@ -739,6 +743,14 @@ function TenantRow({
           {BILLING_LABELS[tenant.billingStatus ?? "exempt"] ?? tenant.billingStatus}
           {tenant.billingStatus && tenant.billingStatus !== "exempt" && tenant.billingInterval === "year" ? " · ετήσια" : ""}
         </span>
+        {tenant.stripeTestClockId && (
+          <span className="sa-plan-badge sa-testclock" title={tenant.stripeTestClockId} data-testid="test-clock-badge">Test clock</span>
+        )}
+        {(tenant.founderFullCharges ?? []).map((c) => (
+          <div key={c.stripeInvoiceId} className="sa-trial-expired sa-full-charge" data-testid="full-charge">
+            Πλήρης χρέωση χωρίς έκπτωση: {(c.amountCents / 100).toLocaleString("el-GR", { style: "currency", currency: "EUR" })} ({c.stripeInvoiceId})
+          </div>
+        ))}
       </td>
       <td>{tenant.founderSlot ? <span className="sa-plan-badge pro">#{tenant.founderSlot}</span> : "—"}</td>
       <td>
@@ -3251,4 +3263,7 @@ const superAdminStyles = `
     .sa-dropdown button { min-height: 44px; font-size: 14px; }
     .sa-modal-footer { flex-wrap: wrap; }
   }
+
+  .sa-testclock { margin-left: 6px; background: var(--warn-fg); color: #fff; }
+  .sa-full-charge { display: block; margin-top: 4px; font-size: 11px; white-space: normal; max-width: 220px; }
 `;

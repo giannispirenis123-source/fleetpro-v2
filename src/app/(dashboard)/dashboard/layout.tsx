@@ -9,7 +9,7 @@ import { onboardingBanner } from "@/lib/signup/onboardingServer";
 import DashboardSidebar from "./DashboardSidebar";
 import OnboardingBanner from "./OnboardingBanner";
 import BillingBanner from "./BillingBanner";
-import { billingAccess, daysLeft } from "@/lib/billing/core";
+import { billingAccess, billingNow, daysLeft, testClocksEnabled } from "@/lib/billing/core";
 import "./dashboard.css";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export default async function DashboardLayout({
   const [tenant, me, entitlements, onboarding] = await Promise.all([
     db.tenant.findUnique({
       where: { id: session.tenantId },
-      select: { name: true, billingStatus: true, trialEndsAt: true, pastDueSince: true },
+      select: { name: true, billingStatus: true, trialEndsAt: true, pastDueSince: true, stripeTestClockId: true, billingClockAt: true },
     }),
     // Όνομα/email για το μενού λογαριασμού — από τη βάση (όχι από το JWT).
     db.user.findUnique({ where: { id: viewer.userId }, select: { name: true, email: true } }),
@@ -48,13 +48,15 @@ export default async function DashboardLayout({
   const locale = session.locale;
 
   // Συνδρομή (SQL 36): «μόνο ανάγνωση» ή προειδοποίηση (λήξη δοκιμής / απλήρωτη).
-  const access = tenant ? billingAccess(tenant) : null;
+  // Ώρα: του test clock μόνο στο Preview με ενεργά clocks (SQL 37).
+  const billingTime = tenant ? billingNow(tenant, new Date(), testClocksEnabled(process.env)) : new Date();
+  const access = tenant ? billingAccess(tenant, billingTime) : null;
   const billingBanner =
     access?.mode === "read_only"
       ? { kind: "read_only" as const, reason: access.reason, until: null, days: null }
       : access?.warning === "past_due" ||
-          (access?.warning === "trial" && viewer.role === "COMPANY_ADMIN" && (daysLeft(access.until) ?? 99) <= 7)
-        ? { kind: access.warning, reason: null, until: access.until?.toISOString() ?? null, days: daysLeft(access.until) }
+          (access?.warning === "trial" && viewer.role === "COMPANY_ADMIN" && (daysLeft(access.until, billingTime) ?? 99) <= 7)
+        ? { kind: access.warning, reason: null, until: access.until?.toISOString() ?? null, days: daysLeft(access.until, billingTime) }
         : null;
 
   return (

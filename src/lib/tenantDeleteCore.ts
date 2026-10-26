@@ -37,6 +37,7 @@ export const TENANT_TABLES = [
   "site_legal_texts",
   "platform_discounts",
   "founder_invoices",
+  "founder_full_charges",
   "tenant_feedback",
   "users", // + sessions, email_verification_tokens (CASCADE) — ελευθερώνονται τα emails
 ] as const;

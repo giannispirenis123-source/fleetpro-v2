@@ -109,6 +109,34 @@ export const isReadOnly = (t: BillingState, now = new Date()) => billingAccess(t
 export const daysLeft = (until: Date | null | undefined, now = new Date()): number | null =>
   until ? Math.max(0, Math.ceil((until.getTime() - now.getTime()) / DAY)) : null;
 
+/* ── Test clocks (ΜΟΝΟ Preview) ── */
+
+/**
+ * Test clocks του Stripe: ΜΟΝΟ όταν ισχύουν ΚΑΙ τα τρία — STRIPE_BILLING_TEST_CLOCKS=1,
+ * κλειδί sk_test_ ΚΑΙ VERCEL_ENV === "preview". Σε κάθε άλλη περίπτωση (live
+ * κλειδί, Production, τοπικά, flag κλειστό) αγνοείται εντελώς.
+ */
+export function testClocksEnabled(env: Record<string, string | undefined>): boolean {
+  const flag = (env.STRIPE_BILLING_TEST_CLOCKS ?? "").trim().toLowerCase();
+  if (flag !== "1" && flag !== "true") return false;
+  if (!(env.STRIPE_SECRET_KEY ?? "").trim().startsWith("sk_test_")) return false;
+  return (env.VERCEL_ENV ?? "").trim() === "preview";
+}
+
+/**
+ * Η «ώρα» για τους ελέγχους συνδρομής μιας εταιρίας: η ώρα του test clock της
+ * (billingClockAt) όταν τα clocks είναι ενεργά και η εταιρία έχει clock· αλλιώς
+ * η πραγματική. Έτσι λήξη δοκιμής, χάρη 7 ημερών και ειδοποίηση 30 ημερών
+ * μετακινούνται μαζί με το clock στο Stripe Dashboard.
+ */
+export function billingNow(
+  t: { stripeTestClockId?: string | null; billingClockAt?: Date | null },
+  realNow: Date,
+  clocksOn: boolean
+): Date {
+  return clocksOn && t.stripeTestClockId && t.billingClockAt ? t.billingClockAt : realNow;
+}
+
 /* ── Μόνο ανάγνωση: τι επιτρέπεται ακόμα ── */
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -352,6 +380,8 @@ export interface InvoiceSnapshot {
   billingReason: string | null;
   subscriptionId: string | null;
   amountDue: number;
+  /** Πληρωμένο ποσό (cents) — για την ένδειξη «πλήρης χρέωση». */
+  amountPaid?: number;
   priceId: string | null;
   periodEnd: number | null;
   hasDiscount: boolean;
@@ -390,6 +420,25 @@ export function founderInvoiceDecision(
   if (!price) return { apply: false, why: "unknown_price" };
   if (founderMonthsLeft(rows) <= 0) return { apply: false, why: "used_up" };
   return { apply: true, months: invoiceMonths(price.interval) };
+}
+
+/**
+ * «Πλήρης χρέωση χωρίς έκπτωση» (invoice.paid): ιδρυτής με μήνες που απομένουν
+ * πλήρωσε τιμολόγιο > 0 χωρίς έκπτωση και όχι μέσω Checkout με coupon. Π.χ.
+ * λήξη δοκιμής «τώρα» από το Dashboard ή αλλαγή πλάνου με άμεση χρέωση.
+ * ΜΟΝΟ ένδειξη για τον Super Admin — καμία αυτόματη επιστροφή.
+ */
+export function founderFullCharge(
+  inv: InvoiceSnapshot & { founderCoupon?: boolean },
+  isFounder: boolean,
+  rows: FounderInvoiceRow[],
+  recordedWithDiscount: boolean
+): boolean {
+  if (!isFounder || recordedWithDiscount) return false;
+  if (founderMonthsLeft(rows) <= 0) return false;
+  const paid = inv.amountPaid ?? inv.amountDue;
+  if (paid <= 0) return false;
+  return !inv.hasDiscount && !inv.founderCoupon;
 }
 
 /* ── Ειδοποίηση 30 ημέρες πριν την κανονική τιμή ── */

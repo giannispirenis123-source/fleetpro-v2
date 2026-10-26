@@ -271,44 +271,50 @@ model Tenant {
   // Τέλος της έκπτωσης ιδρυτή (μετά τον 12ο πληρωμένο μήνα) και πότε στάλθηκε η ειδοποίηση.
   founderDiscountEndsAt DateTime?
   founderNoticeSentAt   DateTime?
+  // Test clock του Stripe (SQL 37) — ΜΟΝΟ Preview με STRIPE_BILLING_TEST_CLOCKS=1
+  // και sk_test_. billingClockAt = η ώρα του clock (event test_clock.ready).
+  stripeTestClockId     String?
+  billingClockAt        DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  users             User[]
-  vehicles          Vehicle[]
-  customers         Customer[]
-  bookings          Booking[]
-  invoices          Invoice[]
-  serviceRecords    ServiceRecord[]
-  expenses          Expense[]
-  damages           Damage[]
-  contracts         Contract[]
-  discounts         Discount[]
-  notifications     Notification[]
-  activityLogs      ActivityLog[]
-  contractTemplates ContractTemplate[]
-  extras            Extra[]
-  platformDiscounts PlatformDiscount[]
-  rentalGroups      RentalGroup[]
-  pickupLocations   PickupLocation[]
-  seasons           Season[]
-  rates             Rate[]
-  driverAgeBands    DriverAgeBand[]
-  promotions        Promotion[]
-  bookingMessages   BookingNotification[]
-  bookingPayments   BookingPayment[]
-  places            Place[]
-  reviews           Review[]
-  legalTexts        SiteLegalText[]
-  founderClaim      FounderClaim?
-  founderInvoices   FounderInvoice[]
-  feedback          TenantFeedback[]
-  entitlementPlan   Plan?                 @relation(fields: [planKey], references: [key], onDelete: SetNull)
+  users              User[]
+  vehicles           Vehicle[]
+  customers          Customer[]
+  bookings           Booking[]
+  invoices           Invoice[]
+  serviceRecords     ServiceRecord[]
+  expenses           Expense[]
+  damages            Damage[]
+  contracts          Contract[]
+  discounts          Discount[]
+  notifications      Notification[]
+  activityLogs       ActivityLog[]
+  contractTemplates  ContractTemplate[]
+  extras             Extra[]
+  platformDiscounts  PlatformDiscount[]
+  rentalGroups       RentalGroup[]
+  pickupLocations    PickupLocation[]
+  seasons            Season[]
+  rates              Rate[]
+  driverAgeBands     DriverAgeBand[]
+  promotions         Promotion[]
+  bookingMessages    BookingNotification[]
+  bookingPayments    BookingPayment[]
+  places             Place[]
+  reviews            Review[]
+  legalTexts         SiteLegalText[]
+  founderClaim       FounderClaim?
+  founderInvoices    FounderInvoice[]
+  founderFullCharges FounderFullCharge[]
+  feedback           TenantFeedback[]
+  entitlementPlan    Plan?                 @relation(fields: [planKey], references: [key], onDelete: SetNull)
 
   @@index([planKey])
   @@index([signupSource, createdAt])
+  @@index([stripeTestClockId])
   @@map("tenants")
 }
 
@@ -1529,4 +1535,18 @@ model TenantFeedback {
   @@index([createdAt])
   @@index([tenantId])
   @@map("tenant_feedback")
+}
+
+// Τιμολόγιο ιδρυτή που πληρώθηκε ΧΩΡΙΣ έκπτωση ενώ απέμεναν μήνες (SQL 37).
+model FounderFullCharge {
+  stripeInvoiceId String   @id
+  tenantId        String
+  amountCents     Int
+  billingReason   String?
+  createdAt       DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("founder_full_charges")
 }

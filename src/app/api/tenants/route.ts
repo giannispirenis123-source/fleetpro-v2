@@ -67,6 +67,8 @@ export const GET = withAuth(async (req) => {
           users: { where: { emailVerifiedAt: { not: null } }, select: { id: true }, take: 1 },
           // Πρόγραμμα ιδρυτών (SQL 36): μόνο ο αριθμός θέσης.
           founderClaim: { select: { slotNumber: true } },
+          // Τιμολόγια ιδρυτή πληρωμένα ΧΩΡΙΣ έκπτωση (SQL 37) — ένδειξη για τον Super Admin.
+          founderFullCharges: { select: { stripeInvoiceId: true, amountCents: true }, orderBy: { createdAt: "desc" }, take: 3 },
         },
       }),
       db.tenant.count({ where }),

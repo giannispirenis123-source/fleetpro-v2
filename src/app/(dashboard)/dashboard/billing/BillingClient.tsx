@@ -90,7 +90,8 @@ export default function BillingClient({ initial, checkout }: { initial: BillingO
   const plan = o.plans.find((p) => p.key === o.planKey) ?? null;
   const founder = o.founder;
   const founderActive = Boolean(founder && founder.monthsLeft > 0);
-  const days = daysLeft(o.trialEndsAt ? new Date(o.trialEndsAt) : null);
+  // Με test clock (μόνο Preview) οι ημέρες μετρούν από την ώρα του clock.
+  const days = daysLeft(o.trialEndsAt ? new Date(o.trialEndsAt) : null, o.testClockAt ? new Date(o.testClockAt) : new Date());
   const vehiclesText =
     o.vehicles.limit === null
       ? tr("billing.vehiclesUnlimited").replace("{used}", String(o.vehicles.used))

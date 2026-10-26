@@ -6,7 +6,7 @@ import { db } from "./db";
 import type { JWTPayload } from "./auth";
 import { normalizePermissions, roleHasAll, type PermissionMap } from "./permissions";
 import { acceptViewerRow } from "./viewerCore";
-import { billingAccess } from "./billing/core";
+import { billingAccess, billingNow, testClocksEnabled } from "./billing/core";
 
 export interface Viewer {
   userId: string;
@@ -27,7 +27,9 @@ export async function loadViewer(session: JWTPayload): Promise<Viewer | null> {
       isActive: true,
       emailVerifiedAt: true,
       permissions: true,
-      tenant: { select: { status: true, billingStatus: true, trialEndsAt: true, pastDueSince: true } },
+      tenant: {
+        select: { status: true, billingStatus: true, trialEndsAt: true, pastDueSince: true, stripeTestClockId: true, billingClockAt: true },
+      },
     },
   });
   const user = acceptViewerRow(row, session);
@@ -37,6 +39,9 @@ export async function loadViewer(session: JWTPayload): Promise<Viewer | null> {
     role: user.role,
     tenantId: user.tenantId,
     permissions: roleHasAll(user.role) ? {} : normalizePermissions(user.permissions),
-    readOnly: row?.tenant ? billingAccess(row.tenant).mode === "read_only" : false,
+    // Ώρα: του test clock της εταιρίας μόνο στο Preview με ενεργά clocks (SQL 37).
+    readOnly: row?.tenant
+      ? billingAccess(row.tenant, billingNow(row.tenant, new Date(), testClocksEnabled(process.env))).mode === "read_only"
+      : false,
   };
 }

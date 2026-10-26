@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { FOUNDING_PROGRAM_ID, generateFounderCode, hashFounderCode, remainingSpots } from "./founding";
-import { founderNoticeDue, founderNoticeEmail, isBillingInterval } from "./core";
+import { billingNow, founderNoticeDue, founderNoticeEmail, isBillingInterval, testClocksEnabled } from "./core";
 
 export const createCodeSchema = z.object({
   label: z.string().trim().max(120).optional(),
@@ -41,6 +41,8 @@ export async function foundingAdminView(now = new Date()) {
         billingInterval: true,
         founderDiscountEndsAt: true,
         founderNoticeSentAt: true,
+        stripeTestClockId: true,
+        billingClockAt: true,
         entitlementPlan: { select: { name: true, priceMonthlyCents: true, priceYearlyCents: true } },
       },
     }),
@@ -48,7 +50,7 @@ export async function foundingAdminView(now = new Date()) {
   // Ειδοποιήσεις «η έκπτωση τελειώνει σε 30 ημέρες»: ΜΟΝΟ λογική + κείμενο.
   // Η αποστολή σε πελάτες θέλει επαληθευμένο domain στο Resend (δεν υπάρχει ακόμα).
   const notices = noticeTenants
-    .filter((t) => founderNoticeDue(t, now))
+    .filter((t) => founderNoticeDue(t, billingNow(t, now, testClocksEnabled(process.env))))
     .map((t) => {
       const interval = isBillingInterval(t.billingInterval) ? t.billingInterval : "month";
       const cents = (interval === "year" ? t.entitlementPlan?.priceYearlyCents : t.entitlementPlan?.priceMonthlyCents) ?? 0;

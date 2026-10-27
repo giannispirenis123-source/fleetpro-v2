@@ -14,6 +14,7 @@ import { invoicePdfFilename } from "@/lib/invoiceDocument";
 import { INVOICE_EMAIL_MSG, canExportInvoice } from "@/lib/invoiceEmail";
 import { fetchLogoBytes, loadInvoiceDoc } from "@/lib/invoiceServer";
 import { buildInvoicePdf } from "@/lib/invoicePdf";
+import { AMOUNT_BLOCKED_MESSAGE, AmountIntegrityError } from "@/lib/public/outgoingAmounts";
 
 export const GET = withPermission(
   async (_req, session, params, viewer) => {
@@ -42,6 +43,11 @@ export const GET = withPermission(
         },
       });
     } catch (error) {
+      // Έλεγχος ποσών: ασυμφωνία → ΚΑΝΕΝΑ PDF (μόνο ο κωδικός στα logs).
+      if (error instanceof AmountIntegrityError) {
+        console.error(`[FleetPro] PDF τιμολογίου: μπλοκαρίστηκε από τον έλεγχο ποσών (${error.code})`);
+        return NextResponse.json({ success: false, message: AMOUNT_BLOCKED_MESSAGE, code: "amount_blocked" }, { status: 409 });
+      }
       console.error("[FleetPro] PDF τιμολογίου: σφάλμα", error instanceof Error ? error.name : "");
       return serverError();
     }

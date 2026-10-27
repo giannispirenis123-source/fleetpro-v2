@@ -1,5 +1,6 @@
 "use client";
 
+import { formatEuros } from "@/lib/public/money";
 import { useMemo, useState } from "react";
 import { Plus, Search, Pencil, Ban, X, Tag, User, Calendar } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
@@ -12,13 +13,7 @@ import {
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
-const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
+const eur = (n: number, locale: string) => formatEuros(n, locale);
 
 const shortDate = (iso: string, locale: string) =>
   new Intl.DateTimeFormat(INTL_LOCALE[locale] ?? "el-GR", {

@@ -32,14 +32,9 @@ import { withManualRental } from "@/lib/priceOverride";
 import { splitVatInclusive } from "@/lib/invoices";
 import DamageSketch from "./DamageSketch";
 import "./contract-document.css";
+import { formatEuros } from "@/lib/public/money";
 
-const eur = (n: number) =>
-  new Intl.NumberFormat("el-GR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n);
+const eur = (n: number) => formatEuros(n, "el", { decimals: "always" });
 
 /** "YYYY-MM-DD" → "dd/mm/yyyy" · κενό → "—". */
 const d = (iso: string | null | undefined) => {

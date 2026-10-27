@@ -23,7 +23,7 @@
 //   ώστε οι γραμμές να αθροίζουν ακριβώς στο σύνολο.
 
 import { textFor, type LocalizedText } from "./text";
-import { perDayOf, roundToEuro } from "./money";
+import { MAX_TOTAL_CENTS, perDayOf, roundToEuro } from "./money";
 
 export const VEHICLE_TYPES = ["car", "moto", "atv"] as const;
 export type VehicleType = (typeof VEHICLE_TYPES)[number];
@@ -808,6 +808,10 @@ export function quote(input: QuoteInput): QuoteResult {
   const vat = Math.max(0, settings.vatPercent);
   const vatCents = totalCents - Math.round(totalCents / (1 + vat / 100));
 
+  // Αναλλοίωτοι έλεγχοι (PR price-integrity) — ΧΩΡΙΣ αλλαγή της λογικής:
+  // αν αποτύχουν, σφάλμα σε αυτή τη διαδρομή· ποτέ σιωπηλά λάθος σύνολο.
+  assertQuoteInvariants(lines, totalCents);
+
   return {
     ok: errors.length === 0,
     errors,
@@ -825,6 +829,27 @@ export function quote(input: QuoteInput): QuoteResult {
     excessCents: insurance?.excessCents ?? target.excessCents,
     insurance,
   };
+}
+
+/** Σύνολο που παραβιάζει τους αναλλοίωτους ελέγχους — η κράτηση/τιμή ΔΕΝ προχωρά. */
+export class QuoteInvariantError extends Error {
+  readonly code: "nan" | "negative" | "sum_mismatch" | "too_large";
+  constructor(code: QuoteInvariantError["code"]) {
+    super(`quote:${code}`);
+    this.name = "QuoteInvariantError";
+    this.code = code;
+  }
+}
+
+/**
+ * Σύνολο = άθροισμα γραμμών (σε ακέραια cents), κάθε ποσό πεπερασμένος
+ * ακέραιος, σύνολο ≥ 0 και ≤ MAX_TOTAL_CENTS (λογικό ανώτατο ανά κράτηση).
+ */
+export function assertQuoteInvariants(lines: { totalCents: number }[], totalCents: number, maxCents = MAX_TOTAL_CENTS): void {
+  if (!Number.isInteger(totalCents) || lines.some((l) => !Number.isInteger(l.totalCents))) throw new QuoteInvariantError("nan");
+  if (totalCents < 0) throw new QuoteInvariantError("negative");
+  if (lines.reduce((s, l) => s + l.totalCents, 0) !== totalCents) throw new QuoteInvariantError("sum_mismatch");
+  if (totalCents > maxCents) throw new QuoteInvariantError("too_large");
 }
 
 /* ─────────────────────────────────────────────

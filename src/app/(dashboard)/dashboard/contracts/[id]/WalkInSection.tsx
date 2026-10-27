@@ -5,6 +5,7 @@
 // η τιμή έρχεται από τον server (ίδιος υπολογισμός με τις κρατήσεις) και
 // ξαναϋπολογίζεται στην αποθήκευση.
 
+import { formatEuros } from "@/lib/public/money";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import VehiclePicker from "@/components/contracts/VehiclePicker";
@@ -14,13 +15,7 @@ import type { WalkInPreview, WalkInVehicle } from "@/lib/walkIn";
 
 const INTL: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
-export const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL[locale] ?? "el-GR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n);
+export const eur = (n: number, locale: string) => formatEuros(n, locale, { decimals: "always" });
 
 const stampFromIso = (iso: string, locale: string) =>
   new Intl.DateTimeFormat(INTL[locale] ?? "el-GR", {

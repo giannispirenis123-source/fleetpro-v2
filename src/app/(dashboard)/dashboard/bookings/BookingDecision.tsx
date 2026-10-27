@@ -8,11 +8,12 @@
 // (GET /api/bookings/[id]/decision) — ό,τι βλέπει ο χρήστης είναι ό,τι φεύγει.
 
 import { useEffect, useMemo, useState } from "react";
-import { CreditCard, ExternalLink, MessageCircle, Mail, X } from "lucide-react";
+import { AlertTriangle, CreditCard, ExternalLink, MessageCircle, Mail, X } from "lucide-react";
 import { centsToInput, formatCents, parseEuroInput } from "@/lib/public/money";
 import { RETAIN_NOTE_MAX, dashboardPaymentText, needsDecision, outstandingCents, refundableCents, stripeDashboardPaymentUrl } from "@/lib/public/payments";
 import type { BookingDTO } from "@/lib/bookings";
 import {
+  checkBookingMessage,
   CANCEL_NOTE_MAX,
   CANCEL_REASONS,
   buildBookingMessage,
@@ -33,7 +34,7 @@ interface DecisionInfo {
   freeVehicles: { id: string; label: string }[];
   message: Omit<MessageData, "kind">;
   contact: { email: string | null; phone: string | null };
-  notifications: { kind: string; channel: string; result: string; error: string | null; createdAt: string }[];
+  notifications: { kind: string; channel: string; result: string; error: string | null; createdAt: string; amountCents?: number | null }[];
   history: { action: string; at: string; by: string | null; byDeleted?: boolean }[];
 }
 
@@ -121,6 +122,8 @@ function emailNotice(email: string, error: string | null, tr: Tr): { tone: "ok" 
       return { tone: "warn", text: `${tr("decision.emailNotSent")} ${tr("decision.emailNotConfigured")} ${tr("decision.emailUseManual")}` };
     case "failed":
       return { tone: "warn", text: `${tr("decision.emailNotSent")}${error ? ` (${error})` : ""} ${tr("decision.emailUseManual")}` };
+    case "blocked":
+      return { tone: "warn", text: tr("decision.amountBlocked") };
     default:
       return null;
   }
@@ -319,12 +322,15 @@ export function MessageModal({
   booking,
   tr,
   locale,
+  isAdmin = false,
   onClose,
   onLogged,
 }: {
   booking: BookingDTO;
   tr: Tr;
   locale: string;
+  /** Μόνο ο Διαχειριστής στέλνει παρά την ασυμφωνία ποσού (και ο server το ξαναελέγχει). */
+  isAdmin?: boolean;
   onClose: () => void;
   onLogged: (kind: MessageKind) => void;
 }) {
@@ -334,8 +340,34 @@ export function MessageModal({
     () => (info && kind ? buildBookingMessage({ ...info.message, kind }) : null),
     [info, kind]
   );
-  const wa = message && info ? whatsappLink(info.contact.phone, message.text) : null;
-  const mail = message && info ? mailtoLink(info.contact.email, message.subject, message.text) : null;
+  // Έλεγχος ποσών ΠΡΙΝ από WhatsApp/mailto (ίδιος με του email στον server).
+  const check = message ? checkBookingMessage(message) : null;
+  const emailBlocked = !!info && !!kind && info.notifications.some((n) => n.kind === kind && n.result === "blocked") &&
+    !info.notifications.some((n) => n.kind === kind && (n.result === "sent" || n.result === "opened"));
+  const [override, setOverride] = useState(false);
+  const [forceState, setForceState] = useState<"" | "sending" | "sent" | "error">("");
+  const allowed = (check?.ok ?? false) || override;
+  const wa = message && info && allowed ? whatsappLink(info.contact.phone, message.text) : null;
+  const mail = message && info && allowed ? mailtoLink(info.contact.email, message.subject, message.text) : null;
+
+  const confirmOverride = () => {
+    if (window.confirm(tr("decision.amountOverrideConfirm"))) setOverride(true);
+  };
+  const forceEmail = async () => {
+    if (!kind || !window.confirm(tr("decision.amountOverrideConfirm"))) return;
+    setForceState("sending");
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, force: true }),
+      });
+      setForceState(res.ok ? "sent" : "error");
+      if (res.ok) onLogged(kind);
+    } catch {
+      setForceState("error");
+    }
+  };
 
   const log = (channel: "whatsapp" | "mailto") => {
     if (!kind) return;
@@ -368,17 +400,40 @@ export function MessageModal({
 
       {info && !kind && <p className="dash-form-note">{tr("decision.messageNone")}</p>}
 
+      {info && message && (check && !check.ok || emailBlocked) && (
+        <div className="dash-alert dash-alert--danger" role="alert" data-testid="amount-blocked">
+          <AlertTriangle size={16} /> {tr("decision.amountBlocked")}
+          {check && !check.ok && <span className="dash-form-note"> ({check.code})</span>}
+          {isAdmin && (
+            <div className="dash-msg-actions">
+              {check && !check.ok && !override && (
+                <button type="button" className="dash-btn" onClick={confirmOverride} data-testid="amount-override">
+                  {tr("decision.amountOverride")}
+                </button>
+              )}
+              {emailBlocked && info.contact.email && forceState !== "sent" && (
+                <button type="button" className="dash-btn" onClick={forceEmail} disabled={forceState === "sending"} data-testid="amount-force-email">
+                  <Mail size={16} /> {tr("decision.amountForceEmail")}
+                </button>
+              )}
+              {forceState === "sent" && <span className="dash-badge">{tr("decision.emailSent")}</span>}
+              {forceState === "error" && <span className="dash-form-note">{tr("decision.emailNotSent")}</span>}
+            </div>
+          )}
+        </div>
+      )}
+
       {info && message && (
         <>
           <div className="dash-msg-actions">
-            {wa ? (
+            {!allowed ? null : wa ? (
               <a className="dash-btn dash-btn--primary" href={wa} target="_blank" rel="noopener noreferrer" onClick={() => log("whatsapp")}>
                 <MessageCircle size={16} /> {tr("decision.messageWhatsApp")}
               </a>
             ) : (
               <span className="dash-badge dash-badge--muted">{tr("decision.messageNoPhone")}</span>
             )}
-            {mail ? (
+            {!allowed ? null : mail ? (
               <a className="dash-btn" href={mail} onClick={() => log("mailto")}>
                 <Mail size={16} /> {tr("decision.messageEmail")}
               </a>
@@ -397,7 +452,9 @@ export function MessageModal({
             {info.notifications.map((n, i) => (
               <li key={i}>
                 <span>{fmtWhen(n.createdAt, locale)}</span> · {tr(`decision.kind_${n.kind}`)} · {tr(`decision.channel_${n.channel}`)} ·{" "}
-                <strong className={n.result === "failed" ? "is-bad" : "is-ok"}>{tr(`decision.result_${n.result}`)}</strong>
+                <strong className={n.result === "failed" || n.result === "blocked" ? "is-bad" : "is-ok"}>{tr(`decision.result_${n.result}`)}</strong>
+                {/* Το ποσό που περιείχε το μήνυμα (SQL 38) — από το ίδιο formatMoney. */}
+                {typeof n.amountCents === "number" && <span data-testid="msg-log-amount"> · {euroOf(n.amountCents, locale)}</span>}
                 {n.error && <span className="dash-form-note"> ({n.error})</span>}
               </li>
             ))}

@@ -13,7 +13,7 @@
 // · Διαθεσιμότητα: κράτηση που περιμένει πληρωμή κρατά το όχημα ΜΕΧΡΙ τη λήξη.
 
 import { z } from "zod";
-import { roundToEuro } from "./money";
+import { formatMoney, roundToEuro } from "./money";
 
 export const PAYMENT_OPTIONS = ["PICKUP_ONLY", "ONLINE_OR_PICKUP", "ONLINE_ONLY"] as const;
 export type PaymentOptions = (typeof PAYMENT_OPTIONS)[number];
@@ -368,7 +368,7 @@ export function checkRefund(
   if (!payment || max <= 0) return { ok: false, status: 400, message: REFUND_MSG.notPaid };
   const amount = amountCents === null ? max : Math.round(amountCents);
   if (!Number.isFinite(amount) || amount < 1 || amount > max) {
-    return { ok: false, status: 400, message: REFUND_MSG.amount(`${(max / 100).toFixed(2).replace(".", ",")} €`) };
+    return { ok: false, status: 400, message: REFUND_MSG.amount(formatMoney(max, "el", { decimals: "always" })) };
   }
   return { ok: true, amountCents: amount };
 }

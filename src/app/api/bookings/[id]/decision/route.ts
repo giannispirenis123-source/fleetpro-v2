@@ -73,7 +73,7 @@ export const GET = withPermission(
         db.bookingNotification.findMany({
           where: { tenantId, bookingId: id },
           orderBy: { createdAt: "desc" },
-          select: { kind: true, channel: true, result: true, error: true, createdAt: true },
+          select: { kind: true, channel: true, result: true, error: true, createdAt: true, amountCents: true },
         }),
         db.activityLog.findMany({
           where: { tenantId, entity: "Booking", entityId: id },

@@ -17,6 +17,7 @@ import type { QuoteLine } from "./pricing";
 import type { LocalizedText } from "./text";
 import { storedInsurance } from "../pricingBridge";
 import type { SearchAgeBand } from "./search";
+import { storedTotalCents } from "./money";
 
 /* ─────────────────────────────────────────────
    Όρια / μορφές
@@ -380,7 +381,7 @@ export function toConfirmationDTO(b: ConfirmationSource, nowMs: number = Date.no
     pickupLocation: b.pickupLocation,
     returnLocation: b.returnLocation,
     lines: lines.map((l) => ({ label: l.label, qty: l.qty, totalCents: l.totalCents, kind: l.kind })),
-    totalCents: typeof q.totalCents === "number" ? q.totalCents : Math.round(Number(b.total) * 100),
+    totalCents: storedTotalCents(b.priceQuote, b.total),
     listTotalCents: q.quote?.listTotalCents ?? null,
     vatCents: q.quote?.vatCents ?? null,
     depositCents: q.quote?.depositCents ?? null,
@@ -388,7 +389,7 @@ export function toConfirmationDTO(b: ConfirmationSource, nowMs: number = Date.no
     cancelReasonCode: b.status === "CANCELLED" ? b.cancelReasonCode ?? null : null,
     cancelNote: b.status === "CANCELLED" ? b.cancelNote ?? null : null,
     insurance: ins ? { name: ins.name, coverages: ins.coverages } : null,
-    payment: confirmationPayment(b, typeof q.totalCents === "number" ? q.totalCents : Math.round(Number(b.total) * 100), nowMs),
+    payment: confirmationPayment(b, storedTotalCents(b.priceQuote, b.total), nowMs),
   };
 }
 

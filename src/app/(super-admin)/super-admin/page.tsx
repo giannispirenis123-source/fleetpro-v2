@@ -3,6 +3,7 @@
 
 "use client";
 
+import { formatEuros } from "@/lib/public/money";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -352,7 +353,7 @@ export default function SuperAdminDashboard() {
               },
               {
                 label: "MRR",
-                value: `${stats.mrr}€`,
+                value: formatEuros(stats.mrr, "el"),
                 icon: <CreditCard size={14} />,
                 accent: "#ec4899",
               },
@@ -1026,7 +1027,7 @@ const PD_STATUS_ICON: Record<PlatformDiscountStatus, React.ReactNode> = {
 };
 
 function formatEur(n: number): string {
-  return `${Number.isInteger(n) ? n : n.toFixed(2)}€`;
+  return formatEuros(n, "el");
 }
 
 /** "YYYY-MM-DD" → "DD/MM/YYYY" χωρίς μετατροπή ζώνης ώρας. */

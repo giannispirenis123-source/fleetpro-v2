@@ -1,5 +1,6 @@
 "use client";
 
+import { formatEuros } from "@/lib/public/money";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -24,13 +25,7 @@ import {
 
 const INTL: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
-const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL[locale] ?? "el-GR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n);
+const eur = (n: number, locale: string) => formatEuros(n, locale);
 
 const shortDate = (iso: string, locale: string) =>
   new Intl.DateTimeFormat(INTL[locale] ?? "el-GR", {

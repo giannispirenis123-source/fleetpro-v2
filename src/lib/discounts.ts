@@ -8,6 +8,7 @@
 //
 // Server-only: εισάγει db.
 
+import { formatEuros } from "./public/money";
 import type { Discount, Prisma } from "@prisma/client";
 import { db } from "./db";
 import { round2 } from "./pricing";
@@ -84,7 +85,7 @@ export function checkDiscountValidity(
   if (discount.minAmount && opts.baseAmount < Number(discount.minAmount)) {
     return {
       ok: false,
-      message: `Ο κωδικός ισχύει για ποσά άνω των ${Number(discount.minAmount)}€`,
+      message: `Ο κωδικός ισχύει για ποσά άνω των ${formatEuros(discount.minAmount, "el")}`,
     };
   }
 

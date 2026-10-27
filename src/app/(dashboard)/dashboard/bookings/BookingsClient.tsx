@@ -1,5 +1,6 @@
 "use client";
 
+import { formatEuros } from "@/lib/public/money";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -69,13 +70,7 @@ const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
 // Λεπτά μόνο όταν υπάρχουν: «420 €» αλλά «12,50 €». Σε ανάλυση τιμής η
 // στρογγυλοποίηση στο ευρώ θα έκανε τις γραμμές να μην αθροίζουν στο σύνολο.
-const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(round2(n));
+const eur = (n: number, locale: string) => formatEuros(round2(n), locale);
 
 const shortDate = (iso: string, locale: string) =>
   new Intl.DateTimeFormat(INTL_LOCALE[locale] ?? "el-GR", {
@@ -588,6 +583,7 @@ export default function BookingsClient({
           booking={messaging}
           tr={tr}
           locale={locale}
+          isAdmin={isAdmin}
           onClose={() => setMessaging(null)}
           onLogged={(kind) =>
             upsert({ ...messaging, messages: { ...messaging.messages, [kind]: "sent" } })
@@ -797,11 +793,19 @@ function BookingCard({
             <MessageSquare size={13} /> {b.notes}
           </span>
         )}
-        {msgState && (b.source === "site" || msgState !== "none") && (
-          <span className={`dash-msg-state is-${msgState}`}>
-            <MessageCircle size={13} /> {tr("decision.msgStateLabel")}:{" "}
-            {tr(msgState === "sent" ? "decision.msgStateSent" : msgState === "failed" ? "decision.msgStateFailed" : "decision.msgStateNone")}
-          </span>
+        {msgState === "blocked" ? (
+          // Ο έλεγχος ποσών σταμάτησε την αποστολή (SQL 38): ορατό, με άνοιγμα του μηνύματος.
+          <button type="button" className="dash-msg-state is-blocked" onClick={onMessage} data-testid="msg-blocked">
+            <AlertTriangle size={13} /> {tr("decision.amountBlocked")}
+          </button>
+        ) : (
+          msgState &&
+          (b.source === "site" || msgState !== "none") && (
+            <span className={`dash-msg-state is-${msgState}`}>
+              <MessageCircle size={13} /> {tr("decision.msgStateLabel")}:{" "}
+              {tr(msgState === "sent" ? "decision.msgStateSent" : msgState === "failed" ? "decision.msgStateFailed" : "decision.msgStateNone")}
+            </span>
+          )
         )}
         <span>
           <Car size={13} /> {b.vehicleName} · {b.vehiclePlate}

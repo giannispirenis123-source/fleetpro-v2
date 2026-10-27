@@ -16,10 +16,10 @@ import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB }
 import fontkit from "@pdf-lib/fontkit";
 import { DEJAVU_SANS_B64, DEJAVU_SANS_BOLD_B64 } from "./pdfFonts";
 import { stripCardNumbers } from "./contractEmail";
+import { AmountIntegrityError, amountLedger, trackDrawnText, verifyDrawnAmounts } from "./public/outgoingAmounts";
 import {
   L,
   dmy,
-  eurEl,
   lineLabel,
   parseHexColor,
   statusLabel,
@@ -189,6 +189,14 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   // updateMetadata: false — αλλιώς το pdf-lib γράφει ModDate με το ρολόι της
   // στιγμής και το ίδιο τιμολόγιο δεν βγαίνει ποτέ ίδιο byte-προς-byte.
   const pdf = await PDFDocument.create({ updateMetadata: false });
+  // Έλεγχος ποσών (PR price-integrity): κάθε ποσό από το λογιστήριο, ό,τι
+  // ζωγραφίζεται στη «ζώνη ποσών» (γραμμές + σύνολα) καταγράφεται.
+  const ledger = amountLedger("el");
+  const money = ledger.fmt;
+  const drawnMoney: string[] = [];
+  let moneyZone = false;
+  const addPage = pdf.addPage.bind(pdf);
+  pdf.addPage = ((...args: Parameters<typeof addPage>) => trackDrawnText(addPage(...args), drawnMoney, () => moneyZone)) as typeof pdf.addPage;
   pdf.registerFontkit(fontkit);
   const [font, bold] = await Promise.all([
     pdf.embedFont(Buffer.from(DEJAVU_SANS_B64, "base64"), { subset: true }),
@@ -382,6 +390,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   }
 
   /* ── Πίνακας γραμμών ── */
+  moneyZone = true;
   const AMOUNT_W = 120;
   const descW = WIDTH - AMOUNT_W - 24;
   const headStyle: PairStyle = { size: 8.8, bold: true, color: ON_BRAND, enColor: ON_BRAND_EN };
@@ -397,7 +406,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   c.onNewPage = tableHeader;
   const rowStyle: PairStyle = { size: 9, color: INK };
   inv.lines.forEach((line, idx) => {
-    const raw = lineLabel(line);
+    const raw = lineLabel(line, money);
     const label = { el: stripCardNumbers(raw.el), en: stripCardNumbers(raw.en) };
     const h = pairHeight(label, descW, rowStyle) + 8;
     c.ensure(h);
@@ -405,7 +414,7 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
       c.page.drawRectangle({ x: MARGIN, y: c.y - h, width: WIDTH, height: h, color: ZEBRA });
     }
     drawPair(label, MARGIN + 8, descW, c.y - 4, rowStyle);
-    c.text(eurEl(line.amount), RIGHT - 8, 9, { align: "right", y: c.y - 4 });
+    c.text(money(line.amount), RIGHT - 8, 9, { align: "right", y: c.y - 4 });
     c.y -= h;
     c.rule(LINE, 0.5);
   });
@@ -462,8 +471,8 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
     c.text(value, RIGHT - 8, size + 1, { bold: strong, color: strong ? BRAND_TEXT : INK, align: "right" });
     c.y -= h + 4;
   };
-  totalRow(L.net, eurEl(inv.net));
-  totalRow(vatLabel(inv.vatRate), eurEl(inv.vatAmount));
+  totalRow(L.net, money(inv.net));
+  totalRow(vatLabel(inv.vatRate), money(inv.vatAmount));
   c.page.drawLine({
     start: { x: totalsX, y: c.y + 3 },
     end: { x: RIGHT, y: c.y + 3 },
@@ -471,7 +480,14 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
     color: BRAND,
   });
   c.y -= 5;
-  totalRow(L.total, eurEl(inv.total), true);
+  totalRow(L.total, money(inv.total), true);
+  moneyZone = false;
+  // Το σύνολο = το ΑΠΟΘΗΚΕΥΜΕΝΟ του τιμολογίου (δεν ξαναϋπολογίζεται).
+  const check = verifyDrawnAmounts(drawnMoney, ledger.expected, {
+    storedCents: Math.round(inv.total * 100),
+    renderedCents: Math.round(inv.total * 100),
+  });
+  if (!check.ok) throw new AmountIntegrityError(check.code);
   if (paidLabel) c.y -= drawPair(paidLabel, totalsX, totalsW - 8, c.y, paidStyle) + 4;
 
   c.y = blockTop - Math.max(totalsH, paymentH) - 8;

@@ -7,6 +7,7 @@
 // Καμία αλλαγή στη βάση: το περιεχόμενο της εταιρίας αποθηκεύεται ανά
 // κωδικό γλώσσας μέσα στο storefrontSettings (JSON).
 
+import { formatEuros } from "../public/money";
 const en = {
   langName: "English",
   ourFleet: "Our fleet",
@@ -535,17 +536,9 @@ export function fill(template: string, values: Record<string, string | number>):
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in values ? String(values[k]) : m));
 }
 
-/** Ποσό σε € με τη μορφή της γλώσσας (π.χ. «35 €» / «€35»). */
+/** Ποσό σε € με τη μορφή της γλώσσας (π.χ. «35 €» / «€35») — από το ΕΝΑ σημείο (money.ts). */
 export function formatEuro(amount: number, lang: string): string {
-  try {
-    return new Intl.NumberFormat(lang, {
-      style: "currency",
-      currency: "EUR",
-      maximumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-    }).format(amount);
-  } catch {
-    return `${amount} €`;
-  }
+  return formatEuros(amount, lang);
 }
 
 /** "YYYY-MM-DD" → «Παρ 16 Οκτ» / «Fri 16 Oct» — χωρίς Intl, ίδιο σε server και browser. */

@@ -11,6 +11,7 @@ import { withPermission } from "@/lib/authz";
 import { canDecide } from "@/lib/bookingDecision";
 import { MESSAGE_KINDS, messageLang } from "@/lib/bookingMessages";
 import { normalizeStorefrontSettings } from "@/lib/storefront/settings";
+import { storedTotalCents } from "@/lib/public/money";
 
 const schema = z.object({ kind: z.enum(MESSAGE_KINDS), channel: z.enum(["whatsapp", "mailto"]) });
 
@@ -26,7 +27,7 @@ export const POST = withPermission(
       const tenantId = session.tenantId!;
       const b = await db.booking.findFirst({
         where: { id: params!.id, tenantId },
-        select: { id: true, siteLang: true, tenant: { select: { storefrontSettings: true } } },
+        select: { id: true, siteLang: true, priceQuote: true, total: true, tenant: { select: { storefrontSettings: true } } },
       });
       if (!b) return notFound("Η κράτηση δεν βρέθηκε");
       await db.bookingNotification.create({
@@ -37,6 +38,8 @@ export const POST = withPermission(
           kind: parsed.data.kind,
           channel: parsed.data.channel,
           result: "opened",
+          // Το σύνολο του μηνύματος: από το ΑΠΟΘΗΚΕΥΜΕΝΟ priceQuote (όπως και στο κείμενο).
+          amountCents: storedTotalCents(b.priceQuote, b.total),
           lang: messageLang(b.siteLang, normalizeStorefrontSettings(b.tenant.storefrontSettings).defaultLanguage),
         },
       });

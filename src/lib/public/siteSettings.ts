@@ -88,7 +88,9 @@ export const DEFAULT_BOOKING: BookingSettings = {
   graceMinutes: 59,
   defaultPickupTime: "10:00",
   defaultDropoffTime: "10:00",
-  defaultRentalDays: 3,
+  // Προεπιλεγμένη διάρκεια στο site (αρχική, αναζήτηση, κράτηση): 1 ημέρα· το
+  // minDays της σεζόν την ανεβάζει (defaultCriteria). Η εταιρία την αλλάζει στις Ρυθμίσεις.
+  defaultRentalDays: 1,
   afterHours: { start: "23:00", end: "07:00", feeCents: 0 },
   oneWayFeeCents: null,
   noDepositRequired: false,

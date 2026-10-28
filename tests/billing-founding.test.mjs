@@ -230,7 +230,7 @@ test("μόνο ανάγνωση στον server: φύλακας withAuth + δη�
   assert.match(read("src/lib/viewer.ts"), /billingAccess\(row\.tenant, billingNow\(row\.tenant, new Date\(\), testClocksEnabled\(process\.env\)\)\)/);
   assert.match(read("src/lib/viewer.ts"), /readOnly: access\?\.mode === "read_only"/);
   const submit = read("src/lib/public/bookingSubmit.ts");
-  assert.ok(submit.indexOf("tenantReadOnly(") > 0 && submit.indexOf("tenantReadOnly(") < submit.indexOf("loadSiteCatalog("));
+  assert.ok(submit.indexOf("tenantPublicBookingPolicy(") > 0 && submit.indexOf("tenantPublicBookingPolicy(") < submit.indexOf("loadSiteCatalog("));
   // Καμία διαγραφή δεδομένων στη ροή συνδρομής.
   for (const f of ["src/lib/billing/core.ts", "src/lib/billing/billingServer.ts", "src/lib/billing/webhook.ts"]) {
     assert.doesNotMatch(read(f), /\.delete(Many)?\(/, f);

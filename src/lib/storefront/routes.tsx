@@ -24,6 +24,8 @@ import { extraOptions, insuranceOptions, toPublicQuote } from "../public/booking
 import { loadConfirmation } from "../public/bookingLookup";
 import { loadReviewSection, loadSitePlace, loadSitePlaces } from "../public/placesServer";
 import { loadSitePayment } from "../public/paymentServer";
+import { tenantPublicBookingPolicy } from "../billing/access";
+import { sitePaymentOptionsFor } from "../billing/core";
 import { availableMethods } from "../public/payments";
 import { hitLimit, LIMITS } from "../public/rateLimit";
 import { dbCounterStore } from "../public/rateLimitStore";
@@ -254,6 +256,8 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
     return l ? textFor(l.name, lang) || l.slug : null;
   };
   const pay = bookable ? await loadSitePayment(companyId) : null;
+  // «Απλήρωτη» συνδρομή: ΜΟΝΟ πληρωμή στην παραλαβή (ίδια απόφαση με την υποβολή).
+  const policy = bookable ? await tenantPublicBookingPolicy(companyId) : "open";
   const band = criteria.age !== null ? cat.ageBands.find((b) => criteria.age! >= b.minAge && criteria.age! <= b.maxAge) : cat.ageBands.find((b) => b.isDefault);
   const problem = problems.length > 0 ? (lang === "el" ? problems[0].message.el : problems[0].message.en) : null;
 
@@ -282,7 +286,7 @@ export async function StorefrontBookPage({ params, searchParams }: { params: Sto
               initialQuote: toPublicQuote(q),
               needsFlight: needsFlight(cat, criteria.pl, criteria.dl),
               payment: {
-                methods: availableMethods(pay?.options ?? "PICKUP_ONLY"),
+                methods: availableMethods(sitePaymentOptionsFor(pay?.options ?? "PICKUP_ONLY", policy)),
                 amountType: pay?.settings.onlineAmountType ?? "FULL",
                 depositPercent: pay?.settings.depositPercent ?? 100,
               },

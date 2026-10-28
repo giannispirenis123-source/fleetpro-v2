@@ -108,6 +108,26 @@ export function billingAccess(t: BillingState, now = new Date()): BillingAccess 
 
 export const isReadOnly = (t: BillingState, now = new Date()) => billingAccess(t, now).mode === "read_only";
 
+/* ── Νέα δημόσια κράτηση (site) ανάλογα με τη συνδρομή ── */
+
+/**
+ * · "open": όπως πάντα (ενεργή, δοκιμή, εκτός χρέωσης).
+ * · "pickup_only": «Απλήρωτη» (past_due/unpaid — μέσα στη χάρη των 7 ημερών ή
+ *   μετά): δεκτή ως PENDING, ΜΟΝΟ πληρωμή στην παραλαβή (κανένα Stripe Checkout).
+ * · "closed": ακυρωμένη, ληγμένη δοκιμή, αναμονή κάρτας → 409 (όπως πριν).
+ * ΜΙΑ απόφαση, πάνω στο billingAccess (ίδια κατάσταση, ίδια ώρα = billingNow).
+ */
+export type PublicBookingPolicy = "open" | "pickup_only" | "closed";
+
+export function publicBookingPolicy(t: BillingState, now = new Date()): PublicBookingPolicy {
+  if (t.billingStatus === "past_due" || t.billingStatus === "unpaid") return "pickup_only";
+  return billingAccess(t, now).mode === "read_only" ? "closed" : "open";
+}
+
+/** Οι επιλογές πληρωμής του site με βάση την απόφαση: «Απλήρωτη» → μόνο στην παραλαβή. */
+export const sitePaymentOptionsFor = <T extends string>(options: T, policy: PublicBookingPolicy): T | "PICKUP_ONLY" =>
+  policy === "pickup_only" ? "PICKUP_ONLY" : options;
+
 /** Ολόκληρες ημέρες που απομένουν (στρογγυλά προς τα πάνω, ποτέ αρνητικές). */
 export const daysLeft = (until: Date | null | undefined, now = new Date()): number | null =>
   until ? Math.max(0, Math.ceil((until.getTime() - now.getTime()) / DAY)) : null;

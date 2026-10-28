@@ -15,7 +15,7 @@ import VehiclePhotos from "@/components/photos/VehiclePhotos";
 import { useT } from "@/lib/i18n/I18nProvider";
 import { formatCents } from "@/lib/public/money";
 import type { BookingSettings, ContactSettings, ThemeSettings, TrustBlock } from "@/lib/public/siteSettings";
-import { MAX_TRUST_BLOCKS, TIMEZONES, TRUST_ICONS } from "@/lib/public/siteSettings";
+import { DEFAULT_BOOKING, MAX_TRUST_BLOCKS, TIMEZONES, TRUST_ICONS } from "@/lib/public/siteSettings";
 import type { LocalizedText } from "@/lib/public/text";
 import { Check, ConfirmModal, I18nInput, IntInput, MoneyInput, Select, Status, api } from "./ui";
 import InsuranceLevels from "./InsuranceLevels";
@@ -299,7 +299,7 @@ export function BookingTab() {
             {t("defaultDropoffTime")}
             <input type="time" value={b.defaultDropoffTime} onChange={(e) => setB("defaultDropoffTime", e.target.value)} />
           </label>
-          <IntInput label={t("defaultRentalDays")} value={b.defaultRentalDays} onChange={(v) => setB("defaultRentalDays", v ?? 3)} min={1} max={60} />
+          <IntInput label={t("defaultRentalDays")} value={b.defaultRentalDays} onChange={(v) => setB("defaultRentalDays", v ?? DEFAULT_BOOKING.defaultRentalDays)} min={1} max={60} />
           <Select
             label={t("timezone")}
             value={b.timezone}

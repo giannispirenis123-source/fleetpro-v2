@@ -112,6 +112,20 @@ export const isReadOnly = (t: BillingState, now = new Date()) => billingAccess(t
 export const daysLeft = (until: Date | null | undefined, now = new Date()): number | null =>
   until ? Math.max(0, Math.ceil((until.getTime() - now.getTime()) / DAY)) : null;
 
+/** Καταστάσεις «σε δοκιμή»: δοκιμή του Stripe ή ιδρυτής χωρίς πληρωμένη συνδρομή ακόμα. */
+export const TRIAL_STATUSES = ["trialing", "founder_trial"] as const;
+
+/**
+ * Ένδειξη «Νημ.» / «Έληξε» στη λίστα εταιριών του Super Admin: ημέρες μέχρι το
+ * trialEndsAt (0 = έληξε), ΜΟΝΟ όσο η εταιρία είναι σε δοκιμή. null = καμία
+ * ένδειξη (ενεργή, απλήρωτη, ακυρωμένη, εκτός χρέωσης, δοκιμή που δεν ξεκίνησε).
+ * `now` = billingNow (ώρα του test clock όπου υπάρχει).
+ */
+export function trialDaysLeft(t: { billingStatus: string; trialEndsAt: Date | null }, now: Date): number | null {
+  if (!(TRIAL_STATUSES as readonly string[]).includes(t.billingStatus)) return null;
+  return daysLeft(t.trialEndsAt, now);
+}
+
 /* ── Test clocks (ΜΟΝΟ Preview) ── */
 
 /**

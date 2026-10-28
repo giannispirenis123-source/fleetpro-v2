@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { withAuth, ok, created, badRequest, serverError, getPagination, getSearch, logError } from "@/lib/api";
 import { BCRYPT_ROUNDS, createTenantWithAdmin } from "@/lib/tenantCreate";
-import { tenantMrrCents } from "@/lib/billing/core";
+import { billingNow, tenantMrrCents, testClocksEnabled, trialDaysLeft } from "@/lib/billing/core";
 
 const createTenantSchema = z.object({
   name: z.string().min(2, "Απαιτείται επωνυμία"),
@@ -78,10 +78,13 @@ export const GET = withAuth(async (req) => {
       db.tenant.count({ where }),
     ]);
     const now = new Date();
+    const clocksOn = testClocksEnabled(process.env);
     const tenants = rows.map(({ users, onboardingState: _onboarding, founderClaim, entitlementPlan, founderInvoices, ...t }) => ({
       ...t,
       emailVerified: users.length > 0,
       founderSlot: founderClaim?.slotNumber ?? null,
+      // «Νημ.» / «Έληξε» μόνο σε δοκιμή, με την ώρα του test clock όπου υπάρχει.
+      trialDaysLeft: trialDaysLeft(t, billingNow(t, now, clocksOn)),
       mrrCents: tenantMrrCents(
         {
           billingStatus: t.billingStatus,

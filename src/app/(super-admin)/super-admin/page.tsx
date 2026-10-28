@@ -84,6 +84,8 @@ interface Tenant {
   founderFullCharges?: { stripeInvoiceId: string; amountCents: number }[];
   /** Τρέχουσα μηνιαία χρέωση για το MRR (cents) — υπολογίζεται στον server (tenantMrrCents). */
   mrrCents?: number;
+  /** Ημέρες δοκιμής που μένουν (0 = έληξε), ΜΟΝΟ σε δοκιμή· null = καμία ένδειξη (server, billingNow). */
+  trialDaysLeft?: number | null;
   _count: {
     users: number;
     vehicles: number;
@@ -711,12 +713,7 @@ function TenantRow({
   };
 
   const status = STATUS_CONFIG[tenant.status];
-  const daysLeft = tenant.trialEndsAt
-    ? Math.ceil(
-        (new Date(tenant.trialEndsAt).getTime() - Date.now()) /
-          (1000 * 60 * 60 * 24)
-      )
-    : null;
+  const daysLeft = tenant.trialDaysLeft ?? null;
 
   return (
     <tr className="sa-table-row">
@@ -763,10 +760,10 @@ function TenantRow({
             {status.label}
           </span>
           {daysLeft !== null && daysLeft > 0 && (
-            <span className="sa-trial-days">{daysLeft}ημ.</span>
+            <span className="sa-trial-days" data-testid="trial-days">{daysLeft}ημ.</span>
           )}
           {daysLeft !== null && daysLeft <= 0 && (
-            <span className="sa-trial-expired">Έληξε</span>
+            <span className="sa-trial-expired" data-testid="trial-expired">Έληξε</span>
           )}
         </div>
       </td>

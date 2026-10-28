@@ -92,6 +92,35 @@ test("τιμή ιδρυτή 50%: 19,50 / 39,50 / 74,50 €", () => {
   assert.match(read("src/app/(dashboard)/dashboard/billing/BillingClient.tsx"), /formatMoney\(founderPriceCents\(cents\), lang\)/);
 });
 
+/* ── Ένδειξη δοκιμής στον Super Admin («Νημ.» / «Έληξε») ── */
+
+test("ένδειξη δοκιμής: μόνο σε δοκιμή — ενεργή/απλήρωτη/ακυρωμένη/εκτός χρέωσης χωρίς «Νημ.»/«Έληξε»", () => {
+  const ends = at(29);
+  const now = at(0);
+  // Σε δοκιμή → φαίνεται (και «Έληξε» = 0 μετά τη λήξη)
+  assert.equal(B.trialDaysLeft({ billingStatus: "trialing", trialEndsAt: ends }, now), 29);
+  assert.equal(B.trialDaysLeft({ billingStatus: "founder_trial", trialEndsAt: ends }, now), 29);
+  assert.equal(B.trialDaysLeft({ billingStatus: "founder_trial", trialEndsAt: ends }, at(30)), 0);
+  // Ιδρυτής που δεν ξεκίνησε ακόμα το ρολόι → καμία ένδειξη
+  assert.equal(B.trialDaysLeft({ billingStatus: "founder_trial", trialEndsAt: null }, now), null);
+  // Ενεργή, απλήρωτη, ακυρωμένη, εκτός χρέωσης (και αναμονή κάρτας) → ποτέ, ούτε με παλιό trialEndsAt
+  for (const s of ["active", "past_due", "unpaid", "canceled", "exempt", "awaiting_checkout"]) {
+    assert.equal(B.trialDaysLeft({ billingStatus: s, trialEndsAt: ends }, now), null, `${s} πριν τη λήξη`);
+    assert.equal(B.trialDaysLeft({ billingStatus: s, trialEndsAt: at(-5) }, now), null, `${s} μετά τη λήξη`);
+  }
+  // Ώρα από billingNow (test clock): clock στις +30 ημέρες → «Έληξε», ενώ η πραγματική ώρα δίνει 29.
+  const t = { billingStatus: "trialing", trialEndsAt: ends, stripeTestClockId: "clock_1", billingClockAt: at(30) };
+  assert.equal(B.trialDaysLeft(t, B.billingNow(t, now, true)), 0);
+  assert.equal(B.trialDaysLeft(t, B.billingNow(t, now, false)), 29);
+  // Ο server υπολογίζει με billingNow· το Super Admin δεν μετρά μόνο του με Date.now().
+  const api = read("src/app/api/tenants/route.ts");
+  assert.match(api, /trialDaysLeft: trialDaysLeft\(t, billingNow\(t, now, clocksOn\)\)/);
+  assert.match(api, /const clocksOn = testClocksEnabled\(process\.env\)/);
+  const sa = read("src/app/(super-admin)/super-admin/page.tsx");
+  assert.match(sa, /const daysLeft = tenant\.trialDaysLeft \?\? null;/);
+  assert.doesNotMatch(sa, /new Date\(tenant\.trialEndsAt\)\.getTime\(\) - Date\.now\(\)/);
+});
+
 /* ── MRR (Super Admin) ── */
 
 test("MRR: μόνο Ενεργή/Απλήρωτη, τιμή ιδρυτή όσο απομένουν μήνες, ετήσιο ÷ 12", () => {

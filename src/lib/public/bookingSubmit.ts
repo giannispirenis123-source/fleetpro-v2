@@ -10,7 +10,8 @@ import { generateInvoiceCode } from "../invoiceCode";
 import { nextBookingNumber } from "../bookingCreate";
 import { withBookingNumberRetry } from "../bookingNumberRetry";
 import { resolveStorefrontCompany } from "../storefront/resolve";
-import { tenantReadOnly } from "../billing/access";
+import { tenantPublicBookingPolicy } from "../billing/access";
+import { sitePaymentOptionsFor } from "../billing/core";
 import { sitePath } from "../storefront/slug";
 import { basePathForOrigin } from "../storefront/siteUrl";
 import { loadBlockingBookings } from "./availability";
@@ -102,8 +103,10 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
 
   const resolved = await resolveStorefrontCompany(input.slug);
   if (!resolved) return { ok: false, status: 404, message: msg("Η σελίδα δεν βρέθηκε.", "Page not found.") };
-  // Συνδρομή σε «μόνο ανάγνωση» (SQL 36): η σελίδα μένει ορατή, νέες κρατήσεις όχι.
-  if (await tenantReadOnly(resolved.companyId, now)) {
+  // Συνδρομή (SQL 36): ακυρωμένη / ληγμένη δοκιμή / αναμονή κάρτας → η σελίδα μένει
+  // ορατή, νέες κρατήσεις όχι. «Απλήρωτη» → δεκτή, ΜΟΝΟ πληρωμή στην παραλαβή.
+  const policy = await tenantPublicBookingPolicy(resolved.companyId, now);
+  if (policy === "closed") {
     return {
       ok: false,
       status: 409,
@@ -119,7 +122,7 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
 
   // Τρόπος πληρωμής: ΜΟΝΟ όσοι ισχύουν (online με ενεργό λογαριασμό + κλειδιά).
   const pay = await loadSitePayment(resolved.companyId);
-  const method = resolvePaymentMethod(input.paymentMethod, pay?.options ?? "PICKUP_ONLY");
+  const method = resolvePaymentMethod(input.paymentMethod, sitePaymentOptionsFor(pay?.options ?? "PICKUP_ONLY", policy));
   const contact = validateContact(input, { needsFlight: needsFlight(cat, c.pl, c.dl), pickupDate: c.from.slice(0, 10) });
   if (!contact.ok || !method.ok) {
     return {

@@ -17,9 +17,9 @@ export const PLATFORM_DISCOUNT_TYPES = ["PERCENTAGE", "FIXED_AMOUNT"] as const;
 
 /** Μηνιαία τιμή συνδρομής ανά πλάνο (€). Το Tenant αποθηκεύει μόνο το πλάνο. */
 export const PLAN_PRICES: Record<SubscriptionPlan, number> = {
-  STARTER: 49,
-  PRO: 129,
-  ENTERPRISE: 299,
+  STARTER: 39,
+  PRO: 79,
+  ENTERPRISE: 149,
 };
 
 export interface PlatformDiscountDTO {

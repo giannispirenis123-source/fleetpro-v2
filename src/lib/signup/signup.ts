@@ -32,6 +32,8 @@ export const signupSchema = z.object({
   /** Honeypot: κρυφό πεδίο. Γεμάτο = bot → «επιτυχία» χωρίς τίποτα. */
   website: z.string().max(500).optional(),
   lang: z.enum(["el", "en"]).optional(),
+  /** Κωδικός ιδρυτή (προαιρετικός) — ελέγχεται ΜΟΝΟ στον server (billing/founding.ts). */
+  founderCode: z.string().max(40).optional(),
 });
 export type SignupInput = z.infer<typeof signupSchema>;
 

@@ -35,6 +35,11 @@ import {
 } from "./signup";
 import { UNVERIFIED_CLEANUP_DAYS, createVerifyToken, hashToken, isTokenShape, tokenState, verifyUrl } from "./token";
 import { uniqueSlug } from "./slug";
+import { t } from "../i18n";
+import { billingReady } from "../billing/billingServer";
+import { DEFAULT_BILLING_PLAN } from "../billing/core";
+import { FounderClaimError, isFounderCodeShape } from "../billing/founding";
+import { claimFounderSlot, precheckFounderCode } from "../billing/foundingServer";
 
 export type FlowResult =
   | { status: 200; body: { message: string; testEmail?: SignupEmail } }
@@ -54,6 +59,19 @@ const neutral = (lang: SignupLang, testEmail?: SignupEmail): FlowResult => ({
 const tooMany = (lang: SignupLang): FlowResult => ({
   status: 429,
   body: { message: SIGNUP_ERRORS.rateLimit[lang], code: "rate_limit" },
+});
+
+/**
+ * Κωδικός ιδρυτή: λάθος/ληγμένος/ανενεργός/εξαντλημένος → ΙΔΙΟ «δεν είναι
+ * έγκυρος» (δεν μαντεύονται κωδικοί). Μόνο το «έκλεισε» διαφέρει: οι θέσεις
+ * που απομένουν είναι ούτως ή άλλως δημόσιες.
+ */
+const founderError = (lang: SignupLang, state: "invalid" | "closed"): FlowResult => ({
+  status: 400,
+  body:
+    state === "closed"
+      ? { message: t("signup.founderClosed", lang), code: "founder_closed" }
+      : { message: t("signup.founderInvalid", lang), code: "founder_code" },
 });
 
 /** Υπάρχει ήδη λογαριασμός ή εταιρία με αυτό το email; */
@@ -88,6 +106,20 @@ export async function signupFlow(input: SignupInput, ip: string, requestOrigin: 
   if (!(await hitLimit(dbCounterStore, LIMITS.signupPerIp, ip))) return tooMany(lang);
   if (!(await hitLimit(dbCounterStore, LIMITS.signupPerEmail, input.email))) return tooMany(lang);
 
+  // Συνδρομές (SQL 36): με ενεργό Billing η νέα εταιρία ξεκινά δοκιμή —
+  // με κωδικό ιδρυτή 30 ημ. χωρίς κάρτα, αλλιώς 14 ημ. με κάρτα (Checkout).
+  // Ο έλεγχος του κωδικού ΔΕΝ εξαρτάται από το email (καμία αποκάλυψη).
+  const billing = billingReady();
+  const founderCode = (input.founderCode ?? "").trim();
+  if (founderCode) {
+    if (!(await hitLimit(dbCounterStore, LIMITS.founderCodePerIp, ip))) return tooMany(lang);
+    if (!billing) return founderError(lang, "closed");
+    if (!isFounderCodeShape(founderCode)) return founderError(lang, "invalid");
+    const state = await precheckFounderCode(founderCode);
+    if (state !== "ok") return founderError(lang, state);
+  }
+  const billingStatus = founderCode ? "founder_trial" : billing ? "awaiting_checkout" : undefined;
+
   const origin = linkOrigin(requestOrigin);
   // ΠΑΝΤΑ (και για υπάρχον email): ίδιος χρόνος απάντησης.
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
@@ -102,20 +134,24 @@ export async function signupFlow(input: SignupInput, ip: string, requestOrigin: 
     const tok = createVerifyToken();
     try {
       await db.$transaction(async (tx) => {
-        const { user } = await createTenantWithAdmin(tx, {
+        const { tenant, user } = await createTenantWithAdmin(tx, {
           name: input.companyName,
           slug,
           email: input.email,
           storefrontSlug: slug,
           signupSource: "self_signup",
           onboardingState: initialOnboardingState() as unknown as Prisma.InputJsonValue,
+          ...(billingStatus ? { billingStatus, planKey: DEFAULT_BILLING_PLAN } : {}),
           admin: { name: input.ownerName, email: input.email, passwordHash, emailVerifiedAt: null, locale: lang },
         });
+        // Η θέση ιδρυτή στην ΙΔΙΑ transaction: αποτυχία → ούτε εταιρία, ούτε θέση.
+        if (founderCode) await claimFounderSlot(tx, founderCode, tenant.id);
         await tx.emailVerificationToken.create({
           data: { userId: user.id, tokenHash: tok.tokenHash, expiresAt: tok.expiresAt },
         });
       });
     } catch (e) {
+      if (e instanceof FounderClaimError) return founderError(lang, e.state);
       // Ταυτόχρονη εγγραφή: το UNIQUE index αποφασίζει.
       if (isUniqueOn(e, "email")) {
         const mail = await sendSignupEmail(existingAccountEmail(lang, input.email, `${origin}/login`));

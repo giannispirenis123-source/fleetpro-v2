@@ -3,7 +3,7 @@
 
 "use client";
 
-import { formatEuros } from "@/lib/public/money";
+import { formatEuros, formatMoney } from "@/lib/public/money";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -73,6 +73,19 @@ interface Tenant {
   emailVerified?: boolean;
   /** Σημάνθηκε για καθάρισμα (ανεπιβεβαίωτη εγγραφή > 7 ημέρες). */
   cleanupFlaggedAt?: string | null;
+  /** Συνδρομή (SQL 36): exempt | founder_trial | awaiting_checkout | κατάσταση Stripe. */
+  billingStatus?: string;
+  billingInterval?: "month" | "year";
+  /** Θέση στο πρόγραμμα «Πρώτες 10 εταιρίες» (1–10) ή null. */
+  founderSlot?: number | null;
+  /** Test clock του Stripe (μόνο Preview, SQL 37). */
+  stripeTestClockId?: string | null;
+  /** Τιμολόγια ιδρυτή πληρωμένα ΧΩΡΙΣ έκπτωση (SQL 37). */
+  founderFullCharges?: { stripeInvoiceId: string; amountCents: number }[];
+  /** Τρέχουσα μηνιαία χρέωση για το MRR (cents) — υπολογίζεται στον server (tenantMrrCents). */
+  mrrCents?: number;
+  /** Ημέρες δοκιμής που μένουν (0 = έληξε), ΜΟΝΟ σε δοκιμή· null = καμία ένδειξη (server, billingNow). */
+  trialDaysLeft?: number | null;
   _count: {
     users: number;
     vehicles: number;
@@ -86,7 +99,8 @@ interface PlatformStats {
   trialTenants: number;
   totalVehicles: number;
   totalBookings: number;
-  mrr: number;
+  /** cents — βλ. tenantMrrCents (billing/core.ts). */
+  mrrCents: number;
 }
 
 /** Ρόλοι χρηστών εταιρίας — ο SUPER_ADMIN δεν ρεσετάρεται από εδώ. */
@@ -103,10 +117,38 @@ interface TenantUser {
 
 // ─── Constants ───────────────────────────
 
+type SaTab = "tenants" | "stats" | "discounts" | "founding" | "feedback" | "settings";
+
+/** Οι ενότητες του Super Admin — ΜΙΑ λίστα για το πλαϊνό μενού (desktop) και τη μπάρα του κινητού. */
+const SA_TABS: { id: SaTab; label: string; icon: React.ReactNode }[] = [
+  { id: "tenants", label: "Εταιρίες", icon: <Building2 size={16} /> },
+  { id: "stats", label: "Στατιστικά", icon: <BarChart3 size={16} /> },
+  { id: "discounts", label: "Εκπτώσεις", icon: <Tag size={16} /> },
+  { id: "founding", label: "Πρώτες εταιρίες", icon: <Zap size={16} /> },
+  { id: "feedback", label: "Γνώμες", icon: <Activity size={16} /> },
+  { id: "settings", label: "Ρυθμίσεις", icon: <Shield size={16} /> },
+];
+
 const PLAN_LABELS: Record<SubscriptionPlan, string> = {
   STARTER: "Starter",
   PRO: "Pro",
-  ENTERPRISE: "Enterprise",
+  // Το παλιό ENTERPRISE αντιστοιχεί στο πλάνο Business (SQL 36).
+  ENTERPRISE: "Business",
+};
+
+/** Κατάσταση συνδρομής (SQL 36) — ετικέτες Super Admin. */
+const BILLING_LABELS: Record<string, string> = {
+  exempt: "Εκτός χρέωσης",
+  founder_trial: "Δοκιμή ιδρυτή",
+  awaiting_checkout: "Αναμονή κάρτας",
+  trialing: "Δοκιμή (κάρτα)",
+  active: "Ενεργή",
+  past_due: "Απλήρωτη",
+  unpaid: "Απλήρωτη",
+  canceled: "Ακυρωμένη",
+  incomplete: "Μη ολοκληρωμένη",
+  incomplete_expired: "Έληξε",
+  paused: "Σε παύση",
 };
 
 /** Κατά προσέγγιση ύψος του μενού ενεργειών, για να κρίνουμε αν χωράει. */
@@ -147,7 +189,9 @@ const STATUS_CONFIG: Record<
 
 /**
  * Τα στατιστικά της πλατφόρμας βγαίνουν από την ίδια τη λίστα εταιριών.
- * Το MRR μετρά μόνο τις ενεργές συνδρομές — οι δοκιμαστικές δεν πληρώνουν.
+ * MRR = άθροισμα της τρέχουσας μηνιαίας χρέωσης (mrrCents από τον server):
+ * μόνο «Ενεργή»/«Απλήρωτη», τιμή ιδρυτή όσο ισχύει, ετήσιο ÷ 12. Δοκιμή και
+ * «εκτός χρέωσης» = 0.
  */
 function computeStats(list: Tenant[]): PlatformStats {
   return {
@@ -156,9 +200,7 @@ function computeStats(list: Tenant[]): PlatformStats {
     trialTenants: list.filter((t) => t.status === "TRIAL").length,
     totalVehicles: list.reduce((sum, t) => sum + t._count.vehicles, 0),
     totalBookings: list.reduce((sum, t) => sum + t._count.bookings, 0),
-    mrr: list
-      .filter((t) => t.status === "ACTIVE")
-      .reduce((sum, t) => sum + PLAN_PRICES[t.plan], 0),
+    mrrCents: list.reduce((sum, t) => sum + (t.mrrCents ?? 0), 0),
   };
 }
 
@@ -180,9 +222,22 @@ export default function SuperAdminDashboard() {
   const [loadError, setLoadError] = useState("");
   // Εταιρία της οποίας βλέπουμε τους χρήστες (λίστα + reset κωδικού).
   const [usersOfTenant, setUsersOfTenant] = useState<Tenant | null>(null);
-  const [activeTab, setActiveTab] = useState<
-    "tenants" | "stats" | "discounts" | "settings"
-  >("tenants");
+  // Οριστική διαγραφή εταιρίας (επιβεβαίωση με το ακριβές όνομα).
+  const [deletingTenant, setDeletingTenant] = useState<Tenant | null>(null);
+  const [activeTab, setActiveTab] = useState<SaTab>("tenants");
+  // Μετρητής θέσεων του προγράμματος ιδρυτών (SQL 36).
+  const [founding, setFounding] = useState<FoundingView | null>(null);
+  const loadFounding = useCallback(async () => {
+    try {
+      const res = await fetch("/api/super-admin/founding");
+      if (res.ok) setFounding((await res.json()).data);
+    } catch {
+      /* ο μετρητής είναι βοηθητικός */
+    }
+  }, []);
+  useEffect(() => {
+    loadFounding();
+  }, [loadFounding]);
 
   // ─── Φόρτωση εταιριών από το API ───
   const loadTenants = useCallback(async () => {
@@ -277,28 +332,11 @@ export default function SuperAdminDashboard() {
         <AccountMenu name={me.name} email={me.email} role="SUPER_ADMIN" variant="sidebar" accountHref={null} />
 
         <nav className="sa-nav">
-          {[
-            {
-              id: "tenants",
-              label: "Εταιρίες",
-              icon: <Building2 size={16} />,
-            },
-            { id: "stats", label: "Στατιστικά", icon: <BarChart3 size={16} /> },
-            {
-              id: "discounts",
-              label: "Εκπτώσεις",
-              icon: <Tag size={16} />,
-            },
-            {
-              id: "settings",
-              label: "Ρυθμίσεις",
-              icon: <Shield size={16} />,
-            },
-          ].map((item) => (
+          {SA_TABS.map((item) => (
             <button
               key={item.id}
               className={`sa-nav-item ${activeTab === item.id ? "active" : ""}`}
-              onClick={() => setActiveTab(item.id as typeof activeTab)}
+              onClick={() => setActiveTab(item.id)}
             >
               {item.icon}
               {item.label}
@@ -316,6 +354,27 @@ export default function SuperAdminDashboard() {
             <Zap size={16} className="sa-logo-icon" /> FleetPro
           </span>
           <AccountMenu name={me.name} email={me.email} role="SUPER_ADMIN" variant="topbar" accountHref={null} />
+          {/* Στο κινητό (≤768px) οι ΙΔΙΕΣ ενότητες με το πλαϊνό μενού, σε οριζόντια μπάρα με κύλισμα. */}
+          <nav className="sa-mobile-tabs" aria-label="Ενότητες Super Admin">
+            {SA_TABS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`sa-mobile-tab ${activeTab === item.id ? "active" : ""}`}
+                aria-current={activeTab === item.id ? "page" : undefined}
+                onClick={(e) => {
+                  setActiveTab(item.id);
+                  // Η ενεργή καρτέλα ολόκληρη ορατή στη μπάρα· η σελίδα από την αρχή.
+                  e.currentTarget.scrollIntoView({ inline: "center", block: "nearest" });
+                  window.scrollTo({ top: 0 });
+                }}
+                data-testid={`sa-tab-${item.id}`}
+              >
+                {item.icon}
+                {item.label}
+              </button>
+            ))}
+          </nav>
         </div>
         {/* Stats Bar */}
         {stats && (
@@ -353,7 +412,7 @@ export default function SuperAdminDashboard() {
               },
               {
                 label: "MRR",
-                value: formatEuros(stats.mrr, "el"),
+                value: formatMoney(stats.mrrCents, "el"),
                 icon: <CreditCard size={14} />,
                 accent: "#ec4899",
               },
@@ -414,7 +473,7 @@ export default function SuperAdminDashboard() {
                   <option value="ALL">Όλα τα πλάνα</option>
                   <option value="STARTER">Starter</option>
                   <option value="PRO">Pro</option>
-                  <option value="ENTERPRISE">Enterprise</option>
+                  <option value="ENTERPRISE">Business</option>
                 </select>
                 <select
                   className="sa-select"
@@ -443,6 +502,14 @@ export default function SuperAdminDashboard() {
 
             {cleanup && <div className="sa-load-error">{cleanup.message}</div>}
 
+            {founding?.program && (
+              <div className="sa-founding-strip" data-testid="founding-counter">
+                Πρώτες εταιρίες: <strong>{founding.program.claimed}/{founding.program.maxSlots}</strong> θέσεις · απομένουν{" "}
+                <strong>{founding.program.remaining}</strong>
+                {!founding.program.active && " · το πρόγραμμα είναι κλειστό"}
+              </div>
+            )}
+
             {loadError && (
               <div className="sa-load-error">
                 <AlertTriangle size={15} /> {loadError}
@@ -466,6 +533,8 @@ export default function SuperAdminDashboard() {
                     <tr>
                       <th>Εταιρία</th>
                       <th>Πλάνο</th>
+                      <th>Συνδρομή</th>
+                      <th>Ιδρυτής</th>
                       <th>Κατάσταση</th>
                       <th>Οχήματα</th>
                       <th>Χρήστες</th>
@@ -493,6 +562,10 @@ export default function SuperAdminDashboard() {
                           setShowTenantMenu(null);
                         }}
                         onStatusChange={(status) => changeStatus(tenant, status)}
+                        onDelete={() => {
+                          setDeletingTenant(tenant);
+                          setShowTenantMenu(null);
+                        }}
                       />
                     ))}
                   </tbody>
@@ -526,6 +599,18 @@ export default function SuperAdminDashboard() {
           </div>
         )}
 
+        {activeTab === "founding" && (
+          <div className="sa-content">
+            <FoundingAdminView view={founding} onChange={setFounding} reload={loadFounding} />
+          </div>
+        )}
+
+        {activeTab === "feedback" && (
+          <div className="sa-content">
+            <FeedbackAdminView />
+          </div>
+        )}
+
         {/* Settings Tab */}
         {activeTab === "settings" && (
           <div className="sa-content">
@@ -556,10 +641,30 @@ export default function SuperAdminDashboard() {
         />
       )}
 
+      {deletingTenant && (
+        <DeleteTenantModal
+          tenant={deletingTenant}
+          onClose={() => setDeletingTenant(null)}
+          onDeleted={(id) => {
+            setTenants((prev) => {
+              const next = prev.filter((t) => t.id !== id);
+              setStats(computeStats(next));
+              return next;
+            });
+            setDeletingTenant(null);
+            loadFounding();
+          }}
+        />
+      )}
+
       {/* Edit Tenant Modal */}
       {selectedTenant && (
         <EditTenantModal
           tenant={selectedTenant}
+          onDelete={() => {
+            setDeletingTenant(selectedTenant);
+            setSelectedTenant(null);
+          }}
           onClose={() => setSelectedTenant(null)}
           onSuccess={(updated) => {
             setTenants((prev) =>
@@ -584,6 +689,7 @@ function TenantRow({
   onEdit,
   onShowUsers,
   onStatusChange,
+  onDelete,
 }: {
   tenant: Tenant;
   showMenu: boolean;
@@ -591,6 +697,7 @@ function TenantRow({
   onEdit: () => void;
   onShowUsers: () => void;
   onStatusChange: (s: TenantStatus) => void;
+  onDelete: () => void;
 }) {
   // Το μενού ανοίγει προς τα κάτω· αν δεν χωράει στο ορατό παράθυρο
   // (τελευταία γραμμή, κοντό παράθυρο), γυρίζει προς τα πάνω.
@@ -606,12 +713,7 @@ function TenantRow({
   };
 
   const status = STATUS_CONFIG[tenant.status];
-  const daysLeft = tenant.trialEndsAt
-    ? Math.ceil(
-        (new Date(tenant.trialEndsAt).getTime() - Date.now()) /
-          (1000 * 60 * 60 * 24)
-      )
-    : null;
+  const daysLeft = tenant.trialDaysLeft ?? null;
 
   return (
     <tr className="sa-table-row">
@@ -637,16 +739,31 @@ function TenantRow({
         </span>
       </td>
       <td>
+        <span className="sa-source" data-testid="billing-status">
+          {BILLING_LABELS[tenant.billingStatus ?? "exempt"] ?? tenant.billingStatus}
+          {tenant.billingStatus && tenant.billingStatus !== "exempt" && tenant.billingInterval === "year" ? " · ετήσια" : ""}
+        </span>
+        {tenant.stripeTestClockId && (
+          <span className="sa-plan-badge sa-testclock" title={tenant.stripeTestClockId} data-testid="test-clock-badge">Test clock</span>
+        )}
+        {(tenant.founderFullCharges ?? []).map((c) => (
+          <div key={c.stripeInvoiceId} className="sa-trial-expired sa-full-charge" data-testid="full-charge">
+            Πλήρης χρέωση χωρίς έκπτωση: {formatMoney(c.amountCents, "el")} ({c.stripeInvoiceId})
+          </div>
+        ))}
+      </td>
+      <td>{tenant.founderSlot ? <span className="sa-plan-badge pro">#{tenant.founderSlot}</span> : "—"}</td>
+      <td>
         <div className="sa-status-wrap">
           <span className={`sa-status ${status.color}`}>
             {status.icon}
             {status.label}
           </span>
           {daysLeft !== null && daysLeft > 0 && (
-            <span className="sa-trial-days">{daysLeft}ημ.</span>
+            <span className="sa-trial-days" data-testid="trial-days">{daysLeft}ημ.</span>
           )}
           {daysLeft !== null && daysLeft <= 0 && (
-            <span className="sa-trial-expired">Έληξε</span>
+            <span className="sa-trial-expired" data-testid="trial-expired">Έληξε</span>
           )}
         </div>
       </td>
@@ -702,8 +819,8 @@ function TenantRow({
                     <XCircle size={12} /> Αναστολή
                   </button>
                 )}
-                <button className="danger">
-                  <Trash2 size={12} /> Διαγραφή
+                <button className="danger" onClick={onDelete} data-testid="tenant-delete">
+                  <Trash2 size={12} /> Διαγραφή εταιρίας
                 </button>
               </div>
             )}
@@ -758,24 +875,27 @@ function PlatformStatsView({
       <div className="sa-stats-card">
         <h3>Μηνιαία Έσοδα (MRR)</h3>
         <div className="sa-mrr">
-          <span className="sa-mrr-value">{stats?.mrr || 0}€</span>
+          <span className="sa-mrr-value" data-testid="mrr-value">{formatMoney(stats?.mrrCents ?? 0, "el")}</span>
           <span className="sa-mrr-label">/ μήνα</span>
         </div>
         <div className="sa-mrr-breakdown">
           {(["STARTER", "PRO", "ENTERPRISE"] as SubscriptionPlan[]).map(
             (plan) => {
-              const count = planDistribution[plan] || 0;
+              // Μόνο εταιρίες που χρεώνονται (mrrCents > 0) — το ποσό είναι η ΠΡΑΓΜΑΤΙΚΗ χρέωση.
+              const paying = tenants.filter((t) => t.plan === plan && (t.mrrCents ?? 0) > 0);
+              const sum = paying.reduce((s, t) => s + (t.mrrCents ?? 0), 0);
               return (
                 <div key={plan} className="sa-mrr-row">
                   <span>{PLAN_LABELS[plan]}</span>
                   <span>
-                    {count} × {PLAN_PRICES[plan]}€ ={" "}
-                    <strong>{count * PLAN_PRICES[plan]}€</strong>
+                    {paying.length} ={" "}
+                    <strong>{formatMoney(sum, "el")}</strong>
                   </span>
                 </div>
               );
             }
           )}
+          <p className="sa-founding-note">Μόνο «Ενεργή» και «Απλήρωτη»· τιμή ιδρυτή όσο ισχύει, ετήσια ÷ 12. Δοκιμή και εκτός χρέωσης δεν μετρούν.</p>
         </div>
       </div>
 
@@ -1240,6 +1360,355 @@ function PlatformDiscountModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Οριστική διαγραφή εταιρίας ───────────
+
+interface DeleteSummary {
+  id: string;
+  name: string;
+  counts: { users: number; vehicles: number; bookings: number; contracts: number; invoices: number; customers: number };
+  blocked: string | null;
+  stripeConnect: boolean;
+  founderSlot: number | null;
+}
+
+function DeleteTenantModal({
+  tenant,
+  onClose,
+  onDeleted,
+}: {
+  tenant: Tenant;
+  onClose: () => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [summary, setSummary] = useState<DeleteSummary | null>(null);
+  const [typed, setTyped] = useState("");
+  const [releaseSlot, setReleaseSlot] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch(`/api/tenants/${tenant.id}/deletion`)
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) setSummary(d.data);
+        else setError(d.message || "Σφάλμα");
+      })
+      .catch(() => setError("Σφάλμα σύνδεσης"));
+  }, [tenant.id]);
+
+  // Μόνο βοήθεια στο UI· ο server ελέγχει ξανά το ΑΚΡΙΒΕΣ όνομα.
+  const matches = summary !== null && typed.trim() !== "" && typed.trim() === summary.name.trim();
+
+  const submit = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/tenants/${tenant.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmName: typed, releaseFounderSlot: releaseSlot }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(d.message || "Η διαγραφή απέτυχε");
+        return;
+      }
+      onDeleted(tenant.id);
+    } catch {
+      setError("Σφάλμα σύνδεσης");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const c = summary?.counts;
+  return (
+    <div className="sa-modal-overlay" onClick={onClose}>
+      <div className="sa-modal sa-modal--sm" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" data-testid="delete-tenant-modal">
+        <div className="sa-modal-header">
+          <h2>Διαγραφή εταιρίας</h2>
+          <button className="sa-modal-close" onClick={onClose} aria-label="Κλείσιμο">×</button>
+        </div>
+        <div className="sa-modal-body">
+          {!summary && !error && <p className="sa-founding-note">Φόρτωση…</p>}
+          {summary && (
+            <>
+              <p className="sa-delete-warn">
+                Η διαγραφή είναι <strong>ΟΡΙΣΤΙΚΗ</strong>. Σβήνονται ΟΛΑ τα δεδομένα της εταιρίας <strong>{summary.name}</strong> και οι χρήστες της:
+              </p>
+              <ul className="sa-delete-list" data-testid="delete-counts">
+                <li>{c!.users} χρήστες</li>
+                <li>{c!.vehicles} οχήματα</li>
+                <li>{c!.bookings} κρατήσεις</li>
+                <li>{c!.contracts} συμβόλαια</li>
+                <li>{c!.invoices} τιμολόγια</li>
+                <li>{c!.customers} πελάτες</li>
+              </ul>
+              {summary.blocked && <div className="sa-error" role="alert">{summary.blocked}</div>}
+              {summary.stripeConnect && (
+                <div className="sa-load-error">
+                  Η εταιρία έχει συνδεδεμένο λογαριασμό Stripe Connect. Ο λογαριασμός στο Stripe ΔΕΝ διαγράφεται· μόνο η σύνδεση εδώ.
+                </div>
+              )}
+              {summary.founderSlot !== null && (
+                <label className="sa-pd-check sa-delete-check">
+                  <input type="checkbox" checked={releaseSlot} onChange={(e) => setReleaseSlot(e.target.checked)} />
+                  Απελευθέρωση θέσης ιδρυτή #{summary.founderSlot} (αλλιώς η θέση μένει πιασμένη)
+                </label>
+              )}
+              {!summary.blocked && (
+                <label className="sa-label sa-delete-confirm">
+                  Γράψε ακριβώς το όνομα της εταιρίας για επιβεβαίωση:
+                  <input
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                    placeholder={summary.name}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-testid="delete-confirm-name"
+                  />
+                </label>
+              )}
+            </>
+          )}
+          {error && <div className="sa-error" role="alert">{error}</div>}
+        </div>
+        <div className="sa-modal-footer">
+          <button className="sa-btn-ghost" onClick={onClose}>Ακύρωση</button>
+          <button
+            className="sa-btn-danger"
+            onClick={submit}
+            disabled={busy || !summary || Boolean(summary.blocked) || !matches}
+            data-testid="delete-confirm"
+          >
+            {busy ? "Διαγραφή…" : "Οριστική διαγραφή"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Πρώτες εταιρίες (SQL 36) ─────────────
+
+interface FoundingView {
+  program: { maxSlots: number; claimed: number; remaining: number; active: boolean } | null;
+  codes: { id: string; label: string | null; maxClaims: number; claimedCount: number; active: boolean; expiresAt: string | null; createdAt: string }[];
+  claims: { slot: number; claimedAt: string; codeLabel: string | null; tenantId: string | null; tenantName: string | null }[];
+  notices: { tenantId: string; tenantName: string; endsAt: string; subject: string; text: string; amountBlocked: string | null }[];
+}
+
+function FoundingAdminView({
+  view,
+  onChange,
+  reload,
+}: {
+  view: FoundingView | null;
+  onChange: (v: FoundingView) => void;
+  reload: () => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [maxClaims, setMaxClaims] = useState(1);
+  const [expiresOn, setExpiresOn] = useState("");
+  const [created, setCreated] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const createCode = async () => {
+    setBusy(true);
+    setError("");
+    setCreated(null);
+    try {
+      const res = await fetch("/api/super-admin/founding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim() || undefined, maxClaims, expiresOn: expiresOn || null }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.message || "Σφάλμα");
+        return;
+      }
+      // Ο κωδικός φαίνεται ΜΟΝΟ τώρα — στη βάση μένει μόνο το hash.
+      setCreated(data.data.code);
+      setLabel("");
+      reload();
+    } catch {
+      setError("Σφάλμα σύνδεσης");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const patch = async (body: Record<string, unknown>) => {
+    setError("");
+    const res = await fetch("/api/super-admin/founding", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) onChange(data.data);
+    else setError(data.message || "Σφάλμα");
+  };
+
+  if (!view?.program) {
+    return <div className="sa-load-error">Το πρόγραμμα δεν βρέθηκε — έτρεξε το SQL 36;</div>;
+  }
+  const p = view.program;
+  return (
+    <>
+      <div className="sa-toolbar">
+        <h1 className="sa-page-title">Πρώτες 10 εταιρίες</h1>
+      </div>
+      <div className="sa-founding-strip">
+        Θέσεις: <strong>{p.claimed}/{p.maxSlots}</strong> · απομένουν <strong>{p.remaining}</strong> ·{" "}
+        {p.active ? "ανοιχτό" : "κλειστό"}{" "}
+        <button className="sa-btn-ghost" onClick={() => patch({ programActive: !p.active })}>
+          {p.active ? "Κλείσιμο προγράμματος" : "Άνοιγμα προγράμματος"}
+        </button>
+      </div>
+
+      <div className="sa-settings-card">
+        <h3>Νέος κωδικός ιδρυτή</h3>
+        <div className="sa-form-grid">
+          <label>Ετικέτα (για εσένα, π.χ. όνομα εταιρίας)<input value={label} maxLength={120} onChange={(e) => setLabel(e.target.value)} /></label>
+          <label>Μέγιστες χρήσεις<input type="number" min={1} max={10} value={maxClaims} onChange={(e) => setMaxClaims(Math.min(10, Math.max(1, Number(e.target.value) || 1)))} /></label>
+          <label>Λήξη (προαιρετικά)<input type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} /></label>
+        </div>
+        <button className="sa-btn-primary" style={{ marginTop: 12 }} onClick={createCode} disabled={busy}>
+          {busy ? "Δημιουργία..." : "Δημιουργία κωδικού"}
+        </button>
+        {created && (
+          <div className="sa-founding-code" data-testid="founder-code-created">
+            Κωδικός: <code>{created}</code> — αντίγραψέ τον τώρα· δεν θα ξαναφανεί.
+          </div>
+        )}
+        {error && <div className="sa-error">{error}</div>}
+      </div>
+
+      <div className="sa-table-wrap" style={{ marginTop: 16 }}>
+        <table className="sa-table">
+          <thead>
+            <tr><th>Ετικέτα</th><th>Χρήσεις</th><th>Λήξη</th><th>Κατάσταση</th><th></th></tr>
+          </thead>
+          <tbody>
+            {view.codes.map((c) => (
+              <tr key={c.id} className="sa-table-row">
+                <td>{c.label || "—"}</td>
+                <td className="sa-num">{c.claimedCount}/{c.maxClaims}</td>
+                <td className="sa-date">{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString("el-GR") : "—"}</td>
+                <td>{c.active ? "Ενεργός" : "Ανενεργός"}</td>
+                <td>
+                  <button className="sa-btn-ghost" onClick={() => patch({ codeId: c.id, codeActive: !c.active })}>
+                    {c.active ? "Απενεργοποίηση" : "Ενεργοποίηση"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {view.codes.length === 0 && <div className="sa-empty"><p>Δεν υπάρχουν κωδικοί</p></div>}
+      </div>
+
+      <h2 className="sa-section-title" style={{ marginTop: 24 }}>Διεκδικήσεις</h2>
+      <div className="sa-table-wrap">
+        <table className="sa-table">
+          <thead>
+            <tr><th>Θέση</th><th>Εταιρία</th><th>Κωδικός</th><th>Ημερομηνία</th></tr>
+          </thead>
+          <tbody>
+            {view.claims.map((c) => (
+              <tr key={c.slot} className="sa-table-row">
+                <td className="sa-num">#{c.slot}</td>
+                <td>{c.tenantName ?? "(διαγραμμένη εταιρία)"}</td>
+                <td>{c.codeLabel || "—"}</td>
+                <td className="sa-date">{new Date(c.claimedAt).toLocaleDateString("el-GR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="sa-section-title" style={{ marginTop: 24 }}>Ειδοποιήσεις λήξης έκπτωσης (30 ημέρες πριν)</h2>
+      {view.notices.length === 0 ? (
+        <p className="sa-founding-note">Καμία δεν οφείλεται τώρα.</p>
+      ) : (
+        view.notices.map((n) => (
+          <div key={n.tenantId} className="sa-settings-card">
+            <h3>{n.tenantName} · λήξη {new Date(n.endsAt).toLocaleDateString("el-GR")}</h3>
+            <p className="sa-founding-note">
+              Μόνο κείμενο: η αποστολή σε πελάτες θέλει επαληθευμένο domain στο Resend.
+            </p>
+            {n.amountBlocked && (
+              <p className="sa-trial-expired" data-testid="notice-amount-blocked">
+                Η αποστολή μπλοκαρίστηκε: ασυμφωνία ποσού ({n.amountBlocked}).
+              </p>
+            )}
+            <pre className="sa-founding-pre">{n.subject}{"\n\n"}{n.text}</pre>
+          </div>
+        ))
+      )}
+    </>
+  );
+}
+
+// ─── Γνώμες εταιριών (SQL 36) ─────────────
+
+interface FeedbackItem {
+  id: string;
+  tenantName: string | null;
+  userName: string | null;
+  helpedMost: string | null;
+  missing: string | null;
+  vehicleCount: number | null;
+  createdAt: string;
+}
+
+function FeedbackAdminView() {
+  const [items, setItems] = useState<FeedbackItem[] | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/super-admin/feedback")
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) setItems(d.data.items);
+        else setError(d.message || "Σφάλμα");
+      })
+      .catch(() => setError("Σφάλμα σύνδεσης"));
+  }, []);
+  return (
+    <>
+      <div className="sa-toolbar">
+        <h1 className="sa-page-title">Γνώμες εταιριών</h1>
+        <span className="sa-count">{items?.length ?? 0}</span>
+      </div>
+      {error && <div className="sa-load-error">{error}</div>}
+      <div className="sa-table-wrap">
+        <table className="sa-table">
+          <thead>
+            <tr><th>Εταιρία</th><th>Τι βοήθησε</th><th>Τι έλειψε</th><th>Οχήματα</th><th>Ημερομηνία</th></tr>
+          </thead>
+          <tbody>
+            {(items ?? []).map((f) => (
+              <tr key={f.id} className="sa-table-row">
+                <td>{f.tenantName ?? "—"}<div className="sa-tenant-slug">{f.userName ?? ""}</div></td>
+                <td className="sa-feedback-text">{f.helpedMost ?? "—"}</td>
+                <td className="sa-feedback-text">{f.missing ?? "—"}</td>
+                <td className="sa-num">{f.vehicleCount ?? "—"}</td>
+                <td className="sa-date">{new Date(f.createdAt).toLocaleDateString("el-GR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {items && items.length === 0 && <div className="sa-empty"><p>Καμία γνώμη ακόμα</p></div>}
+      </div>
+    </>
   );
 }
 
@@ -1708,10 +2177,12 @@ function EditTenantModal({
   tenant,
   onClose,
   onSuccess,
+  onDelete,
 }: {
   tenant: Tenant;
   onClose: () => void;
   onSuccess: (t: Tenant) => void;
+  onDelete: () => void;
 }) {
   const [form, setForm] = useState({
     name: tenant.name,
@@ -1724,7 +2195,11 @@ function EditTenantModal({
     website: "",
     // % με έως 2 δεκαδικά (π.χ. «1,5») ↔ basis points στη βάση.
     platformFee: String((tenant.platformFeeBps ?? 0) / 100).replace(".", ","),
+    // Συνδρομή (SQL 36): χειροκίνητα μόνο οι καταστάσεις πριν από το Stripe.
+    billingStatus: tenant.billingStatus ?? "exempt",
+    trialEndsOn: tenant.trialEndsAt ? tenant.trialEndsAt.slice(0, 10) : "",
   });
+  const stripeManaged = !["exempt", "founder_trial", "awaiting_checkout"].includes(tenant.billingStatus ?? "exempt");
   const [loading, setLoading] = useState(false);
   const feeBps = Math.round(Number(form.platformFee.trim().replace(",", ".") || "0") * 100);
   const feeValid = Number.isInteger(feeBps) && feeBps >= 0 && feeBps <= 5000;
@@ -1734,11 +2209,16 @@ function EditTenantModal({
     try {
       // Το website δεν φορτώνεται στη φόρμα: κενό = «δεν αλλάζει». Το domain
       // του site το ορίζει ο Admin της εταιρίας («Η σελίδα μου» → «Domain»).
-      const { website, platformFee: _fee, ...rest } = form;
+      const { website, platformFee: _fee, billingStatus, trialEndsOn, ...rest } = form;
       const payload = {
         ...rest,
         platformFeeBps: feeBps,
         ...(website.trim() && { website: website.trim() }),
+        // Με συνδρομή στο Stripe η κατάσταση/δοκιμή έρχονται ΜΟΝΟ από το Stripe.
+        ...(!stripeManaged && {
+          billingStatus,
+          ...(trialEndsOn !== (tenant.trialEndsAt ? tenant.trialEndsAt.slice(0, 10) : "") && { trialEndsOn: trialEndsOn || null }),
+        }),
       };
       const res = await fetch(`/api/tenants/${tenant.id}`, {
         method: "PATCH",
@@ -1770,7 +2250,7 @@ function EditTenantModal({
               <select value={form.plan} onChange={e => setForm(f => ({...f, plan: e.target.value as SubscriptionPlan}))}>
                 <option value="STARTER">Starter</option>
                 <option value="PRO">Pro</option>
-                <option value="ENTERPRISE">Enterprise</option>
+                <option value="ENTERPRISE">Business</option>
               </select>
             </label>
             <label>Πακέτο (λειτουργίες)
@@ -1791,6 +2271,23 @@ function EditTenantModal({
               </div>
             </label>
             <label>Website (embed)<input value={form.website} onChange={e => setForm(f => ({...f, website: e.target.value}))} placeholder="https://mycompany.gr" /></label>
+            <label>Συνδρομή
+              <select value={form.billingStatus} disabled={stripeManaged} onChange={e => setForm(f => ({...f, billingStatus: e.target.value}))}>
+                {stripeManaged && <option value={form.billingStatus}>{BILLING_LABELS[form.billingStatus] ?? form.billingStatus} (Stripe)</option>}
+                <option value="exempt">Εκτός χρέωσης</option>
+                <option value="founder_trial">Δοκιμή ιδρυτή (χωρίς κάρτα)</option>
+                <option value="awaiting_checkout">Αναμονή κάρτας (Checkout)</option>
+              </select>
+              <small>
+                {stripeManaged
+                  ? "Η συνδρομή είναι στο Stripe: αλλαγές από το Stripe (ή από την εταιρία στη «Διαχείριση συνδρομής»)."
+                  : "Πλάνο συνδρομής = «Πακέτο»: Starter / Pro / Business (όρια από τη βάση)."}
+              </small>
+            </label>
+            <label>Λήξη δοκιμής
+              <input type="date" value={form.trialEndsOn} disabled={stripeManaged} onChange={e => setForm(f => ({...f, trialEndsOn: e.target.value}))} />
+              <small>Κενό = χωρίς ημερομηνία (δοκιμή ιδρυτή: ξεκινά με το πρώτο όχημα).</small>
+            </label>
             <label>
               Προμήθεια πλατφόρμας στις online πληρωμές (%)
               <input inputMode="decimal" value={form.platformFee} onChange={e => setForm(f => ({...f, platformFee: e.target.value}))} placeholder="0" aria-invalid={!feeValid} />
@@ -1799,6 +2296,9 @@ function EditTenantModal({
           </div>
         </div>
         <div className="sa-modal-footer">
+          <button className="sa-btn-danger sa-footer-left" onClick={onDelete} data-testid="edit-tenant-delete">
+            <Trash2 size={13} /> Διαγραφή εταιρίας
+          </button>
           <button className="sa-btn-ghost" onClick={onClose}>Ακύρωση</button>
           <button className="sa-btn-primary" onClick={handleSubmit} disabled={loading || !feeValid}>
             {loading ? "Αποθήκευση..." : "Αποθήκευση"}
@@ -2707,15 +3207,71 @@ const superAdminStyles = `
     .sa-form-grid { grid-template-columns: 1fr; }
   }
   .sa-mobile-bar { display: none; }
-  @media (max-width: 600px) {
+  @media (max-width: 768px) {
     .sa-sidebar { display: none; }
     .sa-mobile-bar {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
-      /* Αποσύνδεση πάντα ορατή στο κινητό, και με κύλισμα. */
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px;
+      padding: 10px 16px 0; border-bottom: 1px solid var(--border); background: var(--surface);
+      /* Αποσύνδεση και ενότητες πάντα ορατές στο κινητό, και με κύλισμα. */
       position: sticky; top: 0; z-index: 20;
     }
     .sa-mobile-brand { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--text); }
+    .sa-mobile-tabs {
+      flex: 1 0 100%; display: flex; gap: 4px; overflow-x: auto; overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none; margin: 0 -16px; padding: 0 16px 8px;
+    }
+    .sa-mobile-tabs::-webkit-scrollbar { display: none; }
+    .sa-mobile-tab {
+      flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+      padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+      color: var(--text-3); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer;
+    }
+    .sa-mobile-tab.active { background: var(--primary-bg); border-color: var(--primary); color: var(--primary-soft); font-weight: 700; }
+  }
+  @media (max-width: 600px) {
     .sa-stats-bar { grid-template-columns: repeat(2, 1fr); }
   }
+
+  .sa-founding-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: var(--text-3); margin: 0 0 14px; }
+  .sa-founding-strip strong { color: var(--text); }
+  .sa-founding-code { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--primary-bg); font-size: 13px; }
+  .sa-founding-code code { font-size: 15px; font-weight: 700; letter-spacing: 1px; user-select: all; }
+  .sa-founding-note { font-size: 12.5px; color: var(--text-4); margin: 4px 0 10px; }
+  .sa-founding-pre { white-space: pre-wrap; font-size: 12.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin: 0; }
+  .sa-feedback-text { max-width: 320px; white-space: pre-wrap; font-size: 12.5px; }
+
+  /* Οριστική διαγραφή εταιρίας */
+  .sa-btn-danger {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+    background: var(--danger-btn); color: #fff; border: none; border-radius: 8px;
+    padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .sa-btn-danger:hover:not(:disabled) { background: var(--danger-btn-hover); }
+  .sa-btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+  .sa-footer-left { margin-right: auto; }
+  .sa-delete-warn { font-size: 13px; color: var(--text); margin: 0 0 8px; line-height: 1.5; }
+  .sa-delete-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; color: var(--text-2); display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+  .sa-delete-check { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--text); margin: 12px 0; }
+  .sa-delete-confirm { margin-top: 12px; font-size: 12px; color: var(--text-3); }
+  .sa-delete-confirm input {
+    margin-top: 6px; width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 15px; font-family: inherit;
+  }
+  @media (max-width: 768px) {
+    /* Πίνακες: οριζόντιο κύλισμα ΜΕΣΑ στο πλαίσιο (το .sa-main κόβει ό,τι βγαίνει έξω)
+       και η στήλη ενεργειών (⋮) κολλημένη δεξιά — πάντα ορατή. */
+    .sa-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .sa-table-row td:last-child, .sa-table thead th:last-child {
+      position: sticky; right: 0; background: var(--surface); box-shadow: -6px 0 8px -6px rgba(0,0,0,.15);
+    }
+    /* Το μενού ενεργειών ως φύλλο στο κάτω μέρος της οθόνης (δεν κόβεται από το κύλισμα). */
+    .sa-dropdown, .sa-dropdown.up {
+      position: fixed; left: 12px; right: 12px; bottom: 12px; top: auto; min-width: 0; z-index: 90;
+    }
+    .sa-dropdown button { min-height: 44px; font-size: 14px; }
+    .sa-modal-footer { flex-wrap: wrap; }
+  }
+
+  .sa-testclock { margin-left: 6px; background: var(--warn-fg); color: #fff; }
+  .sa-full-charge { display: block; margin-top: 4px; font-size: 11px; white-space: normal; max-width: 220px; }
 `;

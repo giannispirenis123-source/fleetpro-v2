@@ -64,3 +64,11 @@
   border-radius: 8px; padding: 12px; font-size: 13px; font-weight: 700; margin-bottom: 18px;
 }
 .legal-body { font-size: 14px; line-height: 1.65; color: var(--text-2); }
+
+/* Πρόγραμμα πρώτων εταιριών (SQL 36) */
+.signup-founder {
+  margin: -6px 0 18px; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5;
+  background: var(--violet-bg); color: var(--violet-fg); border: 1px solid var(--border);
+}
+.signup-founder.is-closed { background: var(--surface-2); color: var(--text-3); }
+.signup-hint { font-size: 11.5px; font-weight: 400; color: var(--text-4); margin: 0; line-height: 1.4; }

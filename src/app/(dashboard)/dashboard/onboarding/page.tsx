@@ -15,6 +15,8 @@ export default async function OnboardingPage() {
   const guard = await pageGuard("settings.edit");
   if (!guard || guard.viewer.role !== "COMPANY_ADMIN" || !guard.viewer.tenantId) redirect("/dashboard");
   const tenantId = guard.viewer.tenantId;
+  // Συνδρομή σε «μόνο ανάγνωση» (π.χ. εγγραφή χωρίς κωδικό πριν από την κάρτα): πρώτα η «Συνδρομή».
+  if (guard.viewer.readOnly) redirect("/dashboard/billing");
 
   const [initial, entitlements, groups] = await Promise.all([
     loadOnboarding(tenantId),

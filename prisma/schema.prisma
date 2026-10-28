@@ -231,8 +231,9 @@ model Tenant {
   contractTermsEn String? @db.Text
 
   trialEndsAt      DateTime?
-  stripeCustomerId String?
-  stripeSubId      String?
+  // Συνδρομή στην πλατφόρμα (Stripe Billing, SQL 36) — UNIQUE.
+  stripeCustomerId String?   @unique
+  stripeSubId      String?   @unique
 
   // Online πληρωμές κρατήσεων — Stripe Connect Express (SQL 27). ΧΩΡΙΣΤΑ από
   // τα stripeCustomerId/stripeSubId πιο πάνω (συνδρομή της εταιρίας στην πλατφόρμα).
@@ -255,40 +256,65 @@ model Tenant {
   // Σήμανση από τον Super Admin για καθάρισμα (ανεπιβεβαίωτη εγγραφή > 7 ημέρες).
   cleanupFlaggedAt DateTime?
 
+  // Συνδρομή στην πλατφόρμα (SQL 36, Stripe Billing) — βλ. src/lib/billing/core.ts.
+  // 'exempt' = εκτός χρέωσης (υπάρχουσες εταιρίες, Super Admin): καμία αλλαγή.
+  // 'founder_trial' | 'awaiting_checkout' = πριν από το Stripe· τα υπόλοιπα
+  // είναι η κατάσταση της συνδρομής στο Stripe (trialing, active, past_due…).
+  billingStatus         String    @default("exempt")
+  billingInterval       String    @default("month") // month | year
+  // Δοκιμή ιδρυτή: το ρολόι ξεκινά με το ΠΡΩΤΟ όχημα (null = δεν ξεκίνησε).
+  trialStartedAt        DateTime?
+  // Πρώτη φορά απλήρωτη (past_due/unpaid)· μετά από 7 ημέρες → μόνο ανάγνωση.
+  pastDueSince          DateTime?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean   @default(false)
+  // Τέλος της έκπτωσης ιδρυτή (μετά τον 12ο πληρωμένο μήνα) και πότε στάλθηκε η ειδοποίηση.
+  founderDiscountEndsAt DateTime?
+  founderNoticeSentAt   DateTime?
+  // Test clock του Stripe (SQL 37) — ΜΟΝΟ Preview με STRIPE_BILLING_TEST_CLOCKS=1
+  // και sk_test_. billingClockAt = η ώρα του clock (event test_clock.ready).
+  stripeTestClockId     String?
+  billingClockAt        DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  users             User[]
-  vehicles          Vehicle[]
-  customers         Customer[]
-  bookings          Booking[]
-  invoices          Invoice[]
-  serviceRecords    ServiceRecord[]
-  expenses          Expense[]
-  damages           Damage[]
-  contracts         Contract[]
-  discounts         Discount[]
-  notifications     Notification[]
-  activityLogs      ActivityLog[]
-  contractTemplates ContractTemplate[]
-  extras            Extra[]
-  platformDiscounts PlatformDiscount[]
-  rentalGroups      RentalGroup[]
-  pickupLocations   PickupLocation[]
-  seasons           Season[]
-  rates             Rate[]
-  driverAgeBands    DriverAgeBand[]
-  promotions        Promotion[]
-  bookingMessages   BookingNotification[]
-  bookingPayments   BookingPayment[]
-  places            Place[]
-  reviews           Review[]
-  legalTexts        SiteLegalText[]
-  entitlementPlan   Plan?                 @relation(fields: [planKey], references: [key], onDelete: SetNull)
+  users              User[]
+  vehicles           Vehicle[]
+  customers          Customer[]
+  bookings           Booking[]
+  invoices           Invoice[]
+  serviceRecords     ServiceRecord[]
+  expenses           Expense[]
+  damages            Damage[]
+  contracts          Contract[]
+  discounts          Discount[]
+  notifications      Notification[]
+  activityLogs       ActivityLog[]
+  contractTemplates  ContractTemplate[]
+  extras             Extra[]
+  platformDiscounts  PlatformDiscount[]
+  rentalGroups       RentalGroup[]
+  pickupLocations    PickupLocation[]
+  seasons            Season[]
+  rates              Rate[]
+  driverAgeBands     DriverAgeBand[]
+  promotions         Promotion[]
+  bookingMessages    BookingNotification[]
+  bookingPayments    BookingPayment[]
+  places             Place[]
+  reviews            Review[]
+  legalTexts         SiteLegalText[]
+  founderClaim       FounderClaim?
+  founderInvoices    FounderInvoice[]
+  founderFullCharges FounderFullCharge[]
+  feedback           TenantFeedback[]
+  entitlementPlan    Plan?                 @relation(fields: [planKey], references: [key], onDelete: SetNull)
 
   @@index([planKey])
   @@index([signupSource, createdAt])
+  @@index([stripeTestClockId])
   @@map("tenants")
 }
 
@@ -331,6 +357,7 @@ model User {
   // Οι κρατήσεις που καταχώρησε ο ίδιος, όποιος ρόλος κι αν είναι.
   createdBookings         Booking[]                @relation("CreatedBookings")
   emailVerificationTokens EmailVerificationToken[]
+  feedback                TenantFeedback[]
 
   @@map("users")
 }
@@ -1208,13 +1235,17 @@ model Promotion {
 // limits:  {"maxUsers":1,"maxVehicles":null}     — null/απόν = απεριόριστο.
 
 model Plan {
-  key       String   @id
-  name      String
-  modules   Json     @default("{}")
-  limits    Json     @default("{}")
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  key               String   @id
+  name              String
+  modules           Json     @default("{}")
+  limits            Json     @default("{}")
+  active            Boolean  @default(true)
+  // Τιμή συνδρομής σε cents ΧΩΡΙΣ ΦΠΑ (SQL 36). null = δεν πωλείται (dashboard/full…).
+  priceMonthlyCents Int?
+  priceYearlyCents  Int?
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
 
   tenants Tenant[]
 
@@ -1424,4 +1455,98 @@ model SiteLegalText {
 
   @@unique([tenantId, kind, lang, version])
   @@map("site_legal_texts")
+}
+
+// ─────────────────────────────────────────
+// ΠΡΟΓΡΑΜΜΑ «ΠΡΩΤΕΣ 10 ΕΤΑΙΡΙΕΣ» (SQL 36) — βλ. src/lib/billing/founding.ts
+// ─────────────────────────────────────────
+
+// ΜΙΑ γραμμή ("founding"). maxSlots = 10 (CHECK)· claimedCount ανεβαίνει ΑΤΟΜΙΚΑ.
+model FoundingProgram {
+  id           String   @id @default("founding")
+  maxSlots     Int      @default(10)
+  claimedCount Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
+
+  @@map("founding_program")
+}
+
+// Κωδικοί ιδρυτή — ΜΟΝΟ το sha256 hash του κωδικού.
+model FounderCode {
+  id           String    @id @default(cuid())
+  codeHash     String    @unique
+  label        String?
+  maxClaims    Int       @default(1)
+  claimedCount Int       @default(0)
+  active       Boolean   @default(true)
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  claims FounderClaim[]
+
+  @@map("founder_codes")
+}
+
+model FounderClaim {
+  id         String   @id @default(cuid())
+  codeId     String
+  tenantId   String?  @unique
+  slotNumber Int      @unique
+  claimedAt  DateTime @default(now())
+
+  code   FounderCode @relation(fields: [codeId], references: [id], onDelete: Restrict)
+  tenant Tenant?     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([codeId])
+  @@map("founder_claims")
+}
+
+// Τιμολόγια του Stripe με την έκπτωση ιδρυτή: months 1 (μηνιαίο) ή 12 (ετήσιο).
+model FounderInvoice {
+  stripeInvoiceId String    @id
+  tenantId        String
+  months          Int
+  status          String    @default("open") // open | paid | void
+  periodEnd       DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("founder_invoices")
+}
+
+// «Πες μας τη γνώμη σου» — προαιρετικό, το βλέπει ο Super Admin.
+model TenantFeedback {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String?
+  helpedMost   String?
+  missing      String?
+  vehicleCount Int?
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([tenantId])
+  @@map("tenant_feedback")
+}
+
+// Τιμολόγιο ιδρυτή που πληρώθηκε ΧΩΡΙΣ έκπτωση ενώ απέμεναν μήνες (SQL 37).
+model FounderFullCharge {
+  stripeInvoiceId String   @id
+  tenantId        String
+  amountCents     Int
+  billingReason   String?
+  createdAt       DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("founder_full_charges")
 }

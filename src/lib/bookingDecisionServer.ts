@@ -15,6 +15,7 @@ import { similarModelName } from "./public/catalog";
 import { readLocalized, textFor } from "./public/text";
 import { normalizeStorefrontSettings } from "./storefront/settings";
 import { storedInsurance } from "./pricingBridge";
+import { storedTotalCents } from "./public/money";
 import { buildSiteUrl } from "./storefront/siteUrl";
 import { verifiedDomainOf } from "./storefront/publicData";
 import {
@@ -206,8 +207,9 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
     return hit ? textFor(readLocalized(hit.name), lang) || stored : stored;
   };
 
-  const q = (b.priceQuote && typeof b.priceQuote === "object" ? b.priceQuote : {}) as { totalCents?: unknown; version?: unknown };
-  const totalCents = typeof q.totalCents === "number" ? q.totalCents : Math.round(Number(b.total) * 100);
+  const q = (b.priceQuote && typeof b.priceQuote === "object" ? b.priceQuote : {}) as { version?: unknown };
+  // ΜΙΑ πηγή αλήθειας: το αποθηκευμένο σύνολο (ποτέ ξαναϋπολογισμός).
+  const totalCents = storedTotalCents(b.priceQuote, b.total);
   // Ασφάλεια από το ΑΠΟΘΗΚΕΥΜΕΝΟ priceQuote· παλιά κράτηση χωρίς ανάλυση → καμία γραμμή.
   const ins = storedInsurance(b.priceQuote);
   const insuranceName = q.version === 1 ? (ins ? textFor(ins.name, lang) || null : null) : undefined;

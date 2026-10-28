@@ -2846,3 +2846,7 @@ input.dash-invalid,
   .dash-onb-head { flex-wrap: wrap; }
   .dash-onb-preview { height: 320px; }
 }
+.dash-msg-state.is-blocked {
+  color: var(--bad-fg); background: var(--bad-bg); border: 1px solid var(--bad-border); border-radius: 6px;
+  padding: 2px 8px; font: inherit; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+}

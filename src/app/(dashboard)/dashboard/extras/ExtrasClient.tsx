@@ -1,5 +1,6 @@
 "use client";
 
+import { formatEuros } from "@/lib/public/money";
 import { useMemo, useState } from "react";
 import {
   Plus,
@@ -20,12 +21,7 @@ import {
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
-const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-  }).format(n);
+const eur = (n: number, locale: string) => formatEuros(n, locale, { decimals: "always" });
 
 type TypeFilter = "ALL" | (typeof EXTRA_TYPES)[number];
 

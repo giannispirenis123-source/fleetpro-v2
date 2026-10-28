@@ -11,6 +11,7 @@
 //    ποτέ πίνακας που δεν συμφωνεί με το παραστατικό.
 //  · Ποσά πάντα σε ελληνική μορφή (1.234,56 €), και στα αγγλικά.
 
+import { formatEuros } from "./public/money";
 import { round2, toDisplayBreakdown, type PricedExtraLine } from "./pricing";
 import { withManualRental } from "./priceOverride";
 
@@ -27,10 +28,7 @@ export const parseDocLang = (v: unknown): DocLang | null =>
 
 /** 1234.5 → «1.234,50 €» (ελληνικό πρότυπο, ανεξάρτητα από τη γλώσσα). */
 export function eurEl(n: number): string {
-  const v = round2(n);
-  const [int, dec] = Math.abs(v).toFixed(2).split(".");
-  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `${v < 0 ? "−" : ""}${grouped},${dec} €`;
+  return formatEuros(round2(n), "el", { decimals: "always", plainSpace: true });
 }
 
 /** "YYYY-MM-DD…" → «dd/mm/yyyy». */
@@ -251,7 +249,8 @@ export function invoiceLines(
  * κωδικός έκπτωσης, ημέρες, τιμή) γράφονται μία φορά, στην ελληνική γραμμή·
  * η αγγλική είναι η ετικέτα, για να διαβάζεται από το εξωτερικό.
  */
-export function lineLabel(line: InvoiceLine): BiLabel {
+/** `fmt` = ο μορφοποιητής ποσού (το PDF δίνει το λογιστήριό του, για τον έλεγχο ποσών). */
+export function lineLabel(line: InvoiceLine, fmt: (euros: number) => string = eurEl): BiLabel {
   const bi = (k: InvoiceLabelKey, valueEl = "", valueEn = ""): BiLabel => ({
     el: `${L[k].el}${valueEl}`,
     en: `${L[k].en}${valueEn}`,
@@ -260,7 +259,7 @@ export function lineLabel(line: InvoiceLine): BiLabel {
     case "rental": {
       const days = line.days ?? 0;
       const unit = days === 1 ? L.day : L.days;
-      const rate = line.dailyRate !== undefined && days > 0 ? ` × ${eurEl(line.dailyRate)}` : "";
+      const rate = line.dailyRate !== undefined && days > 0 ? ` × ${fmt(line.dailyRate)}` : "";
       return days > 0
         ? bi("rental", ` · ${days} ${unit.el}${rate}`, ` · ${days} ${unit.en}`)
         : bi("rental");

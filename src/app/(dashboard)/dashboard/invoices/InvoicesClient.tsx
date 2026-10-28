@@ -1,5 +1,6 @@
 "use client";
 
+import { formatEuros } from "@/lib/public/money";
 import { useState } from "react";
 import Pager from "@/components/lists/Pager";
 import { useServerList } from "@/components/lists/useServerList";
@@ -26,13 +27,7 @@ import { isEmail } from "@/lib/contractEmail";
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
-const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n);
+const eur = (n: number, locale: string) => formatEuros(n, locale, { decimals: "always" });
 
 const shortDate = (iso: string, locale: string) =>
   new Intl.DateTimeFormat(INTL_LOCALE[locale] ?? "el-GR", {

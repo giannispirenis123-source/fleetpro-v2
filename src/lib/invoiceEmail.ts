@@ -40,6 +40,8 @@ export interface InvoiceEmailContent {
   text: string;
   html: string;
   filename: string;
+  /** Η φράση συνόλου ΑΚΡΙΒΩΣ όπως μπαίνει στο κείμενο (για verifyOutgoingAmounts). */
+  totalPhrase: string;
 }
 
 const escapeHtml = (s: string) =>
@@ -56,9 +58,11 @@ export function invoiceEmailContent(i: InvoiceEmailInput): InvoiceEmailContent {
   const subject = el ? `Τιμολόγιο ${i.code} — ${company}` : `Invoice ${i.code} — ${company}`;
 
   const greeting = el ? (name ? `Αγαπητέ/ή ${name},` : "Γεια σας,") : name ? `Dear ${name},` : "Hello,";
+  // Το ποσό μπαίνει ΜΙΑ φορά, μέσα στη φράση συνόλου (ίδιο string και στον έλεγχο).
+  const totalPhrase = el ? `συνολικού ποσού ${amount}` : `for a total of ${amount}`;
   const body = el
-    ? `Σας στέλνουμε συνημμένο το τιμολόγιο ${i.code} (PDF), συνολικού ποσού ${amount}.`
-    : `Please find attached invoice ${i.code} (PDF), for a total of ${amount}.`;
+    ? `Σας στέλνουμε συνημμένο το τιμολόγιο ${i.code} (PDF), ${totalPhrase}.`
+    : `Please find attached invoice ${i.code} (PDF), ${totalPhrase}.`;
   const state = paid
     ? el
       ? "Το τιμολόγιο είναι εξοφλημένο — σας ευχαριστούμε για την πληρωμή."
@@ -85,7 +89,7 @@ export function invoiceEmailContent(i: InvoiceEmailInput): InvoiceEmailContent {
     "</div>",
   ].join("");
 
-  return { subject, text, html, filename: invoicePdfFilename(i.code) };
+  return { subject, text, html, filename: invoicePdfFilename(i.code), totalPhrase };
 }
 
 /* ─────────────────────────────────────────────

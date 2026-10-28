@@ -9,7 +9,9 @@
 // · Σύνολο: ΜΟΝΟ από το αποθηκευμένο priceQuote (κανένας νέος υπολογισμός).
 // · Ποτέ τηλέφωνο/πτήση/σχόλια του πελάτη μέσα στο κείμενο.
 
-import { fill, formatDay, formatEuro, isStorefrontLanguage, storefrontDictionary } from "./storefront/i18n";
+import { fill, formatDay, isStorefrontLanguage, storefrontDictionary } from "./storefront/i18n";
+import { formatMoney } from "./public/money";
+import { htmlToCheckText, verifyOutgoingAmounts, type AmountCheck, type AmountSpec } from "./public/outgoingAmounts";
 
 export const MESSAGE_KINDS = ["confirm", "cancel"] as const;
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
@@ -76,6 +78,18 @@ export interface BookingMessage {
   subject: string;
   text: string;
   html: string;
+  /**
+   * Τα ποσά που ΕΠΙΤΡΕΠΕΤΑΙ να περιέχει το μήνυμα — ΟΛΑ από το αποθηκευμένο
+   * priceQuote/πληρωμές (κανένας νέος υπολογισμός). Για verifyOutgoingAmounts.
+   */
+  amounts: AmountSpec;
+}
+
+/** Έλεγχος ποσών ΠΡΙΝ από ΚΑΘΕ αποστολή (email, WhatsApp, mailto): text + html + θέμα. */
+export function checkBookingMessage(m: BookingMessage): AmountCheck {
+  const body = verifyOutgoingAmounts([m.text, htmlToCheckText(m.html)], m.amounts);
+  // Το θέμα δεν έχει γραμμή συνόλου — μόνο οι έλεγχοι (α), (γ), (δ).
+  return body.ok ? verifyOutgoingAmounts(m.subject, { ...m.amounts, totalLine: null }) : body;
 }
 
 const escapeHtml = (s: string) =>
@@ -109,11 +123,13 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
   const company = m.company.name;
   const vehicle = m.groupSimilar ? `${m.groupName} (${fill(d.orSimilar, { name: m.groupSimilar })})` : m.groupName;
   const place = (p: string | null) => (p ? ` · ${p}` : "");
-  const euro = (cents: number) => formatEuro(Math.round(cents) / 100, lang);
+  const euro = (cents: number) => formatMoney(cents, lang);
   const paid = m.payment && m.payment.paidCents > 0 ? m.payment.paidCents : 0;
+  const balance = Math.max(0, Math.round(m.totalCents) - paid);
+  // Η γραμμή συνόλου: ΜΙΑ φορά, από το αποθηκευμένο σύνολο (ίδιο string και στον έλεγχο).
+  const totalLine = fill(d.msgTotal, { amount: euro(m.totalCents) });
   const payLines = (): string[] => {
     if (paid === 0) return [m.paymentMethod === "ONLINE" ? d.msgOnlinePending : d.msgPayAtPickup];
-    const balance = Math.max(0, Math.round(m.totalCents) - paid);
     return [fill(d.msgPaidOnline, { amount: euro(paid) }), ...(balance > 0 ? [fill(d.msgBalanceOnPickup, { amount: euro(balance) })] : [])];
   };
 
@@ -137,7 +153,7 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
         fill(d.msgPickup, { when: when(m.from, lang) + place(m.pickupLocation) }),
         fill(d.msgDropoff, { when: when(m.to, lang) + place(m.returnLocation ?? m.pickupLocation) }),
         ...(m.insuranceName === undefined ? [] : [fill(d.msgInsurance, { name: m.insuranceName || d.noInsuranceChosen })]),
-        fill(d.msgTotal, { amount: formatEuro(Math.round(m.totalCents) / 100, lang) }),
+        totalLine,
         ...payLines(),
       ].join("\n")
     );
@@ -170,7 +186,12 @@ export function buildBookingMessage(m: MessageData): BookingMessage {
     ...blocks.map((b) => `<p style="margin:0 0 12px">${b.split("\n").map(linkify).join("<br>")}</p>`),
     "</div>",
   ].join("");
-  return { lang, subject, text, html };
+  const amounts: AmountSpec = {
+    totalCents: Math.round(m.totalCents),
+    otherCents: [paid, balance, m.payment?.refundedCents ?? 0, m.payment?.retainedCents ?? 0],
+    totalLine: m.kind === "confirm" ? totalLine : null,
+  };
+  return { lang, subject, text, html, amounts };
 }
 
 /* ─────────────────────────────────────────────
@@ -204,7 +225,7 @@ export function mailtoLink(email: string | null | undefined, subject: string, te
    Κατάσταση αποστολής για το dashboard
    ───────────────────────────────────────────── */
 
-export type MessageState = "sent" | "failed" | "none";
+export type MessageState = "sent" | "blocked" | "failed" | "none";
 
 /**
  * «Στάλθηκε / Δεν στάλθηκε / Δεν έχει σταλεί» για ένα είδος μηνύματος.
@@ -213,6 +234,8 @@ export type MessageState = "sent" | "failed" | "none";
 export function messageState(rows: { kind: string; result: string }[], kind: MessageKind): MessageState {
   const mine = rows.filter((r) => r.kind === kind);
   if (mine.some((r) => r.result === "sent" || r.result === "opened")) return "sent";
+  // Ο έλεγχος ποσών σταμάτησε την αποστολή (SQL 38) — θέλει προσοχή από τον Διαχειριστή.
+  if (mine.some((r) => r.result === "blocked")) return "blocked";
   if (mine.some((r) => r.result === "failed")) return "failed";
   return "none";
 }

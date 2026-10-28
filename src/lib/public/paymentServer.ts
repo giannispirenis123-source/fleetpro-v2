@@ -3,6 +3,7 @@
 // Η εταιρία ΠΑΝΤΑ από τη συνεδρία ή το slug του site· κάθε ερώτημα φιλτράρει
 // με αυτήν. Ποσά ΜΟΝΟ από το αποθηκευμένο priceQuote της κράτησης.
 
+import { formatMoney, storedTotalCents } from "./money";
 import { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "../db";
@@ -109,8 +110,7 @@ export async function createBookingCheckout(opts: {
   if (!b || !b.tenant.stripeAccountId || !b.tenant.storefrontSlug || !b.paymentExpiresAt) return fail(b?.id, opts.companyId, "not_ready");
   if (effectivePaymentOptions(b.tenant, stripeReady()) === "PICKUP_ONLY") return fail(b.id, opts.companyId, "not_ready");
 
-  const q = (b.priceQuote && typeof b.priceQuote === "object" ? b.priceQuote : {}) as { totalCents?: unknown };
-  const totalCents = typeof q.totalCents === "number" ? q.totalCents : Math.round(Number(b.total) * 100);
+  const totalCents = storedTotalCents(b.priceQuote, b.total);
   const amount = onlineAmountCents(totalCents, b.tenant.onlineAmountType, b.tenant.depositPercent);
   if (amount < 50) return fail(b.id, opts.companyId, "amount");
   const fee = applicationFeeCents(amount, b.tenant.platformFeeBps);
@@ -276,7 +276,7 @@ export function prismaWebhookStore(): WebhookStore<Tx> {
             tenantId: b.tenantId,
             type: "BOOKING_NEW",
             title: "Πληρώθηκε με κάρτα το συμβόλαιο",
-            message: `${c?.contractNumber ?? ""} · ${(p.amountCents / 100).toFixed(2).replace(".", ",")} €`,
+            message: `${c?.contractNumber ?? ""} · ${formatMoney(p.amountCents, "el", { decimals: "always" })}`,
             link: c ? `/dashboard/contracts/${c.id}` : `/dashboard/bookings?booking=${b.id}`,
           },
         });
@@ -287,7 +287,7 @@ export function prismaWebhookStore(): WebhookStore<Tx> {
             tenantId: b.tenantId,
             type: "BOOKING_NEW",
             title: t.needsRefund ? "Πληρωμή σε ακυρωμένη κράτηση — θέλει επιστροφή ή απόφαση" : "Πληρώθηκε online κράτηση",
-            message: `${row?.publicCode ?? row?.bookingNumber ?? ""} · ${(p.amountCents / 100).toFixed(2).replace(".", ",")} €`,
+            message: `${row?.publicCode ?? row?.bookingNumber ?? ""} · ${formatMoney(p.amountCents, "el", { decimals: "always" })}`,
             link: `/dashboard/bookings?booking=${b.id}`,
           },
         });

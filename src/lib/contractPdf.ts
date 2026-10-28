@@ -11,6 +11,7 @@
 // καν εδώ (το DTO δεν τον έχει)· επιπλέον ΚΑΘΕ κείμενο περνά από το
 // stripCardNumbers (σειρές 13+ ψηφίων → «[•••]»).
 
+import { AmountIntegrityError, amountLedger, trackDrawnText, verifyDrawnAmounts } from "./public/outgoingAmounts";
 import { PDFDocument, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import {
@@ -47,15 +48,6 @@ export interface ContractPdfInput {
    Μορφοποίηση (ίδια με το Α4)
    ───────────────────────────────────────────── */
 
-const eur = (n: number) =>
-  new Intl.NumberFormat("el-GR", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-    .format(n)
-    .replace(/[  ]/g, " ");
 
 const d = (iso: string | null | undefined) => {
   if (!iso) return "—";
@@ -291,6 +283,14 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
   const s = contract.snapshot;
 
   const doc = await PDFDocument.create();
+  // Έλεγχος ποσών (PR price-integrity): ΚΑΘΕ ποσό περνά από το λογιστήριο και
+  // ό,τι ζωγραφίζεται στη «ζώνη ποσών» καταγράφεται — βλ. verifyDrawnAmounts.
+  const ledger = amountLedger("el");
+  const eur = ledger.fmt;
+  const drawnMoney: string[] = [];
+  let moneyZone = false;
+  const addPage = doc.addPage.bind(doc);
+  doc.addPage = ((...args: Parameters<typeof addPage>) => trackDrawnText(addPage(...args), drawnMoney, () => moneyZone)) as typeof doc.addPage;
   doc.registerFontkit(fontkit);
   const [font, bold] = await Promise.all([
     doc.embedFont(Buffer.from(DEJAVU_SANS_B64, "base64"), { subset: true }),
@@ -400,6 +400,7 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
 
   /* ── Χρεώσεις (ίδιος υπολογισμός με το Α4) ── */
   w.heading(BI.charges);
+  moneyZone = true;
   const manualRental = s?.priceOverride?.manualRental;
   const money = s
     ? manualRental !== undefined
@@ -437,6 +438,15 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
     }
   } else {
     w.para("—");
+  }
+  moneyZone = false;
+  // Το σύνολο του εγγράφου = το αποθηκευμένο (snapshot) — ίδια τιμή στο λογιστήριο.
+  if (money) {
+    const check = verifyDrawnAmounts(drawnMoney, ledger.expected, {
+      storedCents: Math.round(money.total * 100),
+      renderedCents: Math.round(money.total * 100),
+    });
+    if (!check.ok) throw new AmountIntegrityError(check.code);
   }
 
   /* ── Πληρωμή / εγγύηση: κάρτα ΜΟΝΟ «•••• 1234» ── */

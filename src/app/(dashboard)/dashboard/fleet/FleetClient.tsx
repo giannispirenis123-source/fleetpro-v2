@@ -1,5 +1,6 @@
 "use client";
 
+import { formatEuros } from "@/lib/public/money";
 import { useMemo, useState } from "react";
 import {
   Car,
@@ -32,12 +33,7 @@ import {
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
-const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
+const eur = (n: number, locale: string) => formatEuros(Math.round(n), locale);
 
 const num = (n: number, locale: string) =>
   new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR").format(n);

@@ -43,19 +43,52 @@ export function centsToInput(cents: number | null | undefined): string {
   return Number.isInteger(euros) ? String(euros) : euros.toFixed(2).replace(".", ",");
 }
 
-/** Cents → «35,50 €» / «€35.50» ανάλογα με τη γλώσσα. */
-export function formatCents(cents: number, lang = "el"): string {
-  const euros = cents / 100;
-  try {
-    return new Intl.NumberFormat(lang === "el" ? "el-GR" : lang, {
-      style: "currency",
-      currency: "EUR",
-      minimumFractionDigits: Number.isInteger(euros) ? 0 : 2,
-      maximumFractionDigits: 2,
-    }).format(euros);
-  } catch {
-    return `${euros.toFixed(2)} €`;
+/* ─────────────────────────────────────────────
+   ΕΝΑ σημείο μορφοποίησης ποσών (cents → κείμενο)
+   ─────────────────────────────────────────────
+   Κάθε ποσό που βλέπει πελάτης ή έγγραφο (email, WhatsApp, PDF, σελίδες
+   /booking, /c/, site, Stripe) και το dashboard περνά ΜΟΝΟ από εδώ. Χωρίς Intl:
+   ίδιο αποτέλεσμα σε server και browser, ανεξάρτητα από την έκδοση ICU.
+   · el: «180 €», «1.180,50 €» (τελεία χιλιάδων, κόμμα δεκαδικών, € μετά)
+   · en (και κάθε άλλη γλώσσα): «€180», «€1,180.50»
+   · Αρνητικό: «−15,50 €» (U+2212). Μη αριθμός → «—» (ποτέ ψεύτικο ποσό). */
+
+export interface MoneyFormat {
+  /** "auto" (προεπιλογή): «180 €» / «180,50 €» · "always": πάντα 2 δεκαδικά («180,00 €» — έγγραφα). */
+  decimals?: "auto" | "always";
+  /** Απλό κενό αντί για μη αλλάξιμο (τα PDF fonts δεν έχουν U+00A0). */
+  plainSpace?: boolean;
+}
+
+/** Ανώτατο λογικό σύνολο μιας κράτησης/εγγράφου (cents) — βλ. verifyOutgoingAmounts / quote. */
+export const MAX_TOTAL_CENTS = 5_000_000; // 50.000 €
+
+const group = (digits: string, sep: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+
+export function formatMoney(cents: number, lang = "el", opts: MoneyFormat = {}): string {
+  if (typeof cents !== "number" || !Number.isFinite(cents)) return "—";
+  const c = Math.round(cents);
+  const abs = Math.abs(c);
+  const intPart = String(Math.floor(abs / 100));
+  const frac = String(abs % 100).padStart(2, "0");
+  const showDec = opts.decimals === "always" || frac !== "00";
+  const space = opts.plainSpace ? " " : "\u00a0";
+  const minus = c < 0 ? "\u2212" : "";
+  if (lang === "el" || lang.startsWith("el-")) {
+    return `${minus}${group(intPart, ".")}${showDec ? `,${frac}` : ""}${space}€`;
   }
+  return `${minus}€${group(intPart, ",")}${showDec ? `.${frac}` : ""}`;
+}
+
+/** Όπως formatMoney, με είσοδο € (Decimal/number) — μετατρέπεται σε cents ΕΔΩ. */
+export const formatEuros = (euros: unknown, lang = "el", opts: MoneyFormat = {}): string =>
+  euros === null || euros === undefined || !Number.isFinite(Number(String(euros)))
+    ? formatMoney(NaN, lang, opts)
+    : formatMoney(toCents(euros), lang, opts);
+
+/** Cents → «35,50 €» / «€35.50» (παλιό όνομα — ίδιο με formatMoney). */
+export function formatCents(cents: number, lang = "el"): string {
+  return formatMoney(cents, lang);
 }
 
 /**
@@ -78,4 +111,13 @@ export function perDayOf(totalCents: number, days: number): { cents: number; app
   const d = Math.max(1, Math.floor(days));
   const cents = roundToEuro(totalCents / d);
   return { cents, approx: cents * d !== totalCents };
+}
+
+/**
+ * Το ΑΠΟΘΗΚΕΥΜΕΝΟ σύνολο μιας κράτησης σε cents: priceQuote.totalCents, αλλιώς
+ * (παλιά κράτηση) το bookings.total. ΠΟΤΕ νέος υπολογισμός την ώρα της αποστολής.
+ */
+export function storedTotalCents(priceQuote: unknown, total: unknown): number {
+  const q = priceQuote && typeof priceQuote === "object" ? (priceQuote as { totalCents?: unknown }) : {};
+  return typeof q.totalCents === "number" && Number.isFinite(q.totalCents) ? Math.round(q.totalCents) : toCents(total);
 }

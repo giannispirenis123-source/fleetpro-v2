@@ -16,6 +16,8 @@ import {
   invoiceEmailContent,
   type ProviderErrorCode,
 } from "./invoiceEmail";
+import { AMOUNT_BLOCKED_MESSAGE, AmountIntegrityError, htmlToCheckText, verifyOutgoingAmounts } from "./public/outgoingAmounts";
+import { toCents } from "./public/money";
 
 export interface OutgoingInvoiceEmail {
   from: string;
@@ -105,6 +107,12 @@ export async function sendInvoiceEmail(
   try {
     pdf = await deps.buildPdf(doc);
   } catch (e) {
+    // Έλεγχος ποσών του PDF: ασυμφωνία → ΔΕΝ στέλνεται.
+    if (e instanceof AmountIntegrityError) {
+      log(`μπλοκαρίστηκε από τον έλεγχο ποσών (${e.code})`);
+      await deps.finishAttempt(entryId, { ok: false, error: `amount:${e.code}`, at: deps.now() });
+      return { status: 409, message: AMOUNT_BLOCKED_MESSAGE };
+    }
     log(`αποτυχία PDF (${e instanceof Error ? e.name : "?"})`);
     await deps.finishAttempt(entryId, { ok: false, error: "pdf", at: deps.now() });
     return { status: 500, message: INVOICE_EMAIL_MSG.pdfFailed };
@@ -121,6 +129,17 @@ export async function sendInvoiceEmail(
     dueDate: doc.dueDate,
     status: doc.status,
   });
+
+  // Έλεγχος ποσών του email: μόνο το ΑΠΟΘΗΚΕΥΜΕΝΟ σύνολο, ΜΙΑ φορά στη φράση συνόλου.
+  const spec = { totalCents: toCents(doc.total), totalLine: content.totalPhrase };
+  const check = verifyOutgoingAmounts([content.text, htmlToCheckText(content.html)], spec);
+  const subjectCheck = verifyOutgoingAmounts(content.subject, { ...spec, totalLine: null });
+  const failed = !check.ok ? check : !subjectCheck.ok ? subjectCheck : null;
+  if (failed && !failed.ok) {
+    log(`μπλοκαρίστηκε από τον έλεγχο ποσών (${failed.code})`);
+    await deps.finishAttempt(entryId, { ok: false, error: `amount:${failed.code}`, at: deps.now() });
+    return { status: 409, message: AMOUNT_BLOCKED_MESSAGE };
+  }
 
   const replyTo = doc.company.email?.trim();
   const { error } = await deps.send(apiKey, {

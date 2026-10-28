@@ -236,17 +236,17 @@ model Tenant {
 
   // Online πληρωμές κρατήσεων — Stripe Connect Express (SQL 27). ΧΩΡΙΣΤΑ από
   // τα stripeCustomerId/stripeSubId πιο πάνω (συνδρομή της εταιρίας στην πλατφόρμα).
-  stripeAccountId        String?  @unique
-  stripeChargesEnabled   Boolean  @default(false)
-  stripePayoutsEnabled   Boolean  @default(false)
-  stripeDetailsSubmitted Boolean  @default(false)
+  stripeAccountId        String? @unique
+  stripeChargesEnabled   Boolean @default(false)
+  stripePayoutsEnabled   Boolean @default(false)
+  stripeDetailsSubmitted Boolean @default(false)
   // PICKUP_ONLY | ONLINE_OR_PICKUP | ONLINE_ONLY — online μόνο με «Ενεργό» λογαριασμό.
-  paymentOptions         String   @default("PICKUP_ONLY")
+  paymentOptions         String  @default("PICKUP_ONLY")
   // FULL | DEPOSIT (depositPercent %, στρογγυλό σε ακέραιο €)
-  onlineAmountType       String   @default("FULL")
-  depositPercent         Int      @default(30)
+  onlineAmountType       String  @default("FULL")
+  depositPercent         Int     @default(30)
   // Προμήθεια πλατφόρμας σε basis points — ΜΟΝΟ ο Super Admin τη βλέπει/αλλάζει.
-  platformFeeBps         Int      @default(0)
+  platformFeeBps         Int     @default(0)
 
   // Αυτόματη εγγραφή (SQL 34): 'manual' (Super Admin) | 'self_signup' (/signup).
   signupSource     String    @default("manual")
@@ -255,8 +255,8 @@ model Tenant {
   // Σήμανση από τον Super Admin για καθάρισμα (ανεπιβεβαίωτη εγγραφή > 7 ημέρες).
   cleanupFlaggedAt DateTime?
 
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   users             User[]
@@ -293,23 +293,23 @@ model Tenant {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  tenantId     String? // null = Super Admin
-  email        String    @unique
-  passwordHash String
-  name         String
-  phone        String?
-  role         UserRole  @default(STAFF)
-  locale       String    @default("el") // "el" | "en" — προτίμηση γλώσσας ανά χρήστη
-  avatarUrl    String?
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
+  id              String    @id @default(cuid())
+  tenantId        String? // null = Super Admin
+  email           String    @unique
+  passwordHash    String
+  name            String
+  phone           String?
+  role            UserRole  @default(STAFF)
+  locale          String    @default("el") // "el" | "en" — προτίμηση γλώσσας ανά χρήστη
+  avatarUrl       String?
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime?
   // Επαλήθευση email (SQL 34). Προεπιλογή now(): όσοι φτιάχνονται από Super
   // Admin / «Χρήστες» είναι επαληθευμένοι. ΜΟΝΟ η εγγραφή (/signup) γράφει null
   // — και τότε ούτε login ούτε dashboard μέχρι τον σύνδεσμο του email.
   emailVerifiedAt DateTime? @default(now())
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   // Granular permissions (JSON για flexibility)
   permissions Json @default("{}")
@@ -323,13 +323,13 @@ model User {
   commissionOnInsurance Boolean @default(false)
 
   // Relations
-  tenant          Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  activityLogs    ActivityLog[]
-  sessions        Session[]
+  tenant                  Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  activityLogs            ActivityLog[]
+  sessions                Session[]
   // Οι κρατήσεις που έφερε ως συνεργάτης.
-  partnerBookings Booking[]     @relation("PartnerBookings")
+  partnerBookings         Booking[]                @relation("PartnerBookings")
   // Οι κρατήσεις που καταχώρησε ο ίδιος, όποιος ρόλος κι αν είναι.
-  createdBookings Booking[]     @relation("CreatedBookings")
+  createdBookings         Booking[]                @relation("CreatedBookings")
   emailVerificationTokens EmailVerificationToken[]
 
   @@map("users")
@@ -580,11 +580,11 @@ model Booking {
   messages    BookingNotification[]
   payments    BookingPayment[]
 
+  // SQL 30 (audit): μοναδικός αριθμός ανά εταιρία + indexes για συγκρούσεις/λίστες.
+  @@unique([tenantId, bookingNumber])
   @@index([tenantId, partnerId])
   @@index([tenantId, paymentStatus])
   @@index([tenantId, createdById])
-  // SQL 30 (audit): μοναδικός αριθμός ανά εταιρία + indexes για συγκρούσεις/λίστες.
-  @@unique([tenantId, bookingNumber])
   @@index([tenantId, vehicleId, status])
   @@index([tenantId, status, pickupDate])
   @@index([tenantId, createdAt(sort: Desc)])
@@ -630,8 +630,8 @@ model Contract {
   status ContractStatus @default(DRAFT)
 
   // Ποιος υπάλληλος το έφτιαξε — το όνομα κρατιέται ως snapshot.
-  createdById   String?
-  createdByName String?
+  createdById      String?
+  createdByName    String?
   // Ο συντάκτης διαγράφηκε οριστικά (SQL 35): όνομα/id σβήνονται → «Διαγραμμένος χρήστης».
   createdByDeleted Boolean @default(false)
 
@@ -1261,19 +1261,22 @@ model RateLimit {
 /// Μηνύματα προς τον πελάτη για επιβεβαίωση/ακύρωση κράτησης (SQL 24).
 /// Χωρίς προσωπικά στοιχεία: μόνο τύπος, κανάλι, αποτέλεσμα και κωδικός σφάλματος.
 model BookingNotification {
-  id        String   @id @default(cuid())
-  tenantId  String
-  bookingId String
+  id          String   @id @default(cuid())
+  tenantId    String
+  bookingId   String
   /// 'confirm' | 'cancel'
-  kind      String
+  kind        String
   /// 'email' | 'whatsapp' | 'mailto'
-  channel   String
+  channel     String
   /// 'sent' | 'failed' | 'opened' (χειροκίνητη αποστολή: άνοιξε το WhatsApp/email)
-  result    String
-  error     String?
-  lang      String?
-  userId    String?
-  createdAt DateTime @default(now())
+  /// | 'blocked' (SQL 38: ο έλεγχος ποσών βρήκε ασυμφωνία — ΔΕΝ στάλθηκε)
+  result      String
+  error       String?
+  /// Το σύνολο (cents) που περιείχε το μήνυμα (SQL 38) — για το ιστορικό αποστολών.
+  amountCents Int?
+  lang        String?
+  userId      String?
+  createdAt   DateTime @default(now())
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)

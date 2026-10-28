@@ -176,7 +176,14 @@ test("ρόλοι: Admin και Staff ναι, Partner ΠΟΤΕ (ακόμη και
    Εκτέλεση με ψεύτικη βάση / Resend
    ───────────────────────────────────────────── */
 
-const MESSAGE = { lang: "en", subject: "S", text: "T", html: "<p>T</p>" };
+// Μήνυμα με ποσό (SQL 38: ο έλεγχος ποσών τρέχει πριν από κάθε αποστολή).
+const MESSAGE = {
+  lang: "en",
+  subject: "S",
+  text: "T\nTotal: €180",
+  html: "<p>T<br>Total: €180</p>",
+  amounts: { totalCents: 18000, otherCents: [], totalLine: "Total: €180" },
+};
 
 function fakes({ booking = pending(), blocking = [], sendError = null, sendThrows = false, rows = [], email = "c@example.com", apiKey = "k", from = "Co <a@b.c>" } = {}) {
   const calls = { apply: [], send: [], record: [] };
@@ -218,7 +225,8 @@ test("επιτυχία: CONFIRMED + email στάλθηκε + καταγραφή"
   assert.equal(r.data.email, "sent");
   assert.equal(f.calls.apply.length, 1);
   assert.equal(f.calls.send.length, 1);
-  assert.deepEqual(f.calls.record, [{ kind: "confirm", channel: "email", result: "sent", error: null, lang: "en" }]);
+  // amountCents: το σύνολο που περιείχε το μήνυμα (SQL 38).
+  assert.deepEqual(f.calls.record, [{ kind: "confirm", channel: "email", result: "sent", error: null, lang: "en", amountCents: 18000 }]);
 });
 
 test("αποτυχία email ΔΕΝ σπάει την αλλαγή κατάστασης", async () => {

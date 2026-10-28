@@ -1,3 +1,4 @@
+import { formatEuros } from "@/lib/public/money";
 import { getSession } from "@/lib/auth";
 import { pageGuard, bookingScope, viewerCan } from "@/lib/authz";
 import { db } from "@/lib/db";
@@ -35,12 +36,7 @@ async function NoAccess() {
 
 const INTL_LOCALE: Record<string, string> = { el: "el-GR", en: "en-GB" };
 
-const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL_LOCALE[locale] ?? "el-GR", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(n);
+const eur = (n: number, locale: string) => formatEuros(Math.round(n), locale);
 
 const shortDate = (d: Date, locale: string) =>
   new Intl.DateTimeFormat(INTL_LOCALE[locale] ?? "el-GR", {

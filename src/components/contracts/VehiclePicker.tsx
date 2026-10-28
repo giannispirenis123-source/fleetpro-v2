@@ -9,14 +9,14 @@
 //   διαθέσιμο», δεν επιλέγονται. Η αναζήτηση ισχύει και εκεί.
 // · Με την επιλογή μαζεύεται σε μία γραμμή με «Αλλαγή». Esc / πάτημα έξω κλείνει.
 
+import { formatEuros } from "@/lib/public/money";
 import { useEffect, useId, useRef, useState } from "react";
 import { Car, List, Search } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import { searchVehicles } from "@/lib/vehicleSearch";
 
 const INTL: Record<string, string> = { el: "el-GR", en: "en-GB" };
-const eur = (n: number, locale: string) =>
-  new Intl.NumberFormat(INTL[locale] ?? "el-GR", { style: "currency", currency: "EUR" }).format(n);
+const eur = (n: number, locale: string) => formatEuros(n, locale, { decimals: "always" });
 
 export interface PickerVehicle {
   id: string;

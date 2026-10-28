@@ -17,7 +17,7 @@ import { z } from "zod";
 import { STATUS_TRANSITIONS } from "./bookings";
 import { can, type PermissionKey, type PermissionMap } from "./permissions";
 import { freeVehicleIds, type BlockingBooking, type FleetVehicle } from "./public/availability";
-import { CANCEL_NOTE_MAX, CANCEL_REASONS, cleanNote, emailAlreadySent, type BookingMessage, type MessageKind } from "./bookingMessages";
+import { checkBookingMessage, CANCEL_NOTE_MAX, CANCEL_REASONS, cleanNote, emailAlreadySent, type BookingMessage, type MessageKind } from "./bookingMessages";
 
 export const decisionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -182,7 +182,9 @@ export type EmailOutcome =
   | "already_sent"
   | "no_email"
   | "not_configured"
-  | "not_requested";
+  | "not_requested"
+  /** Ο έλεγχος ποσών βρήκε ασυμφωνία — ΔΕΝ στάλθηκε (SQL 38). */
+  | "blocked";
 
 export interface NotificationRow {
   kind: string;
@@ -211,7 +213,15 @@ export interface MessageDeps {
   /** Το μήνυμα + το email του πελάτη (null αν δεν έχει). */
   buildMessage(kind: MessageKind): Promise<{ message: BookingMessage; to: string | null; replyTo: string | null } | null>;
   send(apiKey: string, email: { from: string; to: string; replyTo?: string; subject: string; text: string; html: string }): Promise<{ error: string | null }>;
-  record(row: { kind: MessageKind; channel: "email"; result: "sent" | "failed"; error: string | null; lang: string | null }): Promise<void>;
+  record(row: {
+    kind: MessageKind;
+    channel: "email";
+    result: "sent" | "failed" | "blocked";
+    error: string | null;
+    lang: string | null;
+    /** Το σύνολο που περιείχε το μήνυμα (για το ιστορικό αποστολών). */
+    amountCents?: number | null;
+  }): Promise<void>;
 }
 
 export type DecisionResult =
@@ -263,13 +273,24 @@ export async function decideBooking<Tx>(
 /** Αποστολή του email ενός είδους — ΠΟΤΕ δεύτερη φορά, ΠΟΤΕ exception προς τα έξω. */
 export async function deliverEmail(
   kind: MessageKind,
-  deps: MessageDeps
+  deps: MessageDeps,
+  opts: { force?: boolean } = {}
 ): Promise<{ email: EmailOutcome; emailError: string | null }> {
   if (emailAlreadySent(await deps.loadNotifications(), kind)) return { email: "already_sent", emailError: null };
 
   const built = await deps.buildMessage(kind);
   if (!built || !built.to) return { email: "no_email", emailError: null };
   const { message } = built;
+  const amountCents = message.amounts.totalCents;
+
+  // Έλεγχος ποσών ΠΡΙΝ φύγει οτιδήποτε. Αποτυχία → ΔΕΝ στέλνεται· στο ιστορικό
+  // μόνο ο κωδικός. Παράκαμψη ΜΟΝΟ από τον Διαχειριστή (force, μετά από επιβεβαίωση).
+  const check = checkBookingMessage(message);
+  if (!check.ok && !opts.force) {
+    await deps.record({ kind, channel: "email", result: "blocked", error: `amount:${check.code}`, lang: message.lang, amountCents });
+    log(`μπλοκαρίστηκε από τον έλεγχο ποσών (${check.code})`);
+    return { email: "blocked", emailError: `amount:${check.code}` };
+  }
 
   const apiKey = deps.apiKey?.trim();
   const from = deps.from?.trim();
@@ -292,7 +313,15 @@ export async function deliverEmail(
   } catch {
     error = "send_failed";
   }
-  await deps.record({ kind, channel: "email", result: error ? "failed" : "sent", error, lang: message.lang });
+  await deps.record({
+    kind,
+    channel: "email",
+    result: error ? "failed" : "sent",
+    // Σταλμένο παρά την ασυμφωνία (Διαχειριστής): φαίνεται στο ιστορικό.
+    error: error ?? (!check.ok ? `forced:${check.code}` : null),
+    lang: message.lang,
+    amountCents,
+  });
   if (error) {
     log(`αποτυχία (${error})`);
     return { email: "failed", emailError: error };

@@ -11,6 +11,7 @@
 import type { ContractDTO } from "./contracts";
 import type { PublicLinkDTO } from "./contractLink";
 import { publicContractUrl } from "./contractLink";
+import { AMOUNT_BLOCKED_MESSAGE, AmountIntegrityError, htmlToCheckText, verifyOutgoingAmounts } from "./public/outgoingAmounts";
 import {
   EMAIL_MSG,
   EMAIL_SEND_LIMIT,
@@ -114,6 +115,12 @@ export async function sendContractEmail(
   try {
     pdf = await deps.buildPdf(contract, url, vatRate);
   } catch (e) {
+    // Έλεγχος ποσών του PDF: ασυμφωνία → ΔΕΝ στέλνεται (μόνο ο κωδικός στα logs).
+    if (e instanceof AmountIntegrityError) {
+      log(`μπλοκαρίστηκε από τον έλεγχο ποσών (${e.code})`);
+      await deps.finishAttempt(entryId, { ok: false, error: `amount:${e.code}`, at: deps.now() });
+      return { status: 409, message: AMOUNT_BLOCKED_MESSAGE };
+    }
     log(`αποτυχία PDF (${e instanceof Error ? e.name : "?"})`);
     await deps.finishAttempt(entryId, { ok: false, error: "pdf", at: deps.now() });
     return { status: 500, message: EMAIL_MSG.pdfFailed };
@@ -130,6 +137,15 @@ export async function sendContractEmail(
     url,
     photoCount: contract.damagePhotos.length,
   });
+
+  // Το κείμενο του email συμβολαίου ΔΕΝ περιέχει ποσά (τα ποσά είναι στο PDF):
+  // οποιοδήποτε ποσό εδώ σημαίνει λάθος πρότυπο → δεν στέλνεται.
+  const noAmounts = verifyOutgoingAmounts([content.text, htmlToCheckText(content.html), content.subject], { totalCents: 0, totalLine: null });
+  if (!noAmounts.ok) {
+    log(`μπλοκαρίστηκε από τον έλεγχο ποσών (${noAmounts.code})`);
+    await deps.finishAttempt(entryId, { ok: false, error: `amount:${noAmounts.code}`, at: deps.now() });
+    return { status: 409, message: AMOUNT_BLOCKED_MESSAGE };
+  }
 
   const { error } = await deps.send(apiKey, {
     from,

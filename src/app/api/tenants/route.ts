@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { withAuth, ok, created, badRequest, serverError, getPagination, getSearch, logError } from "@/lib/api";
 import { BCRYPT_ROUNDS, createTenantWithAdmin } from "@/lib/tenantCreate";
+import { tenantMrrCents } from "@/lib/billing/core";
 
 const createTenantSchema = z.object({
   name: z.string().min(2, "Απαιτείται επωνυμία"),
@@ -69,14 +70,30 @@ export const GET = withAuth(async (req) => {
           founderClaim: { select: { slotNumber: true } },
           // Τιμολόγια ιδρυτή πληρωμένα ΧΩΡΙΣ έκπτωση (SQL 37) — ένδειξη για τον Super Admin.
           founderFullCharges: { select: { stripeInvoiceId: true, amountCents: true }, orderBy: { createdAt: "desc" }, take: 3 },
+          // MRR: τιμές πλάνου + μήνες έκπτωσης ιδρυτή (μένουν στον server).
+          entitlementPlan: { select: { priceMonthlyCents: true, priceYearlyCents: true } },
+          founderInvoices: { select: { months: true, status: true } },
         },
       }),
       db.tenant.count({ where }),
     ]);
-    const tenants = rows.map(({ users, onboardingState: _onboarding, founderClaim, ...t }) => ({
+    const now = new Date();
+    const tenants = rows.map(({ users, onboardingState: _onboarding, founderClaim, entitlementPlan, founderInvoices, ...t }) => ({
       ...t,
       emailVerified: users.length > 0,
       founderSlot: founderClaim?.slotNumber ?? null,
+      mrrCents: tenantMrrCents(
+        {
+          billingStatus: t.billingStatus,
+          billingInterval: t.billingInterval,
+          priceMonthlyCents: entitlementPlan?.priceMonthlyCents ?? null,
+          priceYearlyCents: entitlementPlan?.priceYearlyCents ?? null,
+          isFounder: Boolean(founderClaim),
+          founderRows: founderInvoices,
+          founderDiscountEndsAt: t.founderDiscountEndsAt,
+        },
+        now
+      ),
     }));
 
     return ok({ tenants, total, page: Math.ceil(skip / limit) + 1, limit });

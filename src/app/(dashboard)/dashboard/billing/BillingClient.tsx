@@ -8,7 +8,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, CreditCard, RefreshCw } from "lucide-react";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
-import { daysLeft, formatEuro, founderPriceCents, type BillingInterval } from "@/lib/billing/core";
+import { daysLeft, founderPriceCents, type BillingInterval } from "@/lib/billing/core";
+import { formatMoney } from "@/lib/public/money";
 import type { BillingOverview } from "@/lib/billing/billingServer";
 
 export default function BillingClient({ initial, checkout }: { initial: BillingOverview; checkout: "success" | "cancel" | null }) {
@@ -178,10 +179,10 @@ export default function BillingClient({ initial, checkout }: { initial: BillingO
                         <div className="dash-billing-price">
                           {founderActive ? (
                             <>
-                              <s>{formatEuro(cents, lang)}</s> <strong>{formatEuro(founderPriceCents(cents), lang)}</strong>
+                              <s>{formatMoney(cents, lang)}</s> <strong>{formatMoney(founderPriceCents(cents), lang)}</strong>
                             </>
                           ) : (
-                            <strong>{formatEuro(cents, lang)}</strong>
+                            <strong>{formatMoney(cents, lang)}</strong>
                           )}
                           <span>{tr(interval === "year" ? "billing.perYear" : "billing.perMonth")} · {tr("billing.exclVat")}</span>
                         </div>

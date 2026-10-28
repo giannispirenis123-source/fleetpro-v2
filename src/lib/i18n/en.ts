@@ -1991,7 +1991,7 @@ export const en: Dictionary = {
     pastDue: "The last payment failed. Update your card by {date}, otherwise the company switches to read-only.",
     readOnly_trial_ended: "The trial has ended. The company is read-only until the subscription is activated.",
     readOnly_checkout_required: "To get started, add a card: 14-day free trial, no charge until it ends.",
-    readOnly_unpaid: "The subscription has been unpaid for more than 7 days. The company is read-only until the card is updated.",
+    readOnly_unpaid: "The subscription has been unpaid for more than 7 days and the company is read-only. Update your card from the Subscription page.",
     readOnly_canceled: "The subscription has been cancelled. The company is read-only.",
     readOnlyNote: "You can see all your data and confirmed bookings are served as usual; new bookings, vehicles and settings are not possible.",
     readOnlyStaff: "Please contact your company's Administrator.",

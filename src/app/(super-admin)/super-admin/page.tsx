@@ -3,7 +3,7 @@
 
 "use client";
 
-import { formatEuros } from "@/lib/public/money";
+import { formatEuros, formatMoney } from "@/lib/public/money";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -82,6 +82,8 @@ interface Tenant {
   stripeTestClockId?: string | null;
   /** Τιμολόγια ιδρυτή πληρωμένα ΧΩΡΙΣ έκπτωση (SQL 37). */
   founderFullCharges?: { stripeInvoiceId: string; amountCents: number }[];
+  /** Τρέχουσα μηνιαία χρέωση για το MRR (cents) — υπολογίζεται στον server (tenantMrrCents). */
+  mrrCents?: number;
   _count: {
     users: number;
     vehicles: number;
@@ -95,7 +97,8 @@ interface PlatformStats {
   trialTenants: number;
   totalVehicles: number;
   totalBookings: number;
-  mrr: number;
+  /** cents — βλ. tenantMrrCents (billing/core.ts). */
+  mrrCents: number;
 }
 
 /** Ρόλοι χρηστών εταιρίας — ο SUPER_ADMIN δεν ρεσετάρεται από εδώ. */
@@ -184,7 +187,9 @@ const STATUS_CONFIG: Record<
 
 /**
  * Τα στατιστικά της πλατφόρμας βγαίνουν από την ίδια τη λίστα εταιριών.
- * Το MRR μετρά μόνο τις ενεργές συνδρομές — οι δοκιμαστικές δεν πληρώνουν.
+ * MRR = άθροισμα της τρέχουσας μηνιαίας χρέωσης (mrrCents από τον server):
+ * μόνο «Ενεργή»/«Απλήρωτη», τιμή ιδρυτή όσο ισχύει, ετήσιο ÷ 12. Δοκιμή και
+ * «εκτός χρέωσης» = 0.
  */
 function computeStats(list: Tenant[]): PlatformStats {
   return {
@@ -193,9 +198,7 @@ function computeStats(list: Tenant[]): PlatformStats {
     trialTenants: list.filter((t) => t.status === "TRIAL").length,
     totalVehicles: list.reduce((sum, t) => sum + t._count.vehicles, 0),
     totalBookings: list.reduce((sum, t) => sum + t._count.bookings, 0),
-    mrr: list
-      .filter((t) => t.status === "ACTIVE")
-      .reduce((sum, t) => sum + PLAN_PRICES[t.plan], 0),
+    mrrCents: list.reduce((sum, t) => sum + (t.mrrCents ?? 0), 0),
   };
 }
 
@@ -407,7 +410,7 @@ export default function SuperAdminDashboard() {
               },
               {
                 label: "MRR",
-                value: formatEuros(stats.mrr, "el"),
+                value: formatMoney(stats.mrrCents, "el"),
                 icon: <CreditCard size={14} />,
                 accent: "#ec4899",
               },
@@ -748,7 +751,7 @@ function TenantRow({
         )}
         {(tenant.founderFullCharges ?? []).map((c) => (
           <div key={c.stripeInvoiceId} className="sa-trial-expired sa-full-charge" data-testid="full-charge">
-            Πλήρης χρέωση χωρίς έκπτωση: {(c.amountCents / 100).toLocaleString("el-GR", { style: "currency", currency: "EUR" })} ({c.stripeInvoiceId})
+            Πλήρης χρέωση χωρίς έκπτωση: {formatMoney(c.amountCents, "el")} ({c.stripeInvoiceId})
           </div>
         ))}
       </td>
@@ -875,24 +878,27 @@ function PlatformStatsView({
       <div className="sa-stats-card">
         <h3>Μηνιαία Έσοδα (MRR)</h3>
         <div className="sa-mrr">
-          <span className="sa-mrr-value">{stats?.mrr || 0}€</span>
+          <span className="sa-mrr-value" data-testid="mrr-value">{formatMoney(stats?.mrrCents ?? 0, "el")}</span>
           <span className="sa-mrr-label">/ μήνα</span>
         </div>
         <div className="sa-mrr-breakdown">
           {(["STARTER", "PRO", "ENTERPRISE"] as SubscriptionPlan[]).map(
             (plan) => {
-              const count = planDistribution[plan] || 0;
+              // Μόνο εταιρίες που χρεώνονται (mrrCents > 0) — το ποσό είναι η ΠΡΑΓΜΑΤΙΚΗ χρέωση.
+              const paying = tenants.filter((t) => t.plan === plan && (t.mrrCents ?? 0) > 0);
+              const sum = paying.reduce((s, t) => s + (t.mrrCents ?? 0), 0);
               return (
                 <div key={plan} className="sa-mrr-row">
                   <span>{PLAN_LABELS[plan]}</span>
                   <span>
-                    {count} × {PLAN_PRICES[plan]}€ ={" "}
-                    <strong>{count * PLAN_PRICES[plan]}€</strong>
+                    {paying.length} ={" "}
+                    <strong>{formatMoney(sum, "el")}</strong>
                   </span>
                 </div>
               );
             }
           )}
+          <p className="sa-founding-note">Μόνο «Ενεργή» και «Απλήρωτη»· τιμή ιδρυτή όσο ισχύει, ετήσια ÷ 12. Δοκιμή και εκτός χρέωσης δεν μετρούν.</p>
         </div>
       </div>
 
@@ -1497,7 +1503,7 @@ interface FoundingView {
   program: { maxSlots: number; claimed: number; remaining: number; active: boolean } | null;
   codes: { id: string; label: string | null; maxClaims: number; claimedCount: number; active: boolean; expiresAt: string | null; createdAt: string }[];
   claims: { slot: number; claimedAt: string; codeLabel: string | null; tenantId: string | null; tenantName: string | null }[];
-  notices: { tenantId: string; tenantName: string; endsAt: string; subject: string; text: string }[];
+  notices: { tenantId: string; tenantName: string; endsAt: string; subject: string; text: string; amountBlocked: string | null }[];
 }
 
 function FoundingAdminView({
@@ -1642,6 +1648,11 @@ function FoundingAdminView({
             <p className="sa-founding-note">
               Μόνο κείμενο: η αποστολή σε πελάτες θέλει επαληθευμένο domain στο Resend.
             </p>
+            {n.amountBlocked && (
+              <p className="sa-trial-expired" data-testid="notice-amount-blocked">
+                Η αποστολή μπλοκαρίστηκε: ασυμφωνία ποσού ({n.amountBlocked}).
+              </p>
+            )}
             <pre className="sa-founding-pre">{n.subject}{"\n\n"}{n.text}</pre>
           </div>
         ))

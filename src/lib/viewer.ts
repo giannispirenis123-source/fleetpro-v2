@@ -6,7 +6,7 @@ import { db } from "./db";
 import type { JWTPayload } from "./auth";
 import { normalizePermissions, roleHasAll, type PermissionMap } from "./permissions";
 import { acceptViewerRow } from "./viewerCore";
-import { billingAccess, billingNow, testClocksEnabled } from "./billing/core";
+import { billingAccess, billingNow, testClocksEnabled, type ReadOnlyReason } from "./billing/core";
 
 export interface Viewer {
   userId: string;
@@ -15,6 +15,8 @@ export interface Viewer {
   permissions: PermissionMap;
   /** Η εταιρία είναι σε «μόνο ανάγνωση» λόγω συνδρομής (SQL 36) — βλ. billing/core.ts. */
   readOnly?: boolean;
+  /** Γιατί «μόνο ανάγνωση» (για το μήνυμα του 403: απλήρωτη → «Ενημέρωσε την κάρτα»). */
+  readOnlyReason?: ReadOnlyReason;
 }
 
 export async function loadViewer(session: JWTPayload): Promise<Viewer | null> {
@@ -34,14 +36,16 @@ export async function loadViewer(session: JWTPayload): Promise<Viewer | null> {
   });
   const user = acceptViewerRow(row, session);
   if (!user) return null;
+  // Ώρα: του test clock της εταιρίας μόνο στο Preview με ενεργά clocks (SQL 37).
+  const access = row?.tenant
+    ? billingAccess(row.tenant, billingNow(row.tenant, new Date(), testClocksEnabled(process.env)))
+    : null;
   return {
     userId: user.id,
     role: user.role,
     tenantId: user.tenantId,
     permissions: roleHasAll(user.role) ? {} : normalizePermissions(user.permissions),
-    // Ώρα: του test clock της εταιρίας μόνο στο Preview με ενεργά clocks (SQL 37).
-    readOnly: row?.tenant
-      ? billingAccess(row.tenant, billingNow(row.tenant, new Date(), testClocksEnabled(process.env))).mode === "read_only"
-      : false,
+    readOnly: access?.mode === "read_only",
+    readOnlyReason: access?.mode === "read_only" ? access.reason : undefined,
   };
 }

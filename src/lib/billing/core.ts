@@ -1,6 +1,6 @@
 // src/lib/billing/core.ts
-// Συνδρομές εταιριών (Stripe Billing) — ΚΑΘΑΡΗ λογική, χωρίς runtime imports,
-// ώστε να τη φορτώνουν server, client components και τα unit tests (node:test).
+// Συνδρομές εταιριών (Stripe Billing) — ΚΑΘΑΡΗ λογική (imports μόνο τα καθαρά
+// money.ts / outgoingAmounts.ts), ώστε να τη φορτώνουν server, client components και τα unit tests.
 //
 // · Ποιος πληρώνει: ΜΟΝΟ εταιρίες με billingStatus ≠ 'exempt'. Οι υπάρχουσες
 //   (και όσες φτιάχνει ο Super Admin) είναι 'exempt' → τίποτα δεν αλλάζει.
@@ -9,6 +9,9 @@
 //   Βλέπει τα δεδομένα της, δεν φτιάχνει τίποτα νέο· οι υπάρχουσες κρατήσεις
 //   εξυπηρετούνται κανονικά (readOnlyAllows).
 // · Οι τιμές/όρια ζουν στη βάση (πίνακας plans)· εδώ μόνο κανόνες.
+
+import { formatMoney } from "../public/money";
+import { verifyOutgoingAmounts, type AmountCheck } from "../public/outgoingAmounts";
 
 export const BILLING_PLAN_KEYS = ["starter", "pro", "business"] as const;
 export type BillingPlanKey = (typeof BILLING_PLAN_KEYS)[number];
@@ -174,18 +177,54 @@ export function readOnlyAllows(method: string, pathname: string): boolean {
 export const READ_ONLY_MESSAGE =
   "Η εταιρία είναι σε λειτουργία μόνο ανάγνωσης. Ενεργοποιήστε τη συνδρομή από τη σελίδα «Συνδρομή» για να συνεχίσετε.";
 
+/** Απλήρωτη: η συνδρομή υπάρχει, λείπει η πληρωμή → ενημέρωση κάρτας, όχι «ενεργοποίηση». */
+export const READ_ONLY_UNPAID_MESSAGE =
+  "Η εταιρία είναι σε λειτουργία μόνο ανάγνωσης. Ενημέρωσε την κάρτα από τη σελίδα Συνδρομή για να συνεχίσεις.";
+
+export const readOnlyMessage = (reason: ReadOnlyReason | undefined): string =>
+  reason === "unpaid" ? READ_ONLY_UNPAID_MESSAGE : READ_ONLY_MESSAGE;
+
 /* ── Τιμές ── */
 
 /** Τιμή ιδρυτή: 50% (στρογγυλό σε cent). 3900 → 1950. */
 export const founderPriceCents = (cents: number): number => Math.round((cents * (100 - FOUNDER_DISCOUNT_PERCENT)) / 100);
 
-export const formatEuro = (cents: number, locale: "el" | "en" = "el"): string =>
-  new Intl.NumberFormat(locale === "el" ? "el-GR" : "en-IE", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(cents / 100);
+/* ── MRR (Super Admin) ── */
+
+/** Καταστάσεις που μετρούν στο MRR: «Ενεργή» και «Απλήρωτη». */
+export const MRR_STATUSES = ["active", "past_due", "unpaid"] as const;
+
+export interface MrrInput {
+  billingStatus: string;
+  billingInterval: string;
+  /** Τιμές του πλάνου (plans.priceMonthlyCents / priceYearlyCents). null = δεν πωλείται. */
+  priceMonthlyCents: number | null;
+  priceYearlyCents: number | null;
+  isFounder: boolean;
+  founderRows: FounderInvoiceRow[];
+  founderDiscountEndsAt: Date | null;
+}
+
+/**
+ * Η ΤΡΕΧΟΥΣΑ μηνιαία χρέωση μιας εταιρίας (cents) για το MRR.
+ * · Μόνο «Ενεργή» (active) ή «Απλήρωτη» (past_due/unpaid)· δοκιμή, εκτός
+ *   χρέωσης, αναμονή κάρτας, ακυρωμένη κ.λπ. → 0.
+ * · Ετήσια: τιμή έτους ÷ 12.
+ * · Ιδρυτής: 50% μόνο όσο η έκπτωση ισχύει — λιγότεροι από 12 πληρωμένοι
+ *   μήνες, ή η περίοδος του 12ου δεν έχει τελειώσει (founderDiscountEndsAt).
+ */
+export function tenantMrrCents(t: MrrInput, now = new Date()): number {
+  if (!(MRR_STATUSES as readonly string[]).includes(t.billingStatus)) return 0;
+  const yearly = t.billingInterval === "year";
+  const base = yearly ? t.priceYearlyCents : t.priceMonthlyCents;
+  if (base === null || !Number.isFinite(base) || base <= 0) return 0;
+  const discounted =
+    t.isFounder &&
+    (founderMonthsPaid(t.founderRows) < FOUNDER_DISCOUNT_MONTHS ||
+      (t.founderDiscountEndsAt !== null && now.getTime() < t.founderDiscountEndsAt.getTime()));
+  const charge = discounted ? founderPriceCents(base) : base;
+  return Math.round(yearly ? charge / 12 : charge);
+}
 
 /* ── Env (ονόματα, ποτέ τιμές) ── */
 
@@ -475,7 +514,15 @@ export interface NoticeEmail {
   to: string;
   subject: string;
   text: string;
+  /** Έλεγχος ποσών (verifyOutgoingAmounts) — ok:false → ΔΕΝ στέλνεται. */
+  amountCheck: AmountCheck;
 }
+
+/** Το κείμενο περνά τον έλεγχο ποσών του #45: μόνο η κανονική τιμή, ακριβώς μία φορά. */
+const withAmountCheck = (mail: Omit<NoticeEmail, "amountCheck">, normalCents: number, priceLine: string): NoticeEmail => ({
+  ...mail,
+  amountCheck: verifyOutgoingAmounts([mail.subject, mail.text].join("\n"), { totalCents: normalCents, totalLine: priceLine }),
+});
 
 const fmtDate = (d: Date, lang: "el" | "en") =>
   d.toLocaleDateString(lang === "el" ? "el-GR" : "en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Athens" });
@@ -493,30 +540,31 @@ export function founderNoticeEmail(
   normalCents: number,
   interval: BillingInterval
 ): NoticeEmail {
-  const price = formatEuro(normalCents, lang);
+  const price = formatMoney(normalCents, lang);
   const per = interval === "year" ? (lang === "el" ? "τον χρόνο" : "per year") : lang === "el" ? "τον μήνα" : "per month";
+  const priceLine = `${price} ${per}`;
   if (lang === "el") {
-    return {
+    return withAmountCheck({
       to,
       subject: "Η έκπτωση ιδρυτή τελειώνει σε 30 ημέρες — FleetPro",
       text: [
         `Γεια σας,`,
         `Ευχαριστούμε που η ${companyName} είναι μία από τις πρώτες εταιρίες του FleetPro.`,
-        `Η έκπτωση 50% των 12 μηνών ολοκληρώνεται στις ${fmtDate(endsAt, "el")}. Από την επόμενη χρέωση η συνδρομή ${planName} θα κοστίζει ${price} ${per} (χωρίς ΦΠΑ).`,
+        `Η έκπτωση 50% των 12 μηνών ολοκληρώνεται στις ${fmtDate(endsAt, "el")}. Από την επόμενη χρέωση η συνδρομή ${planName} θα κοστίζει ${priceLine} (χωρίς ΦΠΑ).`,
         `Δεν χρειάζεται να κάνετε τίποτα. Αν θέλετε να αλλάξετε πλάνο ή κάρτα, μπείτε στο FleetPro → Συνδρομή.`,
         `FleetPro`,
       ].join("\n\n"),
-    };
+    }, normalCents, priceLine);
   }
-  return {
+  return withAmountCheck({
     to,
     subject: "Your founding discount ends in 30 days — FleetPro",
     text: [
       `Hello,`,
       `Thank you for having ${companyName} among the first companies on FleetPro.`,
-      `Your 50% discount for 12 months ends on ${fmtDate(endsAt, "en")}. From the next charge your ${planName} plan will cost ${price} ${per} (excl. VAT).`,
+      `Your 50% discount for 12 months ends on ${fmtDate(endsAt, "en")}. From the next charge your ${planName} plan will cost ${priceLine} (excl. VAT).`,
       `You don't need to do anything. To change your plan or card, open FleetPro → Subscription.`,
       `FleetPro`,
     ].join("\n\n"),
-  };
+  }, normalCents, priceLine);
 }

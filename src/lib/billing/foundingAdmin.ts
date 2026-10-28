@@ -55,7 +55,15 @@ export async function foundingAdminView(now = new Date()) {
       const interval = isBillingInterval(t.billingInterval) ? t.billingInterval : "month";
       const cents = (interval === "year" ? t.entitlementPlan?.priceYearlyCents : t.entitlementPlan?.priceMonthlyCents) ?? 0;
       const mail = founderNoticeEmail("el", t.email, t.name, t.entitlementPlan?.name ?? "", t.founderDiscountEndsAt!, cents, interval);
-      return { tenantId: t.id, tenantName: t.name, endsAt: t.founderDiscountEndsAt!.toISOString(), subject: mail.subject, text: mail.text };
+      return {
+        tenantId: t.id,
+        tenantName: t.name,
+        endsAt: t.founderDiscountEndsAt!.toISOString(),
+        subject: mail.subject,
+        text: mail.text,
+        // Έλεγχος ποσών (#45): αποτυχία → το κείμενο δεν πρέπει να σταλεί. Μόνο ο κωδικός.
+        amountBlocked: mail.amountCheck.ok ? null : mail.amountCheck.code,
+      };
     });
   return {
     program: program

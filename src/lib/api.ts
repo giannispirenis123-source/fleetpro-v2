@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest, JWTPayload } from "./auth";
 import { loadViewer, type Viewer } from "./viewer";
-import { READ_ONLY_MESSAGE, readOnlyAllows } from "./billing/core";
+import { readOnlyAllows, readOnlyMessage } from "./billing/core";
 
 // Standard API responses
 export function ok<T>(data: T, status = 200) {
@@ -81,7 +81,7 @@ export function withAuth(handler: RouteHandler, roles?: string[]) {
       // server, για ΚΑΘΕ route με φύλακα. Εξαιρέσεις (συνδρομή, υπάρχουσες
       // κρατήσεις/συμβόλαια): readOnlyAllows στο billing/core.ts.
       if (viewer.readOnly && !readOnlyAllows(req.method, req.nextUrl.pathname)) {
-        return NextResponse.json({ success: false, message: READ_ONLY_MESSAGE, code: "read_only" }, { status: 403 });
+        return NextResponse.json({ success: false, message: readOnlyMessage(viewer.readOnlyReason), code: "read_only" }, { status: 403 });
       }
 
       return await handler(req, { ...session, role: viewer.role }, context?.params, viewer);

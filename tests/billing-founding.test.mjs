@@ -86,7 +86,41 @@ test("τιμή ιδρυτή 50%: 19,50 / 39,50 / 74,50 €", () => {
   assert.equal(B.founderPriceCents(3900), 1950);
   assert.equal(B.founderPriceCents(7900), 3950);
   assert.equal(B.founderPriceCents(14900), 7450);
-  assert.equal(B.formatEuro(1950, "el").replace(/\s/g, " "), "19,50 €");
+  // Τα ποσά συνδρομής περνούν ΜΟΝΟ από το formatMoney του #45 (κανένα Intl στο core).
+  assert.equal(B.formatEuro, undefined);
+  assert.match(read("src/lib/billing/core.ts"), /formatMoney\(normalCents, lang\)/);
+  assert.match(read("src/app/(dashboard)/dashboard/billing/BillingClient.tsx"), /formatMoney\(founderPriceCents\(cents\), lang\)/);
+});
+
+/* ── MRR (Super Admin) ── */
+
+test("MRR: μόνο Ενεργή/Απλήρωτη, τιμή ιδρυτή όσο απομένουν μήνες, ετήσιο ÷ 12", () => {
+  const base = { billingInterval: "month", priceMonthlyCents: 3900, priceYearlyCents: 39000, isFounder: false, founderRows: [], founderDiscountEndsAt: null };
+  const paid = (n) => Array.from({ length: n }, () => ({ months: 1, status: "paid" }));
+  // Το σενάριο του 118 €: Pro «εκτός χρέωσης» + ιδρυτής Starter ενεργός → 19,50 €.
+  const exemptPro = { ...base, billingStatus: "exempt", priceMonthlyCents: 7900 };
+  const founder = { ...base, billingStatus: "active", isFounder: true, founderRows: paid(3) };
+  assert.equal(B.tenantMrrCents(exemptPro, at(0)) + B.tenantMrrCents(founder, at(0)), 1950);
+  // Καταστάσεις
+  for (const s of ["exempt", "founder_trial", "awaiting_checkout", "trialing", "canceled", "incomplete", "paused"]) {
+    assert.equal(B.tenantMrrCents({ ...base, billingStatus: s }, at(0)), 0, s);
+  }
+  for (const s of ["active", "past_due", "unpaid"]) assert.equal(B.tenantMrrCents({ ...base, billingStatus: s }, at(0)), 3900, s);
+  // Ιδρυτής: 12 πληρωμένοι → πλήρης· η περίοδος του 12ου (founderDiscountEndsAt) μένει μισή.
+  assert.equal(B.tenantMrrCents({ ...founder, founderRows: paid(11) }, at(0)), 1950);
+  assert.equal(B.tenantMrrCents({ ...founder, founderRows: paid(12), founderDiscountEndsAt: at(10) }, at(5)), 1950);
+  assert.equal(B.tenantMrrCents({ ...founder, founderRows: paid(12), founderDiscountEndsAt: at(10) }, at(10)), 3900);
+  assert.equal(B.tenantMrrCents({ ...founder, founderRows: [...paid(12), { months: 1, status: "void" }] }, at(0)), 3900);
+  // Ετήσιο: 390 € ÷ 12 = 32,50 €· ιδρυτής 195 € ÷ 12 = 16,25 €.
+  assert.equal(B.tenantMrrCents({ ...base, billingStatus: "active", billingInterval: "year" }, at(0)), 3250);
+  assert.equal(B.tenantMrrCents({ ...founder, billingInterval: "year", founderRows: [] }, at(0)), 1625);
+  // Χωρίς τιμή (π.χ. πακέτο full) → 0, ποτέ NaN.
+  assert.equal(B.tenantMrrCents({ ...base, billingStatus: "active", priceMonthlyCents: null }, at(0)), 0);
+  // Το Super Admin παίρνει mrrCents από τον server και το δείχνει με formatMoney.
+  const sa = read("src/app/(super-admin)/super-admin/page.tsx");
+  assert.match(sa, /formatMoney\(stats\.mrrCents, "el"\)/);
+  assert.doesNotMatch(sa, /PLAN_PRICES\[t\.plan\], 0\)/);
+  assert.match(read("src/app/api/tenants/route.ts"), /mrrCents: tenantMrrCents\(/);
 });
 
 /* ── Μόνο ανάγνωση ── */
@@ -164,7 +198,8 @@ test("μόνο ανάγνωση στον server: φύλακας withAuth + δη�
   const api = read("src/lib/api.ts");
   assert.match(api, /viewer\.readOnly && !readOnlyAllows\(req\.method, req\.nextUrl\.pathname\)/);
   assert.match(api, /code: "read_only"/);
-  assert.match(read("src/lib/viewer.ts"), /billingAccess\(row\.tenant, billingNow\(row\.tenant, new Date\(\), testClocksEnabled\(process\.env\)\)\)\.mode === "read_only"/);
+  assert.match(read("src/lib/viewer.ts"), /billingAccess\(row\.tenant, billingNow\(row\.tenant, new Date\(\), testClocksEnabled\(process\.env\)\)\)/);
+  assert.match(read("src/lib/viewer.ts"), /readOnly: access\?\.mode === "read_only"/);
   const submit = read("src/lib/public/bookingSubmit.ts");
   assert.ok(submit.indexOf("tenantReadOnly(") > 0 && submit.indexOf("tenantReadOnly(") < submit.indexOf("loadSiteCatalog("));
   // Καμία διαγραφή δεδομένων στη ροή συνδρομής.
@@ -441,6 +476,21 @@ test("ειδοποίηση λήξης έκπτωσης: από (τέλος − 3
   assert.match(mail.subject, /30 ημέρες/);
   assert.match(mail.text.replace(/\s/g, " "), /79 € τον μήνα \(χωρίς ΦΠΑ\)/);
   assert.match(B.founderNoticeEmail("en", "a@b.gr", "Demo", "Pro", at(100), 79000, "year").text, /€790 per year/);
+  // Έλεγχος ποσών του #45 (verifyOutgoingAmounts) σε κάθε γλώσσα/ποσό.
+  for (const lang of ["el", "en"]) {
+    for (const cents of [0, 3900, 118050, 1234500]) {
+      assert.deepEqual(B.founderNoticeEmail(lang, "a@b.gr", "Demo", "Pro", at(100), cents, "month").amountCheck, { ok: true }, `${lang} ${cents}`);
+    }
+  }
+  // Όνομα εταιρίας με ξένο ποσό → μπλοκάρεται (δεν στέλνεται).
+  assert.equal(B.founderNoticeEmail("el", "a@b.gr", "Demo 180 €", "Pro", at(100), 7900, "month").amountCheck.ok, false);
+});
+
+test("μόνο ανάγνωση: απλήρωτη → «Ενημέρωσε την κάρτα», δοκιμή/ακυρωμένη → «Ενεργοποιήστε»", () => {
+  assert.match(B.readOnlyMessage("unpaid"), /Ενημέρωσε την κάρτα από τη σελίδα Συνδρομή/);
+  assert.doesNotMatch(B.readOnlyMessage("unpaid"), /Ενεργοποιήστε/);
+  for (const r of ["trial_ended", "checkout_required", "canceled", undefined]) assert.equal(B.readOnlyMessage(r), B.READ_ONLY_MESSAGE);
+  assert.match(read("src/lib/api.ts"), /message: readOnlyMessage\(viewer\.readOnlyReason\)/);
 });
 
 /* ── Κωδικοί ιδρυτή + δημόσιο endpoint ── */

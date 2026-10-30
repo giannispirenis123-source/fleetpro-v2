@@ -87,11 +87,34 @@ test("isPlatformHost: localhost, IP, *.vercel.app, env hosts → πλατφόρ�
 
 test("platformHostsFromEnv/platformOrigin: από PLATFORM_URL ή VERCEL_*, χωρίς σκουπίδια", () => {
   const env = { PLATFORM_URL: "https://FleetPro.gr/", VERCEL_PROJECT_PRODUCTION_URL: "fleetpro-app-eight.vercel.app", VERCEL_URL: "x-1.vercel.app", VERCEL_BRANCH_URL: "bad host" };
-  assert.deepEqual(domain.platformHostsFromEnv(env), ["fleetpro.gr", "fleetpro-app-eight.vercel.app", "x-1.vercel.app"]);
+  assert.deepEqual(domain.platformHostsFromEnv(env), ["fleetpro.gr", "www.fleetpro.gr", "fleetpro-app-eight.vercel.app", "x-1.vercel.app"]);
   assert.equal(domain.platformOrigin(env), "https://fleetpro.gr");
   assert.equal(domain.platformOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "fleetpro-app-eight.vercel.app" }), ORIGIN);
   assert.equal(domain.platformOrigin({ PLATFORM_URL: "javascript:alert(1)" }), null);
   assert.equal(domain.platformOrigin({}), null);
+});
+
+test("base domain από ΜΙΑ ρύθμιση (PLATFORM_URL): kratisi.eu + www → πλατφόρμα, subdomains → εταιρίες", () => {
+  const prodEnv = { PLATFORM_URL: "https://kratisi.eu", VERCEL_PROJECT_PRODUCTION_URL: "fleetpro-app-eight.vercel.app", VERCEL_URL: "fleetpro-app-abc123.vercel.app" };
+  assert.equal(domain.platformBaseDomain(prodEnv), "kratisi.eu");
+  assert.equal(domain.platformBaseDomain({ PLATFORM_URL: "https://www.Kratisi.eu/el" }), "kratisi.eu", "www. και διαδρομή φεύγουν");
+  assert.equal(domain.platformBaseDomain({}), null);
+  const hosts = domain.platformHostsFromEnv(prodEnv);
+  for (const h of ["kratisi.eu", "www.kratisi.eu", "fleetpro-app-eight.vercel.app", "fleetpro-app-git-x-giannis.vercel.app", "fleetpro-app-abc123.vercel.app"]) {
+    assert.equal(domain.isPlatformHost(h, hosts), true, h);
+  }
+  // Subdomains του base domain: ΟΧΙ πλατφόρμα — μένουν για τα sites εταιριών (όπως πριν).
+  for (const h of ["company.kratisi.eu", "helios.kratisi.eu", "www.helios-rent.gr"]) assert.equal(domain.isPlatformHost(h, hosts), false, h);
+  // Το host της πλατφόρμας δεν δηλώνεται ως domain εταιρίας.
+  for (const h of ["kratisi.eu", "www.kratisi.eu"]) assert.equal(domain.validateCustomDomain(h, hosts).reason, "platform", h);
+  assert.equal(domain.validateCustomDomain("company.kratisi.eu", hosts).ok, true);
+  // «Είσοδος» από domain εταιρίας → login στο kratisi.eu.
+  assert.equal(domain.platformOrigin(prodEnv), "https://kratisi.eu");
+  // Χωρίς PLATFORM_URL: η σημερινή συμπεριφορά (μόνο Vercel hosts).
+  assert.deepEqual(domain.platformHostsFromEnv({ VERCEL_PROJECT_PRODUCTION_URL: "fleetpro-app-eight.vercel.app" }), ["fleetpro-app-eight.vercel.app"]);
+  assert.equal(domain.isPlatformHost("kratisi.eu", domain.platformHostsFromEnv({})), false);
+  // Κανένα hardcoded base domain στον κώδικα δρομολόγησης.
+  for (const f of ["src/lib/storefront/domain.ts", "src/middleware.ts"]) assert.doesNotMatch(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), /kratisi/, f);
 });
 
 /* ─────────────────────────────────────────────

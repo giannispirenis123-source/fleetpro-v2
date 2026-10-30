@@ -104,8 +104,8 @@ function customDomainResponse(req: NextRequest, host: string): NextResponse {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Domain εταιρίας; (localhost, IP, *.vercel.app και το PLATFORM_URL είναι
-  // πάντα πλατφόρμα — εκεί όλα μένουν όπως πριν.)
+  // Domain εταιρίας; (localhost, IP, *.vercel.app και το base domain του
+  // PLATFORM_URL + www. είναι πάντα πλατφόρμα — εκεί όλα μένουν όπως πριν.)
   const host = requestHost((n) => req.headers.get(n));
   if (!isPlatformHost(host, platformHostsFromEnv(readPlatformEnv()))) {
     return customDomainResponse(req, host!);

@@ -2,7 +2,8 @@
 // Domain ανά εταιρία — καθαρή λογική, χωρίς imports (τρέχει και στο middleware).
 //
 // Πώς δουλεύει: ένα αίτημα σε host που ΔΕΝ είναι της πλατφόρμας (localhost,
-// *.vercel.app, PLATFORM_URL) θεωρείται «domain εταιρίας». Το middleware
+// *.vercel.app, το base domain του PLATFORM_URL και το www. του) θεωρείται
+// «domain εταιρίας». Το middleware
 // μεταφράζει τη διαδρομή του (/el/search) στην εσωτερική /s/_domain/el/search
 // και περνά το host στο SITE_HOST_HEADER (αφού το καθαρίσει — κάθε εισερχόμενο
 // header με αυτό το όνομα σβήνεται). Η εταιρία βρίσκεται ΜΟΝΟ από το
@@ -69,8 +70,9 @@ export interface PlatformEnv {
 
 /**
  * Οι μεταβλητές με ρητή ανάγνωση (στο Edge/middleware το process.env δεν
- * διαβάζεται ως ολόκληρο αντικείμενο). Τα VERCEL_* τα βάζει μόνο του το Vercel·
- * το PLATFORM_URL είναι προαιρετικό (π.χ. όταν η πλατφόρμα πάρει δικό της domain).
+ * διαβάζεται ως ολόκληρο αντικείμενο). Τα VERCEL_* τα βάζει μόνο του το Vercel.
+ * Το PLATFORM_URL (π.χ. https://platform.example) είναι η ΜΙΑ ρύθμιση για το domain
+ * της πλατφόρμας: από αυτό βγαίνει το base domain (platformBaseDomain).
  */
 export function readPlatformEnv(): PlatformEnv {
   return {
@@ -81,11 +83,30 @@ export function readPlatformEnv(): PlatformEnv {
   };
 }
 
-/** Τα hosts της ίδιας της πλατφόρμας από το περιβάλλον (Vercel τα δίνει μόνο του). */
+/**
+ * Το base domain της πλατφόρμας: το host του PLATFORM_URL χωρίς «www.»
+ * (https://www.platform.example → platform.example). null = δεν ορίστηκε.
+ */
+export function platformBaseDomain(env: PlatformEnv): string | null {
+  const host = hostOf(env.PLATFORM_URL);
+  if (!host) return null;
+  const bare = host.startsWith("www.") ? host.slice(4) : host;
+  return bare.includes(".") ? bare : host;
+}
+
+/**
+ * Τα hosts της ίδιας της πλατφόρμας: το base domain ΚΑΙ το www. του (ΟΧΙ τα
+ * άλλα subdomains — company.platform.example μένει domain εταιρίας όπως πριν), συν
+ * όσα δίνει μόνο του το Vercel (production/deployment/branch URL).
+ */
 export function platformHostsFromEnv(env: PlatformEnv): string[] {
-  return [env.PLATFORM_URL, env.VERCEL_PROJECT_PRODUCTION_URL, env.VERCEL_URL, env.VERCEL_BRANCH_URL]
-    .map(hostOf)
-    .filter((h): h is string => !!h);
+  const base = platformBaseDomain(env);
+  const hosts = [
+    base,
+    base ? `www.${base}` : null,
+    ...[env.VERCEL_PROJECT_PRODUCTION_URL, env.VERCEL_URL, env.VERCEL_BRANCH_URL].map(hostOf),
+  ].filter((h): h is string => !!h);
+  return [...new Set(hosts)];
 }
 
 /**

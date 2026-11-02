@@ -6,9 +6,9 @@
 // η τιμή υπολογίζεται ΜΟΝΟ στον server).
 
 import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { PackagePlus, ShieldCheck, X } from "lucide-react";
 import { useLocale, useT } from "@/lib/i18n/I18nProvider";
-import { formatMoney } from "@/lib/public/money";
+import { formatEuros, formatMoney } from "@/lib/public/money";
 import type { AvailabilityRow } from "@/lib/partnerAvailability";
 
 type Grid = { days: string[]; vehicles: AvailabilityRow[] };
@@ -32,11 +32,14 @@ export default function PartnerAvailabilityClient({
   days,
   initial,
   canBook,
+  extras = [],
 }: {
   today: string;
   days: number;
   initial: Grid;
   canBook: boolean;
+  /** Ενεργά πρόσθετα/ασφάλειες της εταιρίας (για τη φόρμα κράτησης). */
+  extras?: ExtraOption[];
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -80,7 +83,7 @@ export default function PartnerAvailabilityClient({
           <button
             type="button"
             className="dash-btn dash-btn--primary"
-            onClick={() => setBooking({ vehicleId: grid.vehicles[0]?.id ?? "", date: from < today ? today : from })}
+            onClick={() => setBooking({ vehicleId: "", date: from < today ? today : from })}
             data-testid="partner-new-booking"
           >
             {tr("partner.newBooking")}
@@ -159,7 +162,7 @@ export default function PartnerAvailabilityClient({
 
       {booking && canBook && (
         <PartnerBookingModal
-          vehicles={grid.vehicles}
+          extras={extras}
           initial={booking}
           onClose={() => setBooking(null)}
           onDone={() => setReload((n) => n + 1)}
@@ -169,80 +172,173 @@ export default function PartnerAvailabilityClient({
   );
 }
 
+type ExtraOption = { id: string; name: string; type: string; price: number; chargeType: string };
+type Win = { pickupDate: string; pickupTime: string; returnDate: string; returnTime: string };
+type VehicleOption = { id: string; label: string };
+
+const windowValid = (w: Win) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(w.pickupDate) &&
+  /^\d{4}-\d{2}-\d{2}$/.test(w.returnDate) &&
+  /^\d{2}:\d{2}$/.test(w.pickupTime) &&
+  /^\d{2}:\d{2}$/.test(w.returnTime) &&
+  `${w.returnDate}T${w.returnTime}` > `${w.pickupDate}T${w.pickupTime}`;
+
+/**
+ * Νέα κράτηση συνεργάτη — ΙΔΙΑ ροή με τη φόρμα του προσωπικού (walk-in):
+ * 1) παραλαβή/επιστροφή (ημερομηνίες + ώρες), 2) ΜΟΝΟ τα διαθέσιμα οχήματα του
+ * διαστήματος (GET /api/partner/vehicles — ίδια λογική με το προσωπικό), 3)
+ * πρόσθετα/ασφάλεια, πελάτης, σημειώσεις, 4) τιμή + προμήθεια από τον server.
+ * Ο συνεργάτης δεν ορίζει τιμή/έκπτωση/κατάσταση και δεν παρακάμπτει σύγκρουση.
+ */
 function PartnerBookingModal({
-  vehicles,
   initial,
+  extras,
   onClose,
   onDone,
 }: {
-  vehicles: AvailabilityRow[];
   initial: { vehicleId: string; date: string };
+  extras: ExtraOption[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const tr = useT();
   const locale = useLocale();
-  const [form, setForm] = useState({
-    vehicleId: initial.vehicleId,
+  const [win, setWin] = useState<Win>({
     pickupDate: initial.date,
     pickupTime: "10:00",
     returnDate: addDays(initial.date, 1),
     returnTime: "10:00",
-    firstName: "",
-    lastName: "",
-    phone: "",
-    email: "",
-    notes: "",
   });
+  const [vehicleId, setVehicleId] = useState(initial.vehicleId);
+  const vehicleRef = useRef(vehicleId);
+  vehicleRef.current = vehicleId;
+  const [vehicles, setVehicles] = useState<VehicleOption[] | null>(null);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
+  /** Το όχημα που είχε επιλεγεί και δεν είναι πια διαθέσιμο (για το μήνυμα). */
+  const [droppedVehicle, setDroppedVehicle] = useState(false);
+  const [reloadVehicles, setReloadVehicles] = useState(0);
+  const [extraIds, setExtraIds] = useState<string[]>([]);
+  const [insuranceId, setInsuranceId] = useState("");
+  const [customer, setCustomer] = useState({ firstName: "", lastName: "", phone: "", email: "", notes: "" });
   const [price, setPrice] = useState<{ totalCents: number; commissionCents: number } | null>(null);
+  const [pricing, setPricing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState<string | null>(null);
 
-  const set = (patch: Partial<typeof form>) => {
-    setForm((f) => ({ ...f, ...patch }));
-    if (["vehicleId", "pickupDate", "pickupTime", "returnDate", "returnTime"].some((k) => k in patch)) setPrice(null);
-  };
+  const offeredExtras = extras.filter((e) => e.type === "EXTRA");
+  const offeredInsurance = extras.filter((e) => e.type === "INSURANCE");
+  const ok = windowValid(win);
 
-  const body = (preview: boolean) => ({
-    vehicleId: form.vehicleId,
-    pickupDate: form.pickupDate,
-    pickupTime: form.pickupTime,
-    returnDate: form.returnDate,
-    returnTime: form.returnTime,
-    notes: form.notes.trim() || null,
-    ...(preview
-      ? { preview: true }
-      : { customer: { firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim() || null, email: form.email.trim() || null } }),
-  });
+  /* ── 2) Διαθέσιμα οχήματα για ΑΥΤΟ το διάστημα (ξαναφορτώνει σε κάθε αλλαγή) ── */
+  const vehSeq = useRef(0);
+  useEffect(() => {
+    if (done) return;
+    if (!ok) {
+      setVehicles(null);
+      return;
+    }
+    const mine = ++vehSeq.current;
+    setLoadingVehicles(true);
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams(win);
+        const res = await fetch(`/api/partner/vehicles?${params}`, { cache: "no-store" });
+        const body = await res.json().catch(() => ({}));
+        if (mine !== vehSeq.current) return;
+        const list: VehicleOption[] = res.ok ? body.data.vehicles : [];
+        setVehicles(list);
+        // Επιλογή που δεν ισχύει πια → αφαιρείται (όχι όπως το walk-in: ο συνεργάτης δεν παρακάμπτει).
+        const current = vehicleRef.current;
+        if (current && !list.some((v) => v.id === current)) {
+          setVehicleId("");
+          setPrice(null);
+          setDroppedVehicle(true);
+        }
+      } catch {
+        if (mine === vehSeq.current) setVehicles([]);
+      } finally {
+        if (mine === vehSeq.current) setLoadingVehicles(false);
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [win, ok, reloadVehicles, done]);
 
-  const send = async (preview: boolean) => {
-    if (busy) return;
+  const allExtras = [...extraIds, ...(insuranceId ? [insuranceId] : [])];
+  const base = { vehicleId, ...win, extraIds: allExtras };
+
+  /* ── 4) Τιμή + προμήθεια από τον server (αυτόματα, όπως στο προσωπικό) ── */
+  const prevSeq = useRef(0);
+  const priceKey = JSON.stringify(base);
+  useEffect(() => {
+    setPrice(null);
+    if (done || !ok || !vehicleId) return;
+    const mine = ++prevSeq.current;
+    setPricing(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/partner/bookings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...JSON.parse(priceKey), preview: true }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (mine !== prevSeq.current) return;
+        if (res.ok) {
+          setPrice({ totalCents: j.data.totalCents, commissionCents: j.data.commissionCents });
+          setError("");
+        } else {
+          setError(j.message || tr("partner.error"));
+          if (j.code === "vehicle_unavailable") setReloadVehicles((n) => n + 1);
+        }
+      } catch {
+        if (mine === prevSeq.current) setError(tr("partner.error"));
+      } finally {
+        if (mine === prevSeq.current) setPricing(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [priceKey, ok, vehicleId, done, tr]);
+
+  const submit = async () => {
+    if (busy || !price) return;
     setBusy(true);
     setError("");
     try {
       const res = await fetch("/api/partner/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body(preview)),
+        body: JSON.stringify({
+          ...base,
+          notes: customer.notes.trim() || null,
+          customer: {
+            firstName: customer.firstName.trim(),
+            lastName: customer.lastName.trim(),
+            phone: customer.phone.trim() || null,
+            email: customer.email.trim() || null,
+          },
+        }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(j.message || tr("partner.error"));
+        // Το όχημα το πήρε κάποιος στο μεταξύ: ανανέωση της λίστας (αφαιρεί την επιλογή).
+        if (j.code === "vehicle_unavailable") setReloadVehicles((n) => n + 1);
         return;
       }
-      if (preview) setPrice({ totalCents: j.data.totalCents, commissionCents: j.data.commissionCents });
-      else {
-        setDone(j.data.booking.bookingNumber);
-        setPrice({ totalCents: j.data.booking.totalCents, commissionCents: j.data.booking.commissionCents });
-        onDone();
-      }
+      setDone(j.data.booking.bookingNumber);
+      setPrice({ totalCents: j.data.booking.totalCents, commissionCents: j.data.booking.commissionCents });
+      onDone();
     } catch {
       setError(tr("partner.error"));
     } finally {
       setBusy(false);
     }
   };
+
+  const setW = (patch: Partial<Win>) => setWin((w) => ({ ...w, ...patch }));
+  const toggleExtra = (id: string) => setExtraIds((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
+  const canSubmit = !!price && !!vehicleId && !!customer.firstName.trim() && !!customer.lastName.trim() && !busy && !pricing;
 
   return (
     <div className="dash-modal-overlay" onClick={onClose}>
@@ -259,80 +355,147 @@ function PartnerBookingModal({
               {tr("partner.done").replace("{number}", done)}
             </p>
           ) : (
+            <>
             <div className="dash-form-grid">
+              {/* 1) Παραλαβή και επιστροφή — ημερομηνία και ώρα μαζί, όπως στο προσωπικό. */}
+              <div className="dash-field--wide dash-when">
+                <label className="dash-field">
+                  {tr("partner.pickupDate")} *
+                  <input type="date" value={win.pickupDate} onChange={(e) => setW({ pickupDate: e.target.value })} data-testid="pb-pickup-date" />
+                </label>
+                <label className="dash-field">
+                  {tr("partner.pickupTime")} *
+                  <input type="time" value={win.pickupTime} onChange={(e) => setW({ pickupTime: e.target.value })} data-testid="pb-pickup-time" />
+                </label>
+                <label className="dash-field">
+                  {tr("partner.returnDate")} *
+                  <input type="date" value={win.returnDate} min={win.pickupDate} onChange={(e) => setW({ returnDate: e.target.value })} data-testid="pb-return-date" />
+                </label>
+                <label className="dash-field">
+                  {tr("partner.returnTime")} *
+                  <input type="time" value={win.returnTime} onChange={(e) => setW({ returnTime: e.target.value })} data-testid="pb-return-time" />
+                </label>
+              </div>
+              {!ok && <p className="dash-form-note dash-field--wide">{tr("partner.windowInvalid")}</p>}
+
+              {/* 2) Μόνο τα διαθέσιμα οχήματα για αυτό το διάστημα. */}
               <label className="dash-field dash-field--wide">
-                {tr("partner.vehicle")}
-                <select value={form.vehicleId} onChange={(e) => set({ vehicleId: e.target.value })}>
-                  {vehicles.map((v) => (
+                {tr("partner.vehicle")} *
+                <select
+                  value={vehicleId}
+                  onChange={(e) => {
+                    setVehicleId(e.target.value);
+                    setDroppedVehicle(false);
+                  }}
+                  disabled={!ok || !vehicles}
+                  data-testid="pb-vehicle"
+                >
+                  <option value="">
+                    {!ok ? tr("partner.chooseDatesFirst") : loadingVehicles && !vehicles ? tr("partner.loading") : tr("partner.chooseVehicle")}
+                  </option>
+                  {(vehicles ?? []).map((v) => (
                     <option key={v.id} value={v.id}>{v.label}</option>
                   ))}
                 </select>
+                {ok && vehicles && (
+                  <small className="dash-form-note" data-testid="pb-vehicle-count">
+                    {vehicles.length === 0 ? tr("partner.noAvailable") : tr("partner.availableCount").replace("{n}", String(vehicles.length))}
+                  </small>
+                )}
+                {droppedVehicle && (
+                  <small className="dash-form-error" role="status" data-testid="pb-vehicle-dropped">{tr("partner.vehicleDropped")}</small>
+                )}
+              </label>
+
+            </div>
+            {/* 3) Πρόσθετα και ασφάλεια — ίδια εμφάνιση με τη φόρμα του προσωπικού· τιμή από τον server. */}
+              {offeredExtras.length > 0 && (
+                <div className="dash-price-section">
+                  <h3 className="dash-price-heading">
+                    <PackagePlus size={15} /> {tr("partner.extras")}
+                  </h3>
+                  <div className="dash-pick-grid">
+                    {offeredExtras.map((e) => (
+                      <label key={e.id} className={`dash-pick ${extraIds.includes(e.id) ? "active" : ""}`}>
+                        <input type="checkbox" checked={extraIds.includes(e.id)} onChange={() => toggleExtra(e.id)} />
+                        <span className="dash-pick-name">{e.name}</span>
+                        <span className="dash-pick-price">
+                          {formatEuros(e.price, locale)}
+                          <small>{e.chargeType === "PER_DAY" ? tr("extras.perDay") : tr("extras.oneOff")}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {offeredInsurance.length > 0 && (
+                <div className="dash-price-section" data-testid="pb-insurance">
+                  <h3 className="dash-price-heading">
+                    <ShieldCheck size={15} /> {tr("partner.insurance")}
+                  </h3>
+                  <div className="dash-pick-grid">
+                    <label className={`dash-pick ${!insuranceId ? "active" : ""}`}>
+                      <input type="radio" name="pb-insurance" checked={!insuranceId} onChange={() => setInsuranceId("")} />
+                      <span className="dash-pick-name">{tr("partner.noInsurance")}</span>
+                      <span className="dash-pick-price">—</span>
+                    </label>
+                    {offeredInsurance.map((e) => (
+                      <label key={e.id} className={`dash-pick ${insuranceId === e.id ? "active" : ""}`}>
+                        <input type="radio" name="pb-insurance" checked={insuranceId === e.id} onChange={() => setInsuranceId(e.id)} />
+                        <span className="dash-pick-name">{e.name}</span>
+                        <span className="dash-pick-price">
+                          {formatEuros(e.price, locale)}
+                          <small>{e.chargeType === "PER_DAY" ? tr("extras.perDay") : tr("extras.oneOff")}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            <div className="dash-form-grid">
+              {/* Πελάτης — χωρίς λίστα πελατών της εταιρίας. */}
+              <label className="dash-field">
+                {tr("partner.firstName")} *
+                <input value={customer.firstName} onChange={(e) => setCustomer((c) => ({ ...c, firstName: e.target.value }))} autoComplete="off" data-testid="pb-first" />
               </label>
               <label className="dash-field">
-                {tr("partner.pickup")}
-                <input type="date" value={form.pickupDate} onChange={(e) => set({ pickupDate: e.target.value })} />
-              </label>
-              <label className="dash-field">
-                &nbsp;
-                <input type="time" value={form.pickupTime} onChange={(e) => set({ pickupTime: e.target.value })} aria-label={tr("partner.pickup")} />
-              </label>
-              <label className="dash-field">
-                {tr("partner.return")}
-                <input type="date" value={form.returnDate} min={form.pickupDate} onChange={(e) => set({ returnDate: e.target.value })} />
-              </label>
-              <label className="dash-field">
-                &nbsp;
-                <input type="time" value={form.returnTime} onChange={(e) => set({ returnTime: e.target.value })} aria-label={tr("partner.return")} />
-              </label>
-              <label className="dash-field">
-                {tr("partner.firstName")}
-                <input value={form.firstName} onChange={(e) => set({ firstName: e.target.value })} autoComplete="off" data-testid="pb-first" />
-              </label>
-              <label className="dash-field">
-                {tr("partner.lastName")}
-                <input value={form.lastName} onChange={(e) => set({ lastName: e.target.value })} autoComplete="off" data-testid="pb-last" />
+                {tr("partner.lastName")} *
+                <input value={customer.lastName} onChange={(e) => setCustomer((c) => ({ ...c, lastName: e.target.value }))} autoComplete="off" data-testid="pb-last" />
               </label>
               <label className="dash-field">
                 {tr("partner.phone")}
-                <input type="tel" value={form.phone} onChange={(e) => set({ phone: e.target.value })} autoComplete="off" />
+                <input type="tel" value={customer.phone} onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))} autoComplete="off" data-testid="pb-phone" />
               </label>
               <label className="dash-field">
                 {tr("partner.email")}
-                <input type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" />
+                <input type="email" value={customer.email} onChange={(e) => setCustomer((c) => ({ ...c, email: e.target.value }))} autoComplete="off" data-testid="pb-email" />
               </label>
               <label className="dash-field dash-field--wide">
                 {tr("partner.notes")}
-                <textarea rows={2} value={form.notes} onChange={(e) => set({ notes: e.target.value })} />
+                <textarea rows={2} value={customer.notes} onChange={(e) => setCustomer((c) => ({ ...c, notes: e.target.value }))} />
               </label>
             </div>
+            </>
           )}
-          {price && (
-            <dl className="dash-pb-price" data-testid="partner-booking-price">
+          {/* 4) Τιμή και προμήθεια — πάντα από τον server. */}
+          {(price || pricing) && (
+            <dl className="dash-pb-price" data-testid="partner-booking-price" aria-live="polite">
               <dt>{tr("partner.price")}</dt>
-              <dd data-testid="pb-total">{formatMoney(price.totalCents, locale)}</dd>
+              <dd data-testid="pb-total">{price ? formatMoney(price.totalCents, locale) : "…"}</dd>
               <dt>{tr("partner.yourCommission")}</dt>
-              <dd data-testid="pb-commission">{formatMoney(price.commissionCents, locale)}</dd>
+              <dd data-testid="pb-commission">{price ? formatMoney(price.commissionCents, locale) : "…"}</dd>
             </dl>
           )}
           {!done && <p className="dash-form-note">{tr("partner.priceNote")}</p>}
-          {error && <div className="dash-form-error" role="alert">{error}</div>}
+          {error && <div className="dash-form-error" role="alert" data-testid="pb-error">{error}</div>}
         </div>
         <div className="dash-modal-footer">
           <button className="dash-btn" onClick={onClose}>{tr("partner.cancel")}</button>
           {!done && (
-            <>
-              <button className="dash-btn" onClick={() => send(true)} disabled={busy} data-testid="pb-preview">
-                {tr("partner.checkPrice")}
-              </button>
-              <button
-                className="dash-btn dash-btn--primary"
-                onClick={() => send(false)}
-                disabled={busy || !price || !form.firstName.trim() || !form.lastName.trim()}
-                data-testid="pb-submit"
-              >
-                {busy ? tr("partner.submitting") : tr("partner.submit")}
-              </button>
-            </>
+            <button className="dash-btn dash-btn--primary" onClick={submit} disabled={!canSubmit} data-testid="pb-submit">
+              {busy ? tr("partner.submitting") : tr("partner.submit")}
+            </button>
           )}
         </div>
       </div>

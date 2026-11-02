@@ -7,14 +7,20 @@ export const dynamic = "force-dynamic";
 //   priceBooking → quote με τους ελέγχους ακεραιότητας) → writeBooking (ίδιο
 //   advisory lock + επανέλεγχος σύγκρουσης). Ο συνεργάτης ΔΕΝ ορίζει τιμή,
 //   έκπτωση, κατάσταση ή συνεργάτη: PENDING, στο όνομά του, χωρίς έκπτωση.
-// · Σύγκρουση → 409 με γενικό μήνυμα (κανένα στοιχείο άλλης κράτησης).
+// · Το όχημα πρέπει να είναι στα ΔΙΑΘΕΣΙΜΑ του διαστήματος (ίδια λογική με τη
+//   φόρμα του προσωπικού — loadPartnerVehicles/loadWalkInVehicles)· αλλιώς, ή
+//   αν το πήρε κάποιος στο μεταξύ → 409 code "vehicle_unavailable" με σαφές
+//   μήνυμα (κανένα στοιχείο άλλης κράτησης) και η φόρμα ξαναφορτώνει τη λίστα.
+// · Πρόσθετα/ασφάλεια όπως στη φόρμα του προσωπικού (ids· τιμή από τον server).
+// · Πελάτης: υπάρχων ΜΟΝΟ με ίδιο email/τηλέφωνο ΚΑΙ ίδιο ονοματεπώνυμο
+//   (matchPartnerCustomer), αλλιώς νέος· ο συνεργάτης δεν μαθαίνει ποιο ισχύει.
 // · Όριο κρατήσεων ανά συνεργάτη (rate limit). Μόνο ανάγνωση συνδρομής: 403
 //   από το withAuth όπως σε κάθε εγγραφή.
 // · { preview: true } = μόνο τιμή/διαθεσιμότητα, χωρίς εγγραφή.
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { badRequest, conflict, created, forbidden, logError, ok, serverError } from "@/lib/api";
+import { badRequest, created, forbidden, logError, ok, serverError } from "@/lib/api";
 import { NextResponse } from "next/server";
 import { withPermission } from "@/lib/authz";
 import { TIME_RE } from "@/lib/bookings";
@@ -26,7 +32,7 @@ import { NO_PRICE_MESSAGE } from "@/lib/public/engine";
 import { storedTotalCents } from "@/lib/public/money";
 import { hitLimit, LIMITS } from "@/lib/public/rateLimit";
 import { dbCounterStore } from "@/lib/public/rateLimitStore";
-import { isPartnerViewer } from "@/lib/partnerServer";
+import { isPartnerViewer, loadPartnerVehicles, matchPartnerCustomer } from "@/lib/partnerServer";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const text = (max: number) => z.string().trim().max(max);
@@ -41,6 +47,8 @@ const schema = z.object({
   returnLocation: z.union([text(200), z.null()]).optional(),
   driverBirthDate: z.union([isoDate, z.null()]).optional(),
   notes: z.union([text(1000), z.null()]).optional(),
+  /** Πρόσθετα ΚΑΙ ασφάλεια (ids του καταλόγου της εταιρίας· ο server τα ελέγχει/τιμολογεί). */
+  extraIds: z.array(z.string().min(1).max(64)).max(30).optional(),
   customer: z
     .object({
       firstName: text(80).min(1, "Απαιτείται όνομα"),
@@ -52,7 +60,11 @@ const schema = z.object({
   preview: z.boolean().optional(),
 });
 
-const PARTNER_CONFLICT_MESSAGE = "Το όχημα δεν είναι διαθέσιμο σε αυτό το διάστημα.";
+const UNAVAILABLE = {
+  message: "Το όχημα δεν είναι πια διαθέσιμο σε αυτό το διάστημα. Η λίστα ανανεώθηκε — διάλεξε άλλο όχημα.",
+  code: "vehicle_unavailable",
+} as const;
+const unavailable = () => NextResponse.json({ success: false, ...UNAVAILABLE }, { status: 409 });
 
 // POST /api/partner/bookings
 export const POST = withPermission(
@@ -63,6 +75,14 @@ export const POST = withPermission(
       if (!parsed.success) return badRequest("Μη έγκυρα δεδομένα", parsed.error.errors);
       const data = parsed.data;
       if (!data.preview && !data.customer) return badRequest("Απαιτούνται τα στοιχεία του πελάτη");
+      if (`${data.returnDate}T${data.returnTime}` <= `${data.pickupDate}T${data.pickupTime}`) {
+        return badRequest("Η επιστροφή πρέπει να είναι μετά την παραλαβή");
+      }
+
+      // Το όχημα ΠΡΕΠΕΙ να είναι στα διαθέσιμα του διαστήματος (ίδια λίστα με τη φόρμα):
+      // κατειλημμένο, σε service ή ανενεργό → 409, ακόμη και με απευθείας κλήση.
+      const free = await loadPartnerVehicles(viewer, data);
+      if (!free.some((v) => v.id === data.vehicleId)) return unavailable();
 
       // ΜΟΝΟ ό,τι επιτρέπεται: κανένα ποσό, έκπτωση, κατάσταση ή συνεργάτης από το body.
       // preview: true στο prepareBooking = η σύγκρουση ΔΕΝ επιστρέφει λεπτομέρειες
@@ -80,7 +100,7 @@ export const POST = withPermission(
           returnLocation: data.returnLocation ?? null,
           ...(data.driverBirthDate !== undefined && { driverBirthDate: data.driverBirthDate }),
           notes: data.notes ?? null,
-          extraIds: [],
+          extraIds: data.extraIds ?? [],
           discountMode: "NONE",
         },
         forceStatus: "PENDING",
@@ -89,7 +109,7 @@ export const POST = withPermission(
       });
       if (!prepared.ok) return prepared.response;
       const { plan, conflicts } = prepared;
-      if (conflicts.length > 0) return conflict(PARTNER_CONFLICT_MESSAGE);
+      if (conflicts.length > 0) return unavailable();
       if (!plan.autoPrice) return badRequest(NO_PRICE_MESSAGE.el);
       // Δεύτερη δικλείδα: η κράτηση είναι ΠΑΝΤΑ του ίδιου, χωρίς αποδοχή σύγκρουσης.
       if (plan.partnerId !== viewer.userId || plan.conflictsAccepted) return forbidden();
@@ -110,20 +130,25 @@ export const POST = withPermission(
       }
 
       const c = data.customer!;
+      // Ίδιος πελάτης (email/τηλέφωνο + ονοματεπώνυμο) → ο υπάρχων, χωρίς αλλαγή του.
+      const existingId = await matchPartnerCustomer(viewer.tenantId, c);
       const booking = await withBookingNumberRetry(() =>
         db.$transaction(async (tx) => {
-          // Νέος πελάτης ΜΟΝΟ με όσα έδωσε ο συνεργάτης (δεν βλέπει τη λίστα πελατών της εταιρίας).
-          const customer = await tx.customer.create({
-            data: {
-              tenantId: viewer.tenantId,
-              firstName: c.firstName,
-              lastName: c.lastName,
-              phone: c.phone || null,
-              email: c.email ? c.email.toLowerCase() : null,
-            },
-            select: { id: true },
-          });
-          return writeBooking(tx, plan, customer.id);
+          const customerId =
+            existingId ??
+            (
+              await tx.customer.create({
+                data: {
+                  tenantId: viewer.tenantId,
+                  firstName: c.firstName,
+                  lastName: c.lastName,
+                  phone: c.phone || null,
+                  email: c.email ? c.email.toLowerCase() : null,
+                },
+                select: { id: true },
+              })
+            ).id;
+          return writeBooking(tx, plan, customerId);
         })
       );
 
@@ -137,7 +162,7 @@ export const POST = withPermission(
         },
       });
     } catch (error) {
-      if (error instanceof BookingConflictError) return conflict(PARTNER_CONFLICT_MESSAGE);
+      if (error instanceof BookingConflictError) return unavailable();
       logError("partner/bookings", error);
       return serverError();
     }

@@ -15,6 +15,8 @@ import { loadBlockingBookings } from "./public/availability";
 import { tenantNowLocal } from "./bookingConflicts";
 import { monthRange, partnerFinance } from "./partnerFinance";
 import { availabilityGrid, dayList } from "./partnerAvailability";
+import { findDuplicateCustomers, loadWalkInVehicles } from "./walkIn";
+import { foldText } from "./customerMatch";
 
 /** Μόνο ενεργός συνεργάτης εταιρίας — κανένας άλλος ρόλος (ούτε ο Διαχειριστής). */
 export const isPartnerViewer = (viewer: Viewer | undefined | null): viewer is Viewer & { tenantId: string } =>
@@ -93,4 +95,46 @@ export async function loadPartnerAvailability(viewer: Viewer & { tenantId: strin
     instantMs: now.getTime(),
   });
   return { days: list, vehicles: rows };
+}
+
+/* ── Διαθέσιμα οχήματα για ΣΥΓΚΕΚΡΙΜΕΝΟ διάστημα (φόρμα κράτησης) ── */
+
+export interface PartnerWindow {
+  pickupDate: string;
+  pickupTime: string;
+  returnDate: string;
+  returnTime: string;
+}
+
+/**
+ * Τα ελεύθερα οχήματα για το [παραλαβή, επιστροφή] — η ΙΔΙΑ συνάρτηση με τη
+ * φόρμα του προσωπικού (loadWalkInVehicles: ίδιο ερώτημα, καταστάσεις, χρόνος
+ * προετοιμασίας, καθυστερήσεις). Τα μη διαθέσιμα ΔΕΝ επιστρέφονται· από κάθε
+ * όχημα μόνο id + ετικέτα (καμία κράτηση, κανένας πελάτης, καμία τιμή).
+ */
+export async function loadPartnerVehicles(viewer: Viewer & { tenantId: string }, window: PartnerWindow) {
+  const list = await loadWalkInVehicles(viewer.tenantId, window, false);
+  return list.filter((v) => v.available).map((v) => ({ id: v.id, label: `${v.brand} ${v.model} · ${v.plate}` }));
+}
+
+/* ── Πελάτης κράτησης συνεργάτη ── */
+
+const nameKey = (first: string, last: string) => foldText(`${first} ${last}`).replace(/\s+/g, " ").trim();
+
+/**
+ * Υπάρχων πελάτης με το ΙΔΙΟ email ή τηλέφωνο (ίδιος έλεγχος διπλότυπου με το
+ * προσωπικό — findDuplicateCustomers) ΚΑΙ το ίδιο ονοματεπώνυμο (χωρίς τόνους/
+ * κεφαλαία). Μόνο αν βρεθεί ΑΚΡΙΒΩΣ ένας· αλλιώς null → νέος πελάτης όπως πριν.
+ * Το αποτέλεσμα ΔΕΝ επιστρέφεται ποτέ στον συνεργάτη (ούτε ότι υπήρχε), και ο
+ * υπάρχων πελάτης δεν αλλάζει.
+ */
+export async function matchPartnerCustomer(
+  tenantId: string,
+  c: { firstName: string; lastName: string; phone?: string | null; email?: string | null }
+): Promise<string | null> {
+  if (!c.phone && !c.email) return null;
+  const candidates = await findDuplicateCustomers(tenantId, c.phone ?? "", c.email ?? "");
+  const want = nameKey(c.firstName, c.lastName);
+  const same = candidates.filter((x) => foldText(x.name).replace(/\s+/g, " ").trim() === want);
+  return same.length === 1 ? same[0].id : null;
 }

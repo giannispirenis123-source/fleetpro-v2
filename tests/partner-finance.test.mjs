@@ -172,24 +172,59 @@ test("διαθεσιμότητα: ελεύθερο/κατειλημμένο αν
 
 /* ── Κράτηση από συνεργάτη ── */
 
-test("κράτηση συνεργάτη: τιμή ΜΟΝΟ από τον server, PENDING, στο όνομά του, χωρίς έκπτωση, γενικό 409, rate limit", () => {
+test("κράτηση συνεργάτη: τιμή ΜΟΝΟ από τον server, PENDING, στο όνομά του, χωρίς έκπτωση, σαφές 409, rate limit", () => {
   const s = read("src/app/api/partner/bookings/route.ts");
-  // Το schema δεν δέχεται ποσά, έκπτωση, κατάσταση ή συνεργάτη.
-  const schema = s.slice(s.indexOf("const schema = z.object({"), s.indexOf("const PARTNER_CONFLICT_MESSAGE"));
-  assert.doesNotMatch(schema, /total|price|amount|discount|status|partnerId|override|extraIds/i);
-  assert.match(s, /extraIds: \[\],\s+discountMode: "NONE",\s+\},\s+forceStatus: "PENDING",\s+source: "partner",/);
+  // Το schema δεν δέχεται ποσά, έκπτωση, κατάσταση, συνεργάτη ή παράκαμψη (πρόσθετα/ασφάλεια ΜΟΝΟ ως ids).
+  const schema = s.slice(s.indexOf("const schema = z.object({"), s.indexOf("const UNAVAILABLE"));
+  assert.doesNotMatch(schema, /total|price|amount|discount|status|partnerId|override/i);
+  assert.match(schema, /extraIds: z\.array\(z\.string\(\)\.min\(1\)\.max\(64\)\)\.max\(30\)\.optional\(\),/);
+  assert.match(s, /extraIds: data\.extraIds \?\? \[\],\s+discountMode: "NONE",\s+\},\s+forceStatus: "PENDING",\s+source: "partner",/);
   assert.match(s, /if \(plan\.partnerId !== viewer\.userId \|\| plan\.conflictsAccepted\) return forbidden\(\);/);
-  assert.match(s, /if \(conflicts\.length > 0\) return conflict\(PARTNER_CONFLICT_MESSAGE\);/);
-  assert.match(s, /if \(error instanceof BookingConflictError\) return conflict\(PARTNER_CONFLICT_MESSAGE\);/);
+  // Μη διαθέσιμο όχημα (λίστα, σύγκρουση, ή το πήρε κάποιος μέσα στο κλείδωμα) → ίδιο σαφές 409.
+  assert.match(s, /if \(!free\.some\(\(v\) => v\.id === data\.vehicleId\)\) return unavailable\(\);/);
+  assert.match(s, /if \(conflicts\.length > 0\) return unavailable\(\);/);
+  assert.match(s, /if \(error instanceof BookingConflictError\) return unavailable\(\);/);
+  assert.match(s, /code: "vehicle_unavailable",/);
   assert.match(s, /hitLimit\(dbCounterStore, LIMITS\.partnerBookingPerUser, viewer\.userId\)/);
   // Ίδια εγγραφή με κάθε κράτηση (advisory lock + επανέλεγχος σύγκρουσης).
-  assert.match(s, /return writeBooking\(tx, plan, customer\.id\);/);
+  assert.match(s, /return writeBooking\(tx, plan, customerId\);/);
   assert.match(read("src/lib/bookingCreate.ts"), /SELECT pg_advisory_xact_lock\(hashtext\(\$\{lockKeyFor\(plan\.tenantId\)\}\)\)/);
-  // Ο συνεργάτης χρεώνεται ΠΑΝΤΑ τον εαυτό του (υπάρχων κανόνας).
   assert.match(read("src/lib/partners.ts"), /if \(viewer\.role === "PARTNER"\) \{\s+return \{ ok: true, partnerId: viewer\.userId \};/);
-  // Προμήθεια: η υπάρχουσα commissionFor με τις ρυθμίσεις του συνεργάτη.
   assert.match(s, /commissionFor\(\s+\{ subtotal: plan\.breakdown\.subtotal, extrasTotal: plan\.breakdown\.extrasTotal, insuranceCost: plan\.breakdown\.insuranceCost \},\s+settings\s+\)/);
-  // Μόνο ανάγνωση συνδρομής: το POST ΔΕΝ είναι στις εξαιρέσεις.
   const core = read("src/lib/billing/core.ts");
   assert.doesNotMatch(core.slice(core.indexOf("READ_ONLY_ALLOWED"), core.indexOf("export function readOnlyAllows")), /partner/);
+});
+
+test("διαθέσιμα οχήματα: ΙΔΙΑ λογική με το προσωπικό (loadWalkInVehicles), μόνο τα διαθέσιμα, μόνο id/ετικέτα", () => {
+  const srv = read("src/lib/partnerServer.ts");
+  assert.match(srv, /const list = await loadWalkInVehicles\(viewer\.tenantId, window, false\);/);
+  assert.match(srv, /return list\.filter\(\(v\) => v\.available\)\.map\(\(v\) => \(\{ id: v\.id, label: `\$\{v\.brand\} \$\{v\.model\} · \$\{v\.plate\}` \}\)\);/);
+  // Η λογική του προσωπικού: ίδιο ερώτημα δεσμεύσεων + blockedVehicleIds + εκτός λειτουργίας.
+  const walk = read("src/lib/walkIn.ts");
+  assert.match(walk, /loadBlockingBookings\(db, tenantId, \{ from, to \}, now\)/);
+  assert.match(walk, /status: \{ notIn: \["MAINTENANCE", "INACTIVE"\] \}/);
+  const route = read("src/app/api/partner/vehicles/route.ts");
+  assert.match(route, /export const GET = withPermission\(/);
+  assert.ok(route.trimEnd().endsWith('"partner.book"\n);'));
+  assert.match(route, /if \(!isPartnerViewer\(viewer\)\) return forbidden\("Μόνο για συνεργάτες"\);/);
+  // Η φόρμα: πρώτα διάστημα, μετά λίστα· αλλαγή διαστήματος → νέα λίστα και αφαίρεση άκυρης επιλογής.
+  const ui = read("src/app/(dashboard)/dashboard/partner/availability/PartnerAvailabilityClient.tsx");
+  assert.match(ui, /fetch\(`\/api\/partner\/vehicles\?\$\{params\}`/);
+  assert.match(ui, /\}, \[win, ok, reloadVehicles, done\]\);/);
+  assert.match(ui, /if \(current && !list\.some\(\(v\) => v\.id === current\)\) \{\s+setVehicleId\(""\);/);
+  assert.match(ui, /if \(j\.code === "vehicle_unavailable"\) setReloadVehicles\(\(n\) => n \+ 1\);/);
+  assert.match(ui, /disabled=\{!ok \|\| !vehicles\}/);
+});
+
+test("πελάτης: υπάρχων μόνο με ίδιο email/τηλέφωνο ΚΑΙ ίδιο ονοματεπώνυμο, χωρίς να το μαθαίνει ο συνεργάτης", () => {
+  const srv = read("src/lib/partnerServer.ts");
+  assert.match(srv, /const candidates = await findDuplicateCustomers\(tenantId, c\.phone \?\? "", c\.email \?\? ""\);/);
+  assert.match(srv, /return same\.length === 1 \? same\[0\]\.id : null;/);
+  const route = read("src/app/api/partner/bookings/route.ts");
+  assert.match(route, /const existingId = await matchPartnerCustomer\(viewer\.tenantId, c\);/);
+  // Η απάντηση δεν φανερώνει πελάτη: μόνο αριθμός/κατάσταση/ποσά της ΝΕΑΣ κράτησης.
+  const resp = route.slice(route.indexOf("return created({"), route.indexOf("} catch (error)"));
+  assert.doesNotMatch(resp, /customer|existing|matched/i);
+  // Ο υπάρχων πελάτης δεν αλλάζει (καμία ενημέρωση πελάτη στη ροή).
+  assert.doesNotMatch(route, /tx\.customer\.update/);
 });

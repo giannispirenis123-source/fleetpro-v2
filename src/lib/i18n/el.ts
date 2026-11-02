@@ -560,6 +560,9 @@ export const el = {
   },
 
   discounts: {
+    partnerMax: "Μέγιστη έκπτωση: {max} (η προμήθειά σου)",
+    partnerOverCommission: "Η έκπτωση δεν μπορεί να ξεπερνά την προμήθειά σου ({max}).",
+    partnerPercentOnly: "Ως συνεργάτης μπορείς να φτιάξεις μόνο κωδικούς με ποσοστό (%), έως {max}.",
     title: "Εκπτώσεις",
     subtitle: "Κωδικοί έκπτωσης της εταιρίας σου.",
     addDiscount: "Νέος κωδικός",

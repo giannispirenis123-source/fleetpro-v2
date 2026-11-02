@@ -1,11 +1,13 @@
 export const dynamic = "force-dynamic";
 // src/app/api/discounts/[id]/route.ts
 // Επεξεργασία και ήπια απενεργοποίηση κωδικού έκπτωσης.
-// Κάθε ερώτημα φιλτράρει ΚΑΙ με tenantId από το session.
+// Κάθε ερώτημα φιλτράρει με discountScope: tenantId από το session ΚΑΙ, για
+// συνεργάτη, μόνο οι δικοί του κωδικοί — κωδικός άλλου → 404 (ούτε ότι υπάρχει).
 
 import { db } from "@/lib/db";
 import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
+import { discountScope, partnerCommission, partnerDiscountProblem } from "@/lib/discountAccess";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import {
   discountFormSchema,
@@ -15,10 +17,10 @@ import {
 
 // PATCH /api/discounts/[id]
 export const PATCH = withPermission(
-  async (req, session, params) => {
+  async (req, session, params, viewer) => {
     try {
       const current = await db.discount.findFirst({
-        where: { id: params!.id, tenantId: session.tenantId! },
+        where: { id: params!.id, ...discountScope(viewer!) },
       });
       if (!current) return notFound("Ο κωδικός δεν βρέθηκε");
 
@@ -61,6 +63,12 @@ export const PATCH = withPermission(
         session.tenantId!
       );
       if (problem) return badRequest(problem);
+      // Συνεργάτης: ο ενεργός κωδικός του μένει ως την προμήθειά του (η
+      // απενεργοποίηση επιτρέπεται πάντα).
+      if (merged.isActive) {
+        const partnerProblem = partnerDiscountProblem(merged, await partnerCommission(viewer!));
+        if (partnerProblem) return badRequest(partnerProblem);
+      }
 
       // Αλλαγή κωδικού: πρέπει να μείνει μοναδικός μέσα στην εταιρία.
       const nextCode = merged.code.trim().toUpperCase();
@@ -101,10 +109,10 @@ export const PATCH = withPermission(
 // Ο κωδικός μένει στη βάση ώστε κρατήσεις που τον χρησιμοποίησαν να
 // κρατούν νόημα, και για να διατηρηθεί το ιστορικό χρήσεων.
 export const DELETE = withPermission(
-  async (_req, session, params) => {
+  async (_req, _session, params, viewer) => {
     try {
       const current = await db.discount.findFirst({
-        where: { id: params!.id, tenantId: session.tenantId! },
+        where: { id: params!.id, ...discountScope(viewer!) },
       });
       if (!current) return notFound("Ο κωδικός δεν βρέθηκε");
 

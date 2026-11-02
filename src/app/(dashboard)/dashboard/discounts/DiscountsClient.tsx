@@ -72,9 +72,12 @@ const formFromDiscount = (d: DiscountDTO): FormState => ({
 export default function DiscountsClient({
   initialDiscounts,
   customers,
+  partnerMaxPercent = null,
 }: {
   initialDiscounts: DiscountDTO[];
   customers: Option[];
+  /** Συνεργάτης: το μέγιστο ποσοστό έκπτωσης (= η προμήθειά του)· null = όχι συνεργάτης. */
+  partnerMaxPercent?: number | null;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -192,6 +195,7 @@ export default function DiscountsClient({
           mode="create"
           tr={tr}
           customers={customers}
+          partnerMaxPercent={partnerMaxPercent}
           onClose={() => setShowCreate(false)}
           onSaved={(d) => {
             upsert(d);
@@ -206,6 +210,7 @@ export default function DiscountsClient({
           discount={editing}
           tr={tr}
           customers={customers}
+          partnerMaxPercent={partnerMaxPercent}
           onClose={() => setEditing(null)}
           onSaved={(d) => {
             upsert(d);
@@ -327,6 +332,7 @@ function DiscountModal({
   discount,
   tr,
   customers,
+  partnerMaxPercent,
   onClose,
   onSaved,
 }: {
@@ -334,12 +340,16 @@ function DiscountModal({
   discount?: DiscountDTO;
   tr: (key: string) => string;
   customers: Option[];
+  partnerMaxPercent: number | null;
   onClose: () => void;
   onSaved: (d: DiscountDTO) => void;
 }) {
   const [form, setForm] = useState<FormState>(
     discount ? formFromDiscount(discount) : emptyForm()
   );
+  // Συνεργάτης: μόνο ποσοστό, μόνο για όλους, ως την προμήθειά του (ο server το επιβάλλει).
+  const isPartner = partnerMaxPercent !== null;
+  const maxLabel = isPartner ? `${String(partnerMaxPercent).replace(".", ",")}%` : "";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -358,6 +368,10 @@ function DiscountModal({
     }
     if (form.target === "CUSTOMER" && !form.targetValue) {
       setError(tr("discounts.errorCustomer"));
+      return;
+    }
+    if (isPartner && form.isActive && (form.type !== "PERCENTAGE" || value > partnerMaxPercent!)) {
+      setError(tr(form.type !== "PERCENTAGE" ? "discounts.partnerPercentOnly" : "discounts.partnerOverCommission").replace("{max}", maxLabel));
       return;
     }
 
@@ -444,7 +458,7 @@ function DiscountModal({
                 value={form.type}
                 onChange={(e) => set("type", e.target.value)}
               >
-                {DISCOUNT_TYPES.map((t) => (
+                {DISCOUNT_TYPES.filter((t) => !isPartner || t === "PERCENTAGE" || t === form.type).map((t) => (
                   <option key={t} value={t}>
                     {tr(`discounts.type${t}`)}
                   </option>
@@ -459,12 +473,18 @@ function DiscountModal({
               <input
                 type="number"
                 min={0}
-                max={form.type === "PERCENTAGE" ? 100 : undefined}
+                max={form.type === "PERCENTAGE" ? (isPartner ? partnerMaxPercent! : 100) : undefined}
                 step={form.type === "PERCENTAGE" ? 1 : 0.5}
                 inputMode="decimal"
                 value={form.value}
                 onChange={(e) => set("value", e.target.value)}
+                data-testid="discount-value"
               />
+              {isPartner && (
+                <small className="dash-form-note" data-testid="discount-max">
+                  {tr("discounts.partnerMax").replace("{max}", maxLabel)}
+                </small>
+              )}
             </label>
 
             <label className="dash-field">
@@ -497,6 +517,7 @@ function DiscountModal({
               />
             </label>
 
+            {!isPartner && (
             <label className="dash-field">
               {tr("discounts.target")}
               <select
@@ -510,6 +531,7 @@ function DiscountModal({
                 <option value="CUSTOMER">{tr("discounts.targetCustomer")}</option>
               </select>
             </label>
+            )}
 
             {form.target === "CUSTOMER" && (
               <label className="dash-field dash-field--wide">

@@ -559,6 +559,9 @@ export const en: Dictionary = {
   },
 
   discounts: {
+    partnerMax: "Maximum discount: {max} (your commission)",
+    partnerOverCommission: "The discount cannot exceed your commission ({max}).",
+    partnerPercentOnly: "As a partner you can only create percentage (%) codes, up to {max}.",
     title: "Discounts",
     subtitle: "Your company's discount codes.",
     addDiscount: "New code",

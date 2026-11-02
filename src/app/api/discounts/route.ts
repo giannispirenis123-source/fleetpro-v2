@@ -1,11 +1,13 @@
 export const dynamic = "force-dynamic";
 // src/app/api/discounts/route.ts
 // Κωδικοί έκπτωσης ανά tenant — λίστα και δημιουργία.
-// Κάθε ερώτημα φιλτράρει ΚΑΙ με tenantId από το session.
+// Κάθε ερώτημα φιλτράρει με discountScope: tenantId από το session ΚΑΙ, για
+// συνεργάτη, μόνο οι δικοί του κωδικοί (createdById, SQL 39).
 
 import { db } from "@/lib/db";
 import { ok, created, badRequest, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
+import { discountScope, partnerCommission, partnerDiscountProblem } from "@/lib/discountAccess";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import {
   discountFormSchema,
@@ -15,14 +17,14 @@ import {
 
 // GET /api/discounts
 export const GET = withPermission(
-  async (req, session) => {
+  async (req, _session, _params, viewer) => {
     try {
       const includeInactive =
         new URL(req.url).searchParams.get("includeInactive") === "true";
 
       const discounts = await db.discount.findMany({
         where: {
-          tenantId: session.tenantId!,
+          ...discountScope(viewer!),
           ...(includeInactive ? {} : { isActive: true }),
         },
         orderBy: { createdAt: "desc" },
@@ -39,7 +41,7 @@ export const GET = withPermission(
 
 // POST /api/discounts
 export const POST = withPermission(
-  async (req, session) => {
+  async (req, session, _params, viewer) => {
     try {
       const parsed = discountFormSchema.safeParse(await req.json());
       if (!parsed.success) {
@@ -49,6 +51,9 @@ export const POST = withPermission(
       const data = parsed.data;
       const problem = await validateDiscountShape(data, session.tenantId!);
       if (problem) return badRequest(problem);
+      // Συνεργάτης: έκπτωση ως την προμήθειά του, μόνο ποσοστό, μόνο για όλους.
+      const partnerProblem = partnerDiscountProblem(data, await partnerCommission(viewer!));
+      if (partnerProblem) return badRequest(partnerProblem);
 
       const code = data.code.trim().toUpperCase();
 
@@ -71,6 +76,8 @@ export const POST = withPermission(
           usageLimit: data.usageLimit ?? null,
           target: data.target,
           targetValue: data.target === "CUSTOMER" ? data.targetValue! : null,
+          // Ποιος τον δημιούργησε — πάντα από το session.
+          createdById: viewer!.userId,
         },
       });
 

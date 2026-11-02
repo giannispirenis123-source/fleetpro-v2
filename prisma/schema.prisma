@@ -354,6 +354,7 @@ model User {
   sessions                Session[]
   // Οι κρατήσεις που έφερε ως συνεργάτης.
   partnerBookings         Booking[]                @relation("PartnerBookings")
+  createdDiscounts        Discount[]               @relation("DiscountCreatedBy")
   // Οι κρατήσεις που καταχώρησε ο ίδιος, όποιος ρόλος κι αν είναι.
   createdBookings         Booking[]                @relation("CreatedBookings")
   emailVerificationTokens EmailVerificationToken[]
@@ -964,9 +965,15 @@ model Discount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Ποιος τον δημιούργησε (SQL 39). NULL = κωδικός της εταιρίας (και όλοι οι
+  // παλιοί). Ο συνεργάτης βλέπει/αλλάζει ΜΟΝΟ όσους έχουν createdById = ο ίδιος.
+  createdById String?
+  createdBy   User?   @relation("DiscountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
+  @@index([tenantId, createdById])
   @@map("discounts")
 }
 

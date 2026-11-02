@@ -2,14 +2,15 @@
 // Σταθερά κείμενα της ΔΗΜΟΣΙΑΣ σελίδας (/s/<slug>) — ΜΙΑ κεντρική δομή,
 // ξεχωριστή από τα λεξικά του dashboard (που είναι μόνο el/en ανά χρήστη).
 //
-// Νέα γλώσσα (π.χ. γαλλικά) = νέο λεξικό εδώ (Partial — ό,τι λείπει πέφτει
-// στα αγγλικά) + ο κωδικός της στο supportedLanguages της εταιρίας.
+// Νέα γλώσσα (π.χ. γαλλικά) = μία γραμμή στο src/lib/i18n/languages.ts (κωδικός
+// + όνομα) + νέο λεξικό εδώ (Partial — ό,τι λείπει πέφτει στα αγγλικά)· μετά η
+// εταιρία την ενεργοποιεί στο supportedLanguages της.
 // Καμία αλλαγή στη βάση: το περιεχόμενο της εταιρίας αποθηκεύεται ανά
 // κωδικό γλώσσας μέσα στο storefrontSettings (JSON).
 
 import { formatEuros } from "../public/money";
+import { LANGUAGE_CODES, languageName } from "../i18n/languages";
 const en = {
-  langName: "English",
   ourFleet: "Our fleet",
   noVehicles: "No vehicles are listed at the moment. Please contact us for availability.",
   fromPerDay: "from {price} / day",
@@ -36,6 +37,12 @@ const en = {
   bookingRequest: "Bookings are confirmed by the company.",
   poweredBy: "Powered by FleetPro",
   staffLogin: "Staff login",
+  /** Κουμπί στο header (προσωπικό της εταιρίας). */
+  /** Κουμπί του μενού «Είσοδος» και οι επιλογές του. */
+  headerAccount: "Login",
+  headerLogin: "Sign in",
+  headerDashboard: "Dashboard",
+  headerLoginTitle: "Sign in for company staff (opens in a new tab)",
   notFoundTitle: "Page not found",
   // ── Αρχική / αναζήτηση (PR 2) ──
   heroTitle: "Car rental · {name}",
@@ -264,7 +271,6 @@ const en = {
 export type StorefrontDictionary = typeof en;
 
 const el: Partial<StorefrontDictionary> = {
-  langName: "Ελληνικά",
   ourFleet: "Ο στόλος μας",
   noVehicles: "Δεν υπάρχουν διαθέσιμα οχήματα αυτή τη στιγμή. Επικοινωνήστε μαζί μας.",
   fromPerDay: "από {price} / ημέρα",
@@ -291,6 +297,10 @@ const el: Partial<StorefrontDictionary> = {
   bookingRequest: "Οι κρατήσεις επιβεβαιώνονται από την εταιρία.",
   poweredBy: "Με την τεχνολογία του FleetPro",
   staffLogin: "Είσοδος προσωπικού",
+  headerAccount: "Είσοδος",
+  headerLogin: "Σύνδεση",
+  headerDashboard: "Dashboard",
+  headerLoginTitle: "Σύνδεση για το προσωπικό της εταιρίας (ανοίγει σε νέα καρτέλα)",
   notFoundTitle: "Η σελίδα δεν βρέθηκε",
   heroTitle: "Ενοικίαση οχημάτων · {name}",
   searchTitle: "Βρείτε το όχημά σας",
@@ -511,8 +521,14 @@ const el: Partial<StorefrontDictionary> = {
 
 const DICTIONARIES: Record<string, Partial<StorefrontDictionary>> = { el, en };
 
-/** Οι γλώσσες για τις οποίες ΥΠΑΡΧΕΙ λεξικό — μόνο αυτές επιτρέπονται στο site. */
-export const STOREFRONT_LANGUAGES: readonly string[] = Object.keys(DICTIONARIES);
+/**
+ * Οι γλώσσες του site: του κεντρικού πίνακα (i18n/languages.ts), με τη σειρά
+ * του, ΜΟΝΟ όσες έχουν λεξικό εδώ.
+ */
+export const STOREFRONT_LANGUAGES: readonly string[] = LANGUAGE_CODES.filter((code) => code in DICTIONARIES);
+
+/** Το όνομα μιας γλώσσας στη δική της γλώσσα — από το κεντρικό σημείο. */
+export { languageName };
 
 export const isStorefrontLanguage = (code: unknown): code is string =>
   typeof code === "string" && STOREFRONT_LANGUAGES.includes(code);

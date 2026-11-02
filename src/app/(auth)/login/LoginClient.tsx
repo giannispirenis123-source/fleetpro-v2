@@ -20,7 +20,17 @@ const DEMO_ACCOUNTS = [
   { role: "Staff", email: "staff@prentals.gr" },
 ] as const;
 
-export default function LoginClient({ signupEnabled }: { signupEnabled: boolean }) {
+export default function LoginClient({
+  signupEnabled,
+  callbackUrl = null,
+  initialLocale = DEFAULT_LOCALE,
+}: {
+  signupEnabled: boolean;
+  /** Από το ?callbackUrl= — ο SERVER αποφασίζει αν είναι ασφαλές (loginRedirectFor). */
+  callbackUrl?: string | null;
+  /** Από το ?lang= (π.χ. από το αγγλικό site μιας εταιρίας). */
+  initialLocale?: Locale;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,7 +41,7 @@ export default function LoginClient({ signupEnabled }: { signupEnabled: boolean 
 
   // Στη σελίδα σύνδεσης δεν υπάρχει ακόμη χρήστης, άρα η γλώσσα είναι
   // απλή τοπική επιλογή της φόρμας — δεν αποθηκεύεται πουθενά.
-  const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
+  const [locale, setLocale] = useState<Locale>(initialLocale);
   const tr = (key: string) => t(key, locale);
 
   const handleLogin = async () => {
@@ -48,7 +58,7 @@ export default function LoginClient({ signupEnabled }: { signupEnabled: boolean 
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(callbackUrl ? { email, password, callbackUrl } : { email, password }),
       });
 
       const data = await res.json();

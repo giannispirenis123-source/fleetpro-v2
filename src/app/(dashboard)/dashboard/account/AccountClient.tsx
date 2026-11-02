@@ -4,8 +4,9 @@
 
 import { LogOut } from "lucide-react";
 import { useT } from "@/lib/i18n/I18nProvider";
-import { LOCALES } from "@/lib/i18n/locale";
-import { LOCALE_SHORT, ROLE_LABEL_KEY, initialsOf, useAccountActions } from "@/components/account/useAccountActions";
+import { LOCALES, isLocale } from "@/lib/i18n/locale";
+import LanguageMenu from "@/components/menu/LanguageMenu";
+import { ROLE_LABEL_KEY, initialsOf, useAccountActions } from "@/components/account/useAccountActions";
 
 export default function AccountClient({
   name,
@@ -48,19 +49,16 @@ export default function AccountClient({
         </div>
 
         <h2 className="dash-section-title">{tr("common.language")}</h2>
-        <div className="dash-lang dash-lang--page" role="group" aria-label={tr("common.language")}>
-          {LOCALES.map((code) => (
-            <button
-              key={code}
-              type="button"
-              className={`dash-lang-btn ${locale === code ? "active" : ""}`}
-              onClick={() => changeLocale(code)}
-              disabled={savingLocale}
-              aria-pressed={locale === code}
-            >
-              {LOCALE_SHORT[code]} · {tr(code === "el" ? "common.greek" : "common.english")}
-            </button>
-          ))}
+        <div className="dash-account-page-lang">
+          <LanguageMenu
+            current={locale}
+            codes={LOCALES}
+            buttonLabel={tr("common.language")}
+            onSelect={(code) => isLocale(code) && changeLocale(code)}
+            disabled={savingLocale}
+            align="start"
+            testId="account-page-lang"
+          />
         </div>
 
         <button type="button" className="dash-btn dash-btn--danger dash-account-page-logout" onClick={logout}>

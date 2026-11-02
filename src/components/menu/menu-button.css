@@ -1,0 +1,45 @@
+/* src/components/menu/menu-button.css
+   Κουμπί με ανοιγόμενο μενού — ΟΥΔΕΤΕΡΑ χρώματα (δεν παίρνει το χρώμα της
+   εταιρίας). Οι σελίδες μπορούν να δώσουν --menu-* από τις δικές τους μεταβλητές. */
+
+.menu-btn-wrap { position: relative; display: inline-block; }
+
+.menu-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; min-height: 34px;
+  font: inherit; font-size: 13px; font-weight: 600; line-height: 1.2;
+  color: var(--menu-text, #334155);
+  background: var(--menu-bg, #fff);
+  border: 1px solid var(--menu-border, #d1d5db);
+  border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.menu-btn:hover { border-color: var(--menu-border-strong, #94a3b8); }
+.menu-btn:focus-visible, .menu-item:focus-visible { outline: 2px solid var(--menu-focus, #2563eb); outline-offset: 2px; }
+.menu-btn[aria-expanded="true"] { border-color: var(--menu-border-strong, #94a3b8); }
+.menu-btn-caret { flex-shrink: 0; color: var(--menu-muted, #64748b); transition: transform 0.15s; }
+.menu-btn[aria-expanded="true"] .menu-btn-caret { transform: rotate(180deg); }
+
+.menu-pop {
+  position: absolute; top: calc(100% + 6px); z-index: 60;
+  min-width: 160px; max-width: min(260px, calc(100vw - 24px));
+  padding: 4px;
+  background: var(--menu-bg, #fff);
+  border: 1px solid var(--menu-border, #d1d5db);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+}
+.menu-pop--end { right: 0; }
+.menu-pop--start { left: 0; }
+
+.menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: 7px;
+  font: inherit; font-size: 14px; text-align: left; text-decoration: none;
+  color: var(--menu-text, #334155); background: none; cursor: pointer;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--menu-hover, #f1f5f9); }
+.menu-item[aria-disabled="true"] { opacity: 0.55; cursor: default; }
+.menu-item.is-checked { font-weight: 700; }
+.menu-item-check { width: 14px; flex-shrink: 0; text-align: center; color: var(--menu-text, #334155); }
+.menu-item-check:empty { display: none; }
+.menu-item[role="menuitemradio"] .menu-item-check:empty { display: inline-block; }

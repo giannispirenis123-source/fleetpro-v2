@@ -3,7 +3,7 @@ import { pageGuard } from "@/lib/authz";
 import { getSession } from "@/lib/auth";
 import { t } from "@/lib/i18n";
 import { loadStorefrontAdmin, storefrontAccess } from "@/lib/storefront/admin";
-import { STOREFRONT_LANGUAGES, storefrontDictionary } from "@/lib/storefront/i18n";
+import { STOREFRONT_LANGUAGES, languageName } from "@/lib/storefront/i18n";
 import { Suspense } from "react";
 import StorefrontClient from "./StorefrontClient";
 import StorefrontTabs from "./StorefrontTabs";
@@ -48,7 +48,7 @@ export default async function StorefrontAdminPage() {
               initial={initial}
               languages={STOREFRONT_LANGUAGES.map((code) => ({
                 code,
-                name: storefrontDictionary(code).langName,
+                name: languageName(code),
               }))}
             />
           }

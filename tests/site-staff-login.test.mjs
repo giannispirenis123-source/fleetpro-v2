@@ -112,14 +112,17 @@ test("σελίδα σύνδεσης: ίδιο flow· ήδη συνδεδεμέν
   assert.doesNotMatch(read("package.json"), /next-auth/);
 });
 
-test("header του site: «Σύνδεση / Login» ή «Dashboard», σε νέα καρτέλα, ΕΛ/EN", () => {
+test("header του site: μενού «Είσοδος/Login» → «Σύνδεση/Sign in» ή «Dashboard», σε νέα καρτέλα, ΕΛ/EN", () => {
+  assert.equal(storefrontDictionary("el").headerAccount, "Είσοδος");
+  assert.equal(storefrontDictionary("en").headerAccount, "Login");
   assert.equal(storefrontDictionary("el").headerLogin, "Σύνδεση");
-  assert.equal(storefrontDictionary("en").headerLogin, "Login");
+  assert.equal(storefrontDictionary("en").headerLogin, "Sign in");
   assert.equal(storefrontDictionary("el").headerDashboard, "Dashboard");
   assert.equal(storefrontDictionary("en").headerDashboard, "Dashboard");
   const views = read("src/components/storefront/StorefrontViews.tsx");
-  assert.match(views, /<HeaderStaffLink \{\.\.\.ctx\} \/>/);
-  assert.match(views, /target="_blank"\s+rel="noopener nofollow"/);
+  assert.match(views, /<HeaderStaffMenu \{\.\.\.ctx\} \/>/);
+  assert.match(views, /target: "_blank",\s+rel: "noopener nofollow",/);
+  assert.match(views, /label: session \? d\.headerDashboard : d\.headerLogin,/);
   // Στο domain εταιρίας ΔΕΝ διαβάζεται cookie (δεν περνά εκεί) → πάντα «Σύνδεση».
   assert.match(views, /const session = onDomain \? null : await getSession\(\);/);
 });

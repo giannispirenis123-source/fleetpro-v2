@@ -51,10 +51,12 @@ for (const [label, email] of ROLES) {
       const pop = page.locator(".dash-account--topbar .dash-account-pop");
       assert.ok(await inViewport(page, pop), "το μενού χωράει στην οθόνη");
       assert.match(await pop.innerText(), new RegExp(email.replace(/[.+]/g, "\\$&")));
-      // Γλώσσα → EN και πίσω → ΕΛ (ίδιος μηχανισμός αποθήκευσης)
-      await pop.getByRole("button", { name: "EN" }).click();
+      // Γλώσσα (κουτί με μενού) → English και πίσω → Ελληνικά (ίδιος μηχανισμός αποθήκευσης)
+      await page.getByTestId("account-lang-topbar").click();
+      await page.getByTestId("account-lang-topbar-en").click();
       await page.getByRole("menuitem", { name: "My account" }).waitFor();
-      await page.getByRole("button", { name: "ΕΛ", pressed: false }).click();
+      await page.getByTestId("account-lang-topbar").click();
+      await page.getByTestId("account-lang-topbar-el").click();
       await page.getByRole("menuitem", { name: "Ο λογαριασμός μου" }).click();
       await page.waitForURL(/\/dashboard\/account/);
       await page.getByTestId("account-page").waitFor();
@@ -107,12 +109,13 @@ for (const width of [360, 390, 430]) {
     // Γλώσσα: EN → αποθηκεύεται στον χρήστη (νέο token) → ΕΛ
     const [res] = await Promise.all([
       page.waitForResponse((r) => r.url().endsWith("/api/users/me/locale")),
-      pop.getByRole("button", { name: "EN" }).click(),
+      page.getByTestId("account-lang-topbar").click().then(() => page.getByTestId("account-lang-topbar-en").click()),
     ]);
     assert.equal(res.status(), 200);
-    await page.getByRole("button", { name: "EN", pressed: true }).waitFor();
-    await page.getByRole("button", { name: "ΕΛ", pressed: false }).click();
-    await page.getByRole("button", { name: "ΕΛ", pressed: true }).waitFor();
+    await page.getByTestId("account-lang-topbar").filter({ hasText: "Language" }).waitFor();
+    await page.getByTestId("account-lang-topbar").click();
+    await page.getByTestId("account-lang-topbar-el").click();
+    await page.getByTestId("account-lang-topbar").filter({ hasText: "Γλώσσα" }).waitFor();
     // Αποσύνδεση
     await page.getByRole("menuitem", { name: "Αποσύνδεση" }).click();
     await page.waitForURL(/\/login/);

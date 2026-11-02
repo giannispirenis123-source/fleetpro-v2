@@ -42,13 +42,22 @@
   display: grid; place-items: center; font-weight: 700; color: #fff; background: var(--sf-brand);
 }
 .sf-brand-name { font-weight: 700; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sf-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.sf-langs { display: flex; border: 1px solid var(--sf-border); border-radius: 8px; overflow: hidden; }
-/* «Σύνδεση / Dashboard» προσωπικού: διακριτικό, ουδέτερο (όχι το χρώμα της εταιρίας). */
-.sf-header-login { padding: 7px 10px; font-size: 13px; font-weight: 600; color: var(--sf-text-2); text-decoration: none; border: 1px solid var(--sf-border); border-radius: 8px; white-space: nowrap; }
-.sf-header-login:hover, .sf-header-login:focus-visible { color: var(--sf-text); border-color: var(--sf-text-2); }
-.sf-lang { padding: 7px 10px; font-size: 13px; font-weight: 600; text-decoration: none; color: var(--sf-text-2); min-width: 40px; text-align: center; }
-.sf-lang.is-active { background: var(--sf-brand); color: #fff; }
+.sf-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* «Είσοδος» και «Γλώσσα»: κοινό MenuButton (components/menu) με ΟΥΔΕΤΕΡΑ χρώματα
+   — όχι το χρώμα της εταιρίας. */
+.sf {
+  --menu-text: var(--sf-text-2);
+  --menu-border: var(--sf-border);
+  --menu-border-strong: #94a3b8;
+  --menu-bg: #fff;
+  --menu-hover: var(--sf-bg-2);
+  --menu-muted: #64748b;
+}
+.sf-menu .menu-btn { min-height: 36px; }
+@media (max-width: 380px) {
+  .sf-header-actions { gap: 6px; }
+  .sf-menu .menu-btn { padding: 6px 8px; gap: 4px; }
+}
 
 /* ── Κουμπιά ── */
 .sf-btn {

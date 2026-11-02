@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getEntitlements } from "@/lib/entitlements";
 import { readLocalized } from "@/lib/public/text";
 import { loadOnboarding } from "@/lib/signup/onboardingServer";
-import { STOREFRONT_LANGUAGES, storefrontDictionary } from "@/lib/storefront/i18n";
+import { STOREFRONT_LANGUAGES, languageName } from "@/lib/storefront/i18n";
 import OnboardingClient from "./OnboardingClient";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ export default async function OnboardingPage() {
   return (
     <OnboardingClient
       initial={initial}
-      languages={STOREFRONT_LANGUAGES.map((code) => ({ code, name: storefrontDictionary(code).langName }))}
+      languages={STOREFRONT_LANGUAGES.map((code) => ({ code, name: languageName(code) }))}
       publicSite={entitlements.modules.publicSite}
       groups={groups.map((g) => ({
         id: g.id,

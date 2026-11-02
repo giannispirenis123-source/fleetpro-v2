@@ -10,8 +10,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, CreditCard, LogOut, MessageSquare, UserRound } from "lucide-react";
 import { useT } from "@/lib/i18n/I18nProvider";
-import { LOCALES } from "@/lib/i18n/locale";
-import { LOCALE_SHORT, ROLE_LABEL_KEY, initialsOf, useAccountActions } from "./useAccountActions";
+import { LOCALES, isLocale } from "@/lib/i18n/locale";
+import LanguageMenu from "@/components/menu/LanguageMenu";
+import { ROLE_LABEL_KEY, initialsOf, useAccountActions } from "./useAccountActions";
 import "./account-menu.css";
 
 export default function AccountMenu({
@@ -46,7 +47,8 @@ export default function AccountMenu({
     const onDown = (e: MouseEvent | TouchEvent) => {
       if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    // Escape που το έκλεισε ήδη εσωτερικό μενού (π.χ. «Γλώσσα» — preventDefault) δεν κλείνει αυτό.
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && setOpen(false);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("touchstart", onDown);
     document.addEventListener("keydown", onKey);
@@ -115,21 +117,18 @@ export default function AccountMenu({
               </Link>
             );
           })}
-          <div className="dash-lang" role="group" aria-label={tr("common.language")}>
-            {LOCALES.map((code) => (
-              <button
-                key={code}
-                type="button"
-                className={`dash-lang-btn ${locale === code ? "active" : ""}`}
-                onClick={() => changeLocale(code)}
-                disabled={savingLocale}
-                aria-pressed={locale === code}
-                title={tr(code === "el" ? "common.greek" : "common.english")}
-              >
-                {LOCALE_SHORT[code]}
-              </button>
-            ))}
-          </div>
+          {/* Γλώσσα: το ΚΟΙΝΟ κουτί (components/menu), γλώσσες από το κεντρικό σημείο·
+              αποθήκευση με τον υπάρχοντα μηχανισμό (PATCH /api/users/me/locale). */}
+          <LanguageMenu
+            current={locale}
+            codes={LOCALES}
+            buttonLabel={tr("common.language")}
+            onSelect={(code) => isLocale(code) && changeLocale(code)}
+            disabled={savingLocale}
+            align="start"
+            className="dash-account-lang"
+            testId={`account-lang-${variant}`}
+          />
           <button type="button" className="dash-account-item dash-account-logout" role="menuitem" onClick={logout}>
             <LogOut size={16} /> {tr("common.logout")}
           </button>

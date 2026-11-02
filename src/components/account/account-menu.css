@@ -2,6 +2,23 @@
    Μενού λογαριασμού — κοινό για dashboard εταιρίας και Super Admin.
    Χρησιμοποιεί τις μεταβλητές του globals.css. */
 
+/* ---------- «Γλώσσα» (κοινό MenuButton) με τα χρώματα του dashboard ---------- */
+.dash-account, .dash-account-page-lang {
+  --menu-text: var(--text);
+  --menu-muted: var(--text-4);
+  --menu-border: var(--border);
+  --menu-border-strong: var(--hover-2);
+  --menu-bg: var(--surface);
+  --menu-hover: var(--hover);
+  --menu-focus: var(--primary);
+}
+/* Μέσα στο μενού λογαριασμού: όλο το πλάτος, οι γλώσσες ανοίγουν ΜΕΣΑ στο μενού
+   (όχι δεύτερο αιωρούμενο παράθυρο που θα έβγαινε από την οθόνη). */
+.dash-account-lang { display: block; margin: 4px 0; }
+.dash-account-lang .menu-btn { width: 100%; justify-content: space-between; }
+.dash-account-lang .menu-pop { position: static; margin-top: 4px; max-width: none; box-shadow: none; }
+.dash-account-page-lang { margin: 8px 0 20px; }
+
 /* ---------- Language toggle (μέσα στο μενού λογαριασμού / «Ο λογαριασμός μου») ---------- */
 .dash-lang {
   display: flex;

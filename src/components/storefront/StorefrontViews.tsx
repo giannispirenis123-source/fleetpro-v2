@@ -7,6 +7,8 @@
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { roleHome } from "@/lib/loginRedirect";
+import MenuButton from "@/components/menu/MenuButton";
+import LanguageMenu from "@/components/menu/LanguageMenu";
 import type { PublicCompany, PublicVehicle } from "@/lib/storefront/publicData";
 import { pickText } from "@/lib/storefront/settings";
 import { sitePath } from "@/lib/storefront/slug";
@@ -70,30 +72,37 @@ export function contactOf(company: PublicCompany) {
    ───────────────────────────────────────────── */
 
 /**
- * «Σύνδεση / Dashboard» για το προσωπικό: ΙΔΙΟ login της πλατφόρμας (cookie
+ * «Είσοδος» (μενού) για το προσωπικό: ΙΔΙΟ login της πλατφόρμας (cookie
  * fleetpro_token), σε ΝΕΑ καρτέλα — ο πελάτης δεν χάνει την κράτησή του.
- * · /s/<slug>/… (host της πλατφόρμας): το cookie φαίνεται → «Dashboard» προς
- *   την περιοχή του ρόλου (η εταιρία ΜΟΝΟ από το session, ποτέ από το site).
+ * · /s/<slug>/… (host της πλατφόρμας): το cookie φαίνεται → επιλογή «Dashboard»
+ *   προς την περιοχή του ρόλου (η εταιρία ΜΟΝΟ από το session, ποτέ από το site).
  * · Domain εταιρίας: το cookie ΔΕΝ περνά εκεί (host-only, σκόπιμα) → πάντα
  *   «Σύνδεση» προς το login της πλατφόρμας, που στέλνει τον ήδη συνδεδεμένο
  *   κατευθείαν στο dashboard του.
  */
-async function HeaderStaffLink({ company, lang, d }: Ctx) {
+async function HeaderStaffMenu({ company, lang, d }: Ctx) {
   if (!company.loginUrl) return null;
   const onDomain = company.basePath === "";
   const session = onDomain ? null : await getSession();
   const href = session ? roleHome(session.role) : `${company.loginUrl}?lang=${lang === "el" ? "el" : "en"}`;
   return (
-    <a
-      href={href}
-      className="sf-header-login"
-      target="_blank"
-      rel="noopener nofollow"
-      title={d.headerLoginTitle}
-      data-testid="site-staff-link"
-    >
-      {session ? d.headerDashboard : d.headerLogin}
-    </a>
+    <MenuButton
+      label={d.headerAccount}
+      align="end"
+      className="sf-menu sf-menu--account"
+      testId="site-staff-menu"
+      items={[
+        {
+          key: session ? "dashboard" : "login",
+          label: session ? d.headerDashboard : d.headerLogin,
+          href,
+          target: "_blank",
+          rel: "noopener nofollow",
+          title: d.headerLoginTitle,
+          testId: "site-staff-link",
+        },
+      ]}
+    />
   );
 }
 
@@ -139,28 +148,21 @@ function Shell({
             <span className="sf-brand-name">{company.name}</span>
           </Link>
           <div className="sf-header-actions">
-            {supportedLanguages.length > 1 && (
-              <nav className="sf-langs" aria-label={d.language}>
-                {supportedLanguages.map((code) => (
-                  <a
-                    key={code}
-                    href={langHref(code)}
-                    className={code === lang ? "sf-lang is-active" : "sf-lang"}
-                    hrefLang={code}
-                    lang={code}
-                    aria-current={code === lang ? "true" : undefined}
-                    title={storefrontDictionary(code).langName}
-                  >
-                    {code.toUpperCase()}
-                  </a>
-                ))}
-              </nav>
-            )}
-            <HeaderStaffLink {...ctx} />
             {contact.phone && (
               <a href={telHref(contact.phone)} className="sf-btn sf-btn--primary sf-btn--sm sf-header-call">
                 {d.call}
               </a>
+            )}
+            <HeaderStaffMenu {...ctx} />
+            {supportedLanguages.length > 1 && (
+              <LanguageMenu
+                current={lang}
+                codes={supportedLanguages}
+                buttonLabel={d.language}
+                hrefs={Object.fromEntries(supportedLanguages.map((code) => [code, langHref(code)]))}
+                className="sf-menu sf-menu--lang"
+                testId="site-lang-menu"
+              />
             )}
           </div>
         </div>

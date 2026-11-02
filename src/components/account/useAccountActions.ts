@@ -38,7 +38,6 @@ export function useAccountActions() {
   return { locale, changeLocale, savingLocale, logout };
 }
 
-export const LOCALE_SHORT: Record<Locale, string> = { el: "ΕΛ", en: "EN" };
 
 export const ROLE_LABEL_KEY: Record<string, string> = {
   COMPANY_ADMIN: "sidebar.roleCompanyAdmin",

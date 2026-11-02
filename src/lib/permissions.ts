@@ -24,6 +24,10 @@ export interface PermissionGroup {
   en: string;
   /** Όλη η ενότητα είναι μελλοντική. */
   future?: boolean;
+  /** Η ενότητα αφορά ΜΟΝΟ αυτούς τους ρόλους (φαίνεται μόνο σε αυτούς). */
+  onlyFor?: string[];
+  /** Η ενότητα ΔΕΝ δίνεται ποτέ σε συνεργάτη (κρύβεται και δεν ισχύει — βλ. can()). */
+  notForPartner?: boolean;
   items: PermissionDef[];
 }
 
@@ -125,6 +129,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     id: "settings",
+    notForPartner: true,
     el: "Ρυθμίσεις",
     en: "Settings",
     items: [
@@ -134,6 +139,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     id: "users",
+    notForPartner: true,
     el: "Χρήστες",
     en: "Users",
     items: [
@@ -167,6 +173,16 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    id: "partner",
+    el: "Συνεργάτης",
+    en: "Partner",
+    onlyFor: ["PARTNER"],
+    items: [
+      { key: "partner.availability", el: "Μπορεί να βλέπει διαθεσιμότητα", en: "Can view availability" },
+      { key: "partner.book", el: "Μπορεί να κάνει κράτηση", en: "Can make bookings" },
+    ],
+  },
+  {
     id: "commission",
     el: "Προμήθεια",
     en: "Commission",
@@ -180,6 +196,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     id: "finance",
+    notForPartner: true,
     el: "Οικονομικά",
     en: "Finance",
     items: [
@@ -212,6 +229,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     id: "reports",
+    notForPartner: true,
     el: "Αναφορές",
     en: "Reports",
     items: [
@@ -258,13 +276,60 @@ export function roleHasAll(role: string): boolean {
   return role === "COMPANY_ADMIN" || role === "SUPER_ADMIN";
 }
 
+/** Κλειδιά που ο συνεργάτης ΔΕΝ έχει ποτέ (οικονομικά/ρυθμίσεις/χρήστες/αναφορές εταιρίας). */
+export const PARTNER_NEVER: ReadonlySet<PermissionKey> = new Set(
+  PERMISSION_GROUPS.filter((g) => g.notForPartner).flatMap((g) => g.items.map((i) => i.key))
+);
+
 export function can(
   role: string,
   permissions: PermissionMap | null | undefined,
   key: PermissionKey
 ): boolean {
   if (roleHasAll(role)) return true;
+  // Ό,τι κι αν γράφει το JSON (π.χ. παλιά χειροκίνητη ανάθεση), ο συνεργάτης
+  // δεν βλέπει ποτέ οικονομικά, ρυθμίσεις, χρήστες ή αναφορές της εταιρίας.
+  if (role === "PARTNER" && PARTNER_NEVER.has(key)) return false;
   return permissions?.[key] === true;
+}
+
+/**
+ * Δικαιώματα που προϋποθέτουν άλλα: «κράτηση» χωρίς «διαθεσιμότητα» δεν έχει
+ * νόημα, οπότε το πρώτο φέρνει πάντα και το δεύτερο. Εφαρμόζεται σε ΚΑΘΕ
+ * αποθήκευση/ανάγνωση (permissionsFromKeys, normalizePermissions) και στο UI.
+ */
+export const PERMISSION_IMPLIES: Readonly<Record<PermissionKey, PermissionKey[]>> = {
+  "partner.book": ["partner.availability"],
+};
+
+function withImplied(map: PermissionMap): PermissionMap {
+  for (const [key, needs] of Object.entries(PERMISSION_IMPLIES)) {
+    if (map[key]) for (const n of needs) map[n] = true;
+  }
+  return map;
+}
+
+/**
+ * Checkbox στο UI: ενεργοποίηση φέρνει ό,τι προϋποθέτει· απενεργοποίηση
+ * αφαιρεί ό,τι εξαρτάται από αυτό (π.χ. χωρίς διαθεσιμότητα → χωρίς κράτηση).
+ */
+export function togglePermission(map: PermissionMap, key: PermissionKey, on: boolean): PermissionMap {
+  const next = { ...map };
+  if (on) {
+    next[key] = true;
+    withImplied(next);
+  } else {
+    delete next[key];
+    for (const [k, needs] of Object.entries(PERMISSION_IMPLIES)) if (needs.includes(key)) delete next[k];
+  }
+  return next;
+}
+
+/** Οι ενότητες που φαίνονται για έναν ρόλο (π.χ. «Συνεργάτης» μόνο σε συνεργάτη). */
+export function groupsForRole(role: string): PermissionGroup[] {
+  return PERMISSION_GROUPS.filter(
+    (g) => (!g.onlyFor || g.onlyFor.includes(role)) && !(g.notForPartner && role === "PARTNER")
+  );
 }
 
 /**
@@ -279,14 +344,14 @@ export function normalizePermissions(value: unknown): PermissionMap {
   for (const [key, on] of Object.entries(value as Record<string, unknown>)) {
     if (on === true && VALID.has(key)) out[key] = true;
   }
-  return out;
+  return withImplied(out);
 }
 
 /** Λίστα κλειδιών → χάρτης, καθαρισμένος από άγνωστα κλειδιά. */
 export function permissionsFromKeys(keys: string[]): PermissionMap {
   const out: PermissionMap = {};
   for (const key of keys) if (VALID.has(key)) out[key] = true;
-  return out;
+  return withImplied(out);
 }
 
 /* ─────────────────────────────────────────────
@@ -335,7 +400,11 @@ export const STAFF_DEFAULTS: PermissionKey[] = [
 // «ό,τι έκανε ως τώρα» σημαίνει χωρίς αυτές. Ο διαχειριστής μπορεί να
 // τους τα δώσει με ένα κλικ.
 
-/** Ο συνεργάτης έβλεπε· δεν άλλαζε τίποτα. */
+/**
+ * Ο συνεργάτης έβλεπε· δεν άλλαζε τίποτα. Τα «partner.availability» και
+ * «partner.book» ΔΕΝ μπαίνουν εδώ: προεπιλογή ατικάριστα, ώστε κανένας
+ * υπάρχων συνεργάτης να μην αλλάξει συμπεριφορά.
+ */
 export const PARTNER_DEFAULTS: PermissionKey[] = [
   "dashboard.view",
   "calendar.view",

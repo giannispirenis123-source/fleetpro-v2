@@ -5,6 +5,8 @@
 // JavaScript στον browser μόνο για το κουτί αναζήτησης και τις καρτέλες.
 
 import Link from "next/link";
+import { getSession } from "@/lib/auth";
+import { roleHome } from "@/lib/loginRedirect";
 import type { PublicCompany, PublicVehicle } from "@/lib/storefront/publicData";
 import { pickText } from "@/lib/storefront/settings";
 import { sitePath } from "@/lib/storefront/slug";
@@ -67,6 +69,34 @@ export function contactOf(company: PublicCompany) {
    Κέλυφος: header (λογότυπο, γλώσσες), footer (επικοινωνία)
    ───────────────────────────────────────────── */
 
+/**
+ * «Σύνδεση / Dashboard» για το προσωπικό: ΙΔΙΟ login της πλατφόρμας (cookie
+ * fleetpro_token), σε ΝΕΑ καρτέλα — ο πελάτης δεν χάνει την κράτησή του.
+ * · /s/<slug>/… (host της πλατφόρμας): το cookie φαίνεται → «Dashboard» προς
+ *   την περιοχή του ρόλου (η εταιρία ΜΟΝΟ από το session, ποτέ από το site).
+ * · Domain εταιρίας: το cookie ΔΕΝ περνά εκεί (host-only, σκόπιμα) → πάντα
+ *   «Σύνδεση» προς το login της πλατφόρμας, που στέλνει τον ήδη συνδεδεμένο
+ *   κατευθείαν στο dashboard του.
+ */
+async function HeaderStaffLink({ company, lang, d }: Ctx) {
+  if (!company.loginUrl) return null;
+  const onDomain = company.basePath === "";
+  const session = onDomain ? null : await getSession();
+  const href = session ? roleHome(session.role) : `${company.loginUrl}?lang=${lang === "el" ? "el" : "en"}`;
+  return (
+    <a
+      href={href}
+      className="sf-header-login"
+      target="_blank"
+      rel="noopener nofollow"
+      title={d.headerLoginTitle}
+      data-testid="site-staff-link"
+    >
+      {session ? d.headerDashboard : d.headerLogin}
+    </a>
+  );
+}
+
 function Shell({
   ctx,
   langHref,
@@ -126,6 +156,7 @@ function Shell({
                 ))}
               </nav>
             )}
+            <HeaderStaffLink {...ctx} />
             {contact.phone && (
               <a href={telHref(contact.phone)} className="sf-btn sf-btn--primary sf-btn--sm sf-header-call">
                 {d.call}

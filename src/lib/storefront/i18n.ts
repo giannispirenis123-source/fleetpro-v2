@@ -36,6 +36,10 @@ const en = {
   bookingRequest: "Bookings are confirmed by the company.",
   poweredBy: "Powered by FleetPro",
   staffLogin: "Staff login",
+  /** Κουμπί στο header (προσωπικό της εταιρίας). */
+  headerLogin: "Login",
+  headerDashboard: "Dashboard",
+  headerLoginTitle: "Sign in for company staff (opens in a new tab)",
   notFoundTitle: "Page not found",
   // ── Αρχική / αναζήτηση (PR 2) ──
   heroTitle: "Car rental · {name}",
@@ -291,6 +295,9 @@ const el: Partial<StorefrontDictionary> = {
   bookingRequest: "Οι κρατήσεις επιβεβαιώνονται από την εταιρία.",
   poweredBy: "Με την τεχνολογία του FleetPro",
   staffLogin: "Είσοδος προσωπικού",
+  headerLogin: "Σύνδεση",
+  headerDashboard: "Dashboard",
+  headerLoginTitle: "Σύνδεση για το προσωπικό της εταιρίας (ανοίγει σε νέα καρτέλα)",
   notFoundTitle: "Η σελίδα δεν βρέθηκε",
   heroTitle: "Ενοικίαση οχημάτων · {name}",
   searchTitle: "Βρείτε το όχημά σας",

@@ -9,6 +9,7 @@ import { setSessionCookie } from "@/lib/sessionCookie";
 import { normalizeLocale } from "@/lib/i18n/locale";
 import { badRequest, logError, serverError } from "@/lib/api";
 import { LOGIN_MSG, loginDecision } from "@/lib/loginCore";
+import { loginRedirectFor } from "@/lib/loginRedirect";
 import { hitLimit, LIMITS } from "@/lib/public/rateLimit";
 import { dbCounterStore } from "@/lib/public/rateLimitStore";
 import { LOGIN_LOCK, clearLoginFailures, isLoginLocked, recordLoginFailure } from "@/lib/loginLock";
@@ -20,6 +21,9 @@ const DUMMY_HASH = bcrypt.hashSync("fleetpro-not-a-password", 10);
 const loginSchema = z.object({
   email: z.string().email("Μη έγκυρο email"),
   password: z.string().min(1, "Απαιτείται κωδικός"),
+  // Προαιρετικό: πού να γυρίσει μετά τη σύνδεση. Ελέγχεται στο loginRedirectFor
+  // (μόνο δική μας σχετική διαδρομή, μέσα στην περιοχή του ρόλου).
+  callbackUrl: z.string().max(512).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -31,7 +35,7 @@ export async function POST(req: NextRequest) {
       return badRequest("Μη έγκυρα δεδομένα", parsed.error.errors);
     }
 
-    const { email, password } = parsed.data;
+    const { email, password, callbackUrl } = parsed.data;
 
     // Όριο προσπαθειών ανά IP (όλες) και κλείδωμα 15΄ μετά από 10 ΛΑΘΟΣ
     // κωδικούς (email + IP). Ίδια απάντηση για άγνωστο και υπαρκτό email.
@@ -107,10 +111,8 @@ export async function POST(req: NextRequest) {
           permissions: user.permissions,
           locale: normalizeLocale(user.locale),
         },
-        redirectTo:
-          user.role === "SUPER_ADMIN"
-            ? "/super-admin"
-            : `/dashboard`,
+        // Ανά ρόλο· η εταιρία του dashboard ΜΟΝΟ από το session (όχι από το site).
+        redirectTo: loginRedirectFor(user.role, callbackUrl),
       },
     });
 

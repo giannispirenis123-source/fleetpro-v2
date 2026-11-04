@@ -109,3 +109,31 @@ export function summarize(
     commission: round2(counted.reduce((a, b) => a + commissionFor(b, s), 0)),
   };
 }
+
+/* ─────────────────────────────────────────────
+   Κωδικοί έκπτωσης συνεργάτη
+   ───────────────────────────────────────────── */
+
+/**
+ * Το μέγιστο ποσοστό έκπτωσης που μπορεί να δώσει ένας συνεργάτης σε δικό
+ * του κωδικό: ΤΟ ΠΟΣΟΣΤΟ ΠΡΟΜΗΘΕΙΑΣ του (ίσο επιτρέπεται). Χωρίς προμήθεια → 0.
+ */
+export const maxPartnerDiscountPercent = (s: CommissionSettings): number => Math.max(0, s.rate);
+
+export type PartnerDiscountCheck =
+  | { ok: true }
+  | { ok: false; reason: "over_commission"; max: number }
+  | { ok: false; reason: "fixed_amount" };
+
+/**
+ * Επιτρέπεται ο κωδικός για συνεργάτη;
+ * · Ποσοστό: ≤ προμήθεια (ίσο επιτρέπεται).
+ * · Σταθερό ποσό (€): ΟΧΙ — δεν συγκρίνεται με ποσοστό χωρίς την αξία της
+ *   κράτησης, οπότε ο συνεργάτης φτιάχνει μόνο ποσοστιαίους κωδικούς.
+ */
+export function checkPartnerDiscount(type: string, value: number, s: CommissionSettings): PartnerDiscountCheck {
+  if (type !== "PERCENTAGE") return { ok: false, reason: "fixed_amount" };
+  const max = maxPartnerDiscountPercent(s);
+  // Μικρή ανοχή για δεκαδικά (π.χ. 20 έναντι 20.00 από Decimal).
+  return value <= max + 1e-9 ? { ok: true } : { ok: false, reason: "over_commission", max };
+}

@@ -19,7 +19,10 @@ import {
 } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
-  PERMISSION_GROUPS,
+  PARTNER_DEFAULTS,
+  groupsForRole,
+  permissionsFromKeys,
+  togglePermission,
   type PermissionGroup,
   type PermissionMap,
 } from "@/lib/permissions";
@@ -46,6 +49,9 @@ interface FormState {
   commissionOnRental: boolean;
   commissionOnExtras: boolean;
   commissionOnInsurance: boolean;
+  /** Συνεργάτης: «Μπορεί να βλέπει διαθεσιμότητα» / «Μπορεί να κάνει κράτηση» (προεπιλογή όχι). */
+  partnerAvailability: boolean;
+  partnerBook: boolean;
 }
 
 const emptyForm = (): FormState => ({
@@ -58,6 +64,8 @@ const emptyForm = (): FormState => ({
   commissionOnRental: true,
   commissionOnExtras: false,
   commissionOnInsurance: false,
+  partnerAvailability: false,
+  partnerBook: false,
 });
 
 const formFromUser = (u: UserDTO): FormState => ({
@@ -70,6 +78,8 @@ const formFromUser = (u: UserDTO): FormState => ({
   commissionOnRental: u.commissionOnRental,
   commissionOnExtras: u.commissionOnExtras,
   commissionOnInsurance: u.commissionOnInsurance,
+  partnerAvailability: u.permissions["partner.availability"] === true,
+  partnerBook: u.permissions["partner.book"] === true,
 });
 
 export default function UsersClient({
@@ -517,6 +527,21 @@ function UserModal({
         form.commissionOnInsurance !== user.commissionOnInsurance;
       if (commissionChanged) Object.assign(payload, commission);
 
+      // Συνεργάτης: τα δύο δικαιώματα γράφονται στη ΙΔΙΑ λίστα δικαιωμάτων
+      // (users.permissions) — στη δημιουργία πάνω στις προεπιλογές του ρόλου,
+      // στην επεξεργασία πάνω σε ό,τι ήδη έχει. Στέλνονται μόνο όταν αλλάζουν.
+      if (form.role === "PARTNER") {
+        const before: PermissionMap =
+          mode === "create" || roleChanged ? permissionsFromKeys(PARTNER_DEFAULTS) : { ...(user?.permissions ?? {}) };
+        let next = togglePermission(before, "partner.availability", form.partnerAvailability || form.partnerBook);
+        next = togglePermission(next, "partner.book", form.partnerBook);
+        const changed =
+          mode === "create" ||
+          (!!before["partner.availability"]) !== (!!next["partner.availability"]) ||
+          (!!before["partner.book"]) !== (!!next["partner.book"]);
+        if (changed) payload.permissions = Object.keys(next);
+      }
+
       const res = await fetch(
         mode === "create"
           ? "/api/company-users"
@@ -656,6 +681,39 @@ function UserModal({
             )}
 
           <p className="dash-form-note">{tr("users.commissionNote")}</p>
+
+          {form.role === "PARTNER" && (
+            <fieldset className="dash-comm-bases" data-testid="partner-access">
+              <legend className="dash-comm-bases-title">{tr("users.partnerAccessTitle")}</legend>
+              <label className="dash-comm-base">
+                <input
+                  type="checkbox"
+                  disabled={isSelf}
+                  checked={form.partnerAvailability || form.partnerBook}
+                  onChange={(e) =>
+                    // Χωρίς διαθεσιμότητα δεν γίνεται κράτηση: φεύγει και το δεύτερο.
+                    set(e.target.checked ? { partnerAvailability: true } : { partnerAvailability: false, partnerBook: false })
+                  }
+                  data-testid="partner-access-availability"
+                />
+                {tr("permissionLabel.partnerAvailability")}
+              </label>
+              <label className="dash-comm-base">
+                <input
+                  type="checkbox"
+                  disabled={isSelf}
+                  checked={form.partnerBook}
+                  onChange={(e) =>
+                    // Η κράτηση προϋποθέτει διαθεσιμότητα: τσεκάρεται αυτόματα.
+                    set(e.target.checked ? { partnerBook: true, partnerAvailability: true } : { partnerBook: false })
+                  }
+                  data-testid="partner-access-book"
+                />
+                {tr("permissionLabel.partnerBook")}
+              </label>
+              <p className="dash-form-note">{tr("users.partnerAccessNote")}</p>
+            </fieldset>
+          )}
           <p className="dash-form-note">
             {form.role === ADMIN_ROLE ? tr("users.adminFixedNote") : tr("users.defaultsNote")}
           </p>
@@ -789,13 +847,8 @@ function PermissionsModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const toggle = (key: string) =>
-    setGranted((prev) => {
-      const next = { ...prev };
-      if (next[key]) delete next[key];
-      else next[key] = true;
-      return next;
-    });
+  // Με τις εξαρτήσεις (π.χ. «κράτηση» → «διαθεσιμότητα») — ίδιος κανόνας με τον server.
+  const toggle = (key: string) => setGranted((prev) => togglePermission(prev, key, !prev[key]));
 
   const groupState = (group: PermissionGroup) => {
     const on = group.items.filter((i) => granted[i.key]).length;
@@ -867,7 +920,7 @@ function PermissionsModal({
             {tr("users.permissionsHelp")}
           </p>
 
-          {PERMISSION_GROUPS.map((group) => {
+          {groupsForRole(user.role).map((group) => {
             const state = groupState(group);
             return (
               <div key={group.id} className="dash-perm-group">

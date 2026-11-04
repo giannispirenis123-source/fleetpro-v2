@@ -23,6 +23,7 @@ import {
   X,
   Zap,
   Globe,
+  CalendarCheck,
 } from "lucide-react";
 import type { ModuleKey } from "@/lib/entitlementsCore";
 import AccountMenu from "@/components/account/AccountMenu";
@@ -41,6 +42,8 @@ interface NavItem {
   hideForPartner?: boolean;
   /** Μόνο για Διαχειριστή εταιρίας. */
   adminOnly?: boolean;
+  /** Μόνο για Συνεργάτη (τα δικά του οικονομικά, διαθεσιμότητα). */
+  partnerOnly?: boolean;
   /** Ενότητα πακέτου: χωρίς αυτήν φαίνεται κλειδωμένο («Δεν περιλαμβάνεται»). */
   module?: ModuleKey;
 }
@@ -63,6 +66,8 @@ const NAV: NavItem[] = [
   { href: "/dashboard/service", labelKey: "service", icon: Wrench, permission: "service.view" },
   { href: "/dashboard/reports", labelKey: "reports", icon: BarChart3, permission: "reports.view", hideForPartner: true },
   { href: "/dashboard/finance", labelKey: "finance", icon: Wallet, permission: "finance.view" },
+  { href: "/dashboard/partner/availability", labelKey: "availability", icon: CalendarCheck, permission: "partner.availability", partnerOnly: true },
+  { href: "/dashboard/partner/finance", labelKey: "finance", icon: Wallet, permission: "commission.view", partnerOnly: true },
   { href: "/dashboard/users", labelKey: "users", icon: UserCog, permission: "users.view" },
   { href: "/dashboard/settings", labelKey: "settings", icon: Settings, permission: "settings.view" },
   { href: "/dashboard/storefront", labelKey: "storefront", icon: Globe, permission: "settings.edit", adminOnly: true, module: "publicSite" },
@@ -100,7 +105,8 @@ export default function DashboardSidebar({
       it.disabled ||
       (can(role, permissions, it.permission) &&
         !(it.hideForPartner && role === "PARTNER") &&
-        !(it.adminOnly && role !== "COMPANY_ADMIN"))
+        !(it.adminOnly && role !== "COMPANY_ADMIN") &&
+        !(it.partnerOnly && role !== "PARTNER"))
   );
 
   return (

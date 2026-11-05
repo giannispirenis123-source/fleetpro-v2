@@ -7,7 +7,7 @@
 import { db } from "./db";
 import { bookingScope, type Viewer } from "./authz";
 import { BOOKING_PAYMENT_INCLUDE, toBookingDTO, type BookingDTO } from "./bookings";
-import { summarize, type CommissionSettings, type CommissionSummary } from "./commission";
+import { commissionSettingsOf, summarize, type CommissionSettings, type CommissionSummary } from "./commission";
 import { toCustomerDTO, type CustomerDTO } from "./customers";
 import { INVOICE_RELATIONS, toInvoiceDTO, type InvoiceDTO } from "./invoices";
 import { LIST_PAGE_SIZE, pageWindow, parsePage, type ListPage } from "./pagination";
@@ -138,8 +138,5 @@ export async function myCommissionSettings(viewer: Viewer, canSee: boolean): Pro
     where: { id: viewer.userId },
     select: { commissionRate: true, commissionOnRental: true, commissionOnExtras: true, commissionOnInsurance: true },
   });
-  const rate = Number(me?.commissionRate ?? 0);
-  return rate > 0
-    ? { rate, onRental: me?.commissionOnRental ?? true, onExtras: me?.commissionOnExtras ?? false, onInsurance: me?.commissionOnInsurance ?? false }
-    : null;
+  return commissionSettingsOf(me);
 }

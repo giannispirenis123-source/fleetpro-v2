@@ -74,32 +74,7 @@ export default function PartnerFinanceClient({ initialMonth, initial }: { initia
         {data.items.length === 0 ? (
           <p className="dash-form-note">{tr("partner.empty")}</p>
         ) : (
-          <div className="dash-invoices" data-testid="partner-finance-list">
-            {data.items.map((b) => (
-              <div key={b.id} className={`dash-invoice${b.counted ? "" : " dash-pf-uncounted"}`} data-testid="partner-finance-row">
-                <div className="dash-invoice-id">
-                  <span className="dash-invoice-number">{b.bookingNumber}</span>
-                  <span className="dash-invoice-booking">
-                    {fmtDate(b.pickupDate, locale)} – {fmtDate(b.returnDate, locale)}
-                  </span>
-                </div>
-                <div className="dash-invoice-who">
-                  <span className="dash-invoice-customer">{b.vehicle}</span>
-                  <span>
-                    <span className={`dash-status dash-status--${BOOKING_STATUS_CLASS[b.status] ?? "muted"}`}>{tr(`status.${b.status}`)}</span>
-                    {b.refunded && <span className="dash-status dash-status--muted"> {tr("partner.refunded")}</span>}
-                  </span>
-                  {!b.counted && <span className="dash-invoice-booking">{tr("partner.notCounted")}</span>}
-                </div>
-                <div className="dash-invoice-money">
-                  <span className="dash-invoice-total" data-testid="pf-amount">{money(b.totalCents)}</span>
-                  <span className="dash-invoice-booking">
-                    {tr("partner.commission")}: <strong data-testid="pf-commission">{money(b.commissionCents)}</strong>
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <PartnerFinanceRows items={data.items} />
         )}
       </div>
 
@@ -119,5 +94,44 @@ export default function PartnerFinanceClient({ initialMonth, initial }: { initia
       </div>
       <p className="dash-form-note">{tr("partner.countedNote")}</p>
     </>
+  );
+}
+
+/**
+ * Οι κρατήσεις με ποσό και προμήθεια — ΙΔΙΑ εμφάνιση για τον συνεργάτη και για
+ * τις «Προμήθειες συνεργατών» του Διαχειριστή. Ακυρωμένες/επιστραμμένες θολές
+ * με προμήθεια 0 € (counted = false από το partnerFinance).
+ */
+export function PartnerFinanceRows({ items }: { items: PartnerFinanceRow[] }) {
+  const tr = useT();
+  const locale = useLocale();
+  const money = (c: number) => formatMoney(c, locale);
+  return (
+          <div className="dash-invoices" data-testid="partner-finance-list">
+            {items.map((b) => (
+              <div key={b.id} className={`dash-invoice${b.counted ? "" : " dash-pf-uncounted"}`} data-testid="partner-finance-row">
+                <div className="dash-invoice-id">
+                  <span className="dash-invoice-number">{b.bookingNumber}</span>
+                  <span className="dash-invoice-booking">
+                    {fmtDate(b.pickupDate, locale)} – {fmtDate(b.returnDate, locale)}
+                  </span>
+                </div>
+                <div className="dash-invoice-who">
+                  <span className="dash-invoice-customer">{b.customer}</span>
+                  <span>
+                    <span className={`dash-status dash-status--${BOOKING_STATUS_CLASS[b.status] ?? "muted"}`}>{tr(`status.${b.status}`)}</span>
+                    {b.refunded && <span className="dash-status dash-status--muted"> {tr("partner.refunded")}</span>}
+                  </span>
+                  {!b.counted && <span className="dash-invoice-booking">{tr("partner.notCounted")}</span>}
+                </div>
+                <div className="dash-invoice-money">
+                  <span className="dash-invoice-total" data-testid="pf-amount">{money(b.totalCents)}</span>
+                  <span className="dash-invoice-booking">
+                    {tr("partner.commission")}: <strong data-testid="pf-commission">{money(b.commissionCents)}</strong>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
   );
 }

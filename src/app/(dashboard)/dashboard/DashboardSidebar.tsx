@@ -24,6 +24,7 @@ import {
   Zap,
   Globe,
   CalendarCheck,
+  Handshake,
 } from "lucide-react";
 import type { ModuleKey } from "@/lib/entitlementsCore";
 import AccountMenu from "@/components/account/AccountMenu";
@@ -68,6 +69,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard/finance", labelKey: "finance", icon: Wallet, permission: "finance.view" },
   { href: "/dashboard/partner/availability", labelKey: "availability", icon: CalendarCheck, permission: "partner.availability", partnerOnly: true },
   { href: "/dashboard/partner/finance", labelKey: "finance", icon: Wallet, permission: "commission.view", partnerOnly: true },
+  { href: "/dashboard/partner-commissions", labelKey: "partnerCommissions", icon: Handshake, permission: "commission.partners", hideForPartner: true },
   { href: "/dashboard/users", labelKey: "users", icon: UserCog, permission: "users.view" },
   { href: "/dashboard/settings", labelKey: "settings", icon: Settings, permission: "settings.view" },
   { href: "/dashboard/storefront", labelKey: "storefront", icon: Globe, permission: "settings.edit", adminOnly: true, module: "publicSite" },

@@ -85,7 +85,7 @@ test("403 χωρίς δικαίωμα: κάθε endpoint με φύλακα στ�
 
 const S10 = { rate: 10, onRental: true, onExtras: false, onInsurance: false };
 const row = (id, status, totalCents, subtotal, extra = {}) => ({
-  id, bookingNumber: `BP-${id}`, pickupDate: "2026-11-05", returnDate: "2026-11-07", vehicle: "Fiat Panda · ΧΑΝ-1",
+  id, bookingNumber: `BP-${id}`, pickupDate: "2026-11-05", returnDate: "2026-11-07", customer: "Μαρία Παπαδάκη",
   status, paymentStatus: "NONE", totalCents, subtotal, extrasTotal: 20, insuranceCost: 10, ...extra,
 });
 
@@ -133,11 +133,13 @@ test("φίλτρο μήνα: YYYY-MM σε [αρχή, επόμενος μήνας
 test("στεγανότητα: ΜΟΝΟ οι κρατήσεις του ίδιου (partnerId) στην ΙΔΙΑ εταιρία, φίλτρο στο ερώτημα", () => {
   const s = read("src/lib/partnerServer.ts");
   assert.match(s, /const scope = bookingScope\(viewer\); \/\/ \{ tenantId, partnerId: ο ίδιος \}/);
-  assert.match(s, /where: \{ \.\.\.scope, \.\.\.\(range && \{ pickupDate: \{ gte: range\.from, lt: range\.to \} \}\) \}/);
+  assert.match(s, /where: \{ \.\.\.scope, \.\.\.pickupIn\(month \? monthRange\(month\) : null\) \}/);
+  assert.match(s, /range \? \{ pickupDate: \{ gte: range\.from, lt: range\.to \} \} : \{\};/);
   assert.match(read("src/lib/authz.ts"), /viewer\.role === "PARTNER"\s+\? \{ \.\.\.base, partnerId: viewer\.userId \}/);
-  // Καμία στήλη πελάτη στο ερώτημα των οικονομικών.
-  const select = s.slice(s.indexOf("db.booking.findMany"), s.indexOf("myCommissionSettings(viewer, true)"));
-  assert.doesNotMatch(select, /customer/);
+  // Από τον πελάτη ΜΟΝΟ ονοματεπώνυμο στο κοινό select των οικονομικών.
+  const select = s.slice(s.indexOf("const FINANCE_SELECT = {"), s.indexOf("} as const;", s.indexOf("const FINANCE_SELECT = {")));
+  assert.match(select, /customer: \{ select: \{ firstName: true, lastName: true \} \},/);
+  assert.doesNotMatch(select, /email|phone|idNumber|license|address|dateOfBirth/);
 });
 
 /* ── Διαθεσιμότητα ── */

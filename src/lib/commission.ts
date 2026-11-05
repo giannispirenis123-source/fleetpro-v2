@@ -27,6 +27,28 @@ export const NO_COMMISSION: CommissionSettings = {
   onInsurance: false,
 };
 
+/**
+ * Οι ρυθμίσεις προμήθειας από τη γραμμή του χρήστη (users.commission*).
+ * Χωρίς ποσοστό → null (καμία προμήθεια). ΜΙΑ μετατροπή για όλους: τη σύνοψη
+ * των κρατήσεων, τα «Οικονομικά» του συνεργάτη και τις «Προμήθειες συνεργατών».
+ */
+export function commissionSettingsOf(row: {
+  commissionRate: unknown;
+  commissionOnRental?: boolean | null;
+  commissionOnExtras?: boolean | null;
+  commissionOnInsurance?: boolean | null;
+} | null | undefined): CommissionSettings | null {
+  const rate = Number(row?.commissionRate ?? 0);
+  return rate > 0
+    ? {
+        rate,
+        onRental: row?.commissionOnRental ?? true,
+        onExtras: row?.commissionOnExtras ?? false,
+        onInsurance: row?.commissionOnInsurance ?? false,
+      }
+    : null;
+}
+
 /** Τα καθαρά συστατικά μιας κράτησης, πριν από έκπτωση και στρογγυλοποίηση. */
 export interface CommissionParts {
   subtotal: number;

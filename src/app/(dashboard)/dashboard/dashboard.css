@@ -2906,3 +2906,25 @@ button.dash-pa-cell:hover, button.dash-pa-cell:focus-visible { outline: 2px soli
 .dash-pb-price dd { margin: 0; font-weight: 700; }
 .dash-pb-modal .dash-modal-footer { flex-wrap: wrap; }
 .dash-pb-modal .dash-modal-footer .dash-btn { flex: 1 1 auto; }
+
+/* ---------- Προμήθειες συνεργατών ---------- */
+.dash-pc-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.dash-pc-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.dash-pc-table th, .dash-pc-table td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.dash-pc-table thead th { font-size: 12px; font-weight: 600; color: var(--text-3); }
+.dash-pc-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.dash-pc-table tfoot th, .dash-pc-table tfoot td { font-weight: 700; border-bottom: 0; border-top: 2px solid var(--border); }
+.dash-link-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--primary); cursor: pointer; text-align: left; }
+.dash-link-btn:hover, .dash-link-btn:focus-visible { text-decoration: underline; }
+/* Κινητό: κάθε συνεργάτης γίνεται κάρτα με ετικέτα δίπλα σε κάθε τιμή (χωρίς οριζόντιο κύλισμα). */
+@media (max-width: 640px) {
+  .dash-pc-table thead { display: none; }
+  .dash-pc-table, .dash-pc-table tbody, .dash-pc-table tfoot, .dash-pc-table tr { display: block; width: 100%; }
+  .dash-pc-table tr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .dash-pc-table tfoot tr { border-bottom: 0; border-top: 2px solid var(--border); }
+  .dash-pc-table th, .dash-pc-table td { display: flex; justify-content: space-between; gap: 12px; border: 0; padding: 3px 0; white-space: normal; }
+  .dash-pc-table tfoot th, .dash-pc-table tfoot td { border-top: 0; }
+  .dash-pc-table td[data-label]::before { content: attr(data-label); color: var(--text-3); font-weight: 500; }
+  .dash-pc-table td.dash-pc-empty { display: none; }
+}
+.dash-pc-toolbar { flex-wrap: wrap; gap: 10px; }

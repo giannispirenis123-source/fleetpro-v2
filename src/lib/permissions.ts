@@ -16,6 +16,8 @@ export interface PermissionDef {
   en: string;
   /** Δικαίωμα ενότητας που δεν επιβάλλεται ακόμα — η οθόνη δεν υπάρχει. */
   future?: boolean;
+  /** Δεν δίνεται ποτέ σε συνεργάτη (κρύβεται και δεν ισχύει — βλ. can()). */
+  notForPartner?: boolean;
 }
 
 export interface PermissionGroup {
@@ -192,6 +194,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         el: "Προβολή της δικής του προμήθειας",
         en: "View own commission",
       },
+      {
+        key: "commission.partners",
+        el: "Προβολή προμηθειών συνεργατών",
+        en: "View partner commissions",
+        notForPartner: true,
+      },
     ],
   },
   {
@@ -278,7 +286,7 @@ export function roleHasAll(role: string): boolean {
 
 /** Κλειδιά που ο συνεργάτης ΔΕΝ έχει ποτέ (οικονομικά/ρυθμίσεις/χρήστες/αναφορές εταιρίας). */
 export const PARTNER_NEVER: ReadonlySet<PermissionKey> = new Set(
-  PERMISSION_GROUPS.filter((g) => g.notForPartner).flatMap((g) => g.items.map((i) => i.key))
+  PERMISSION_GROUPS.flatMap((g) => g.items.filter((i) => g.notForPartner || i.notForPartner).map((i) => i.key))
 );
 
 export function can(
@@ -329,7 +337,7 @@ export function togglePermission(map: PermissionMap, key: PermissionKey, on: boo
 export function groupsForRole(role: string): PermissionGroup[] {
   return PERMISSION_GROUPS.filter(
     (g) => (!g.onlyFor || g.onlyFor.includes(role)) && !(g.notForPartner && role === "PARTNER")
-  );
+  ).map((g) => (role === "PARTNER" ? { ...g, items: g.items.filter((i) => !i.notForPartner) } : g));
 }
 
 /**

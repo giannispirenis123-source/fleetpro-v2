@@ -6,10 +6,17 @@ export const dynamic = "force-dynamic";
 
 import { z } from "zod";
 import { badRequest, ok, serverError } from "@/lib/api";
-import { withPermission } from "@/lib/authz";
+import { bookingScope, withPermission } from "@/lib/authz";
+import { db } from "@/lib/db";
+import { discountOfBooking } from "@/lib/bookingPricing";
 import { bookingFields, prepareBooking } from "@/lib/bookingCreate";
 
-const schema = z.object({ customerId: z.string().min(1).optional(), ...bookingFields });
+const schema = z.object({
+  customerId: z.string().min(1).optional(),
+  /** Επεξεργασία: η κράτηση (για τον κωδικό συνεργάτη της — ίδιος κανόνας με την αποθήκευση). */
+  bookingId: z.string().min(1).max(64).optional(),
+  ...bookingFields,
+});
 
 // POST /api/bookings/preview
 export const POST = withPermission(
@@ -17,10 +24,16 @@ export const POST = withPermission(
     try {
       const parsed = schema.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return badRequest("Μη έγκυρα δεδομένα", parsed.error.errors);
+      const { bookingId, ...fields } = parsed.data;
+      // ΜΟΝΟ κράτηση που βλέπει ο χρήστης (ίδια εταιρία· ο συνεργάτης μόνο τις δικές του).
+      const current = bookingId
+        ? await db.booking.findFirst({ where: { id: bookingId, ...bookingScope(viewer!) }, select: { discountCode: true, discountAmount: true, priceQuote: true } })
+        : null;
       const prepared = await prepareBooking({
         viewer: viewer!,
-        data: { ...parsed.data, customerId: parsed.data.customerId ?? null },
+        data: { ...fields, customerId: fields.customerId ?? null },
         preview: true,
+        partnerCode: current ? discountOfBooking(current).partnerCode ?? null : null,
       });
       if (!prepared.ok) return prepared.response;
       const { plan } = prepared;

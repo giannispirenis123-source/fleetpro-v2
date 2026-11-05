@@ -30,7 +30,7 @@ import {
   type BookingStatusValue,
 } from "./bookings";
 import { checkVehicleConflicts } from "./bookingConflicts";
-import { priceBooking } from "./bookingPricing";
+import { priceBooking, type StoredPartnerCode } from "./bookingPricing";
 import { applyDiscountUsage } from "./discounts";
 import { DISCOUNT_MODES, type PriceBreakdown } from "./pricing";
 import { NO_PRICE_MESSAGE } from "./public/engine";
@@ -150,6 +150,8 @@ export async function prepareBooking(opts: {
   preview?: boolean;
   /** Θα δοθεί χειροκίνητο ενοίκιο (συμβόλαιο): η έλλειψη τιμής δεν σταματά. */
   allowMissingPrice?: boolean;
+  /** Προεπισκόπηση επεξεργασίας: ο κωδικός συνεργάτη της ΥΠΑΡΧΟΥΣΑΣ κράτησης (ίδιος κανόνας με το PATCH). */
+  partnerCode?: StoredPartnerCode | null;
 }): Promise<PrepareOutcome> {
   const { viewer, data } = opts;
   const tenantId = viewer.tenantId!;
@@ -229,6 +231,7 @@ export async function prepareBooking(opts: {
     discountMode: data.discountMode ?? "NONE",
     discountValue: data.discountValue,
     discountCode: data.discountCode,
+    partnerCode: opts.partnerCode ?? null,
   });
 
   if (!priced.ok) return fail(badRequest(priced.message));

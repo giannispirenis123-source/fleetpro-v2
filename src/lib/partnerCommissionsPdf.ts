@@ -226,11 +226,11 @@ export async function buildCommissionsPdf(input: CommissionsPdfInput): Promise<U
       table(
         [
           { label: tr("partnerCommissions.pdfNumber"), w: 66 },
-          { label: tr("partner.customer"), w: 120 },
-          { label: tr("partnerCommissions.pdfDates"), w: 116 },
-          { label: tr("partner.status"), w: 78 },
-          { label: tr("partnerCommissions.pdfAmount"), w: 64, align: "right" },
-          { label: tr("partner.commission"), w: WIDTH - 66 - 120 - 116 - 78 - 64, align: "right" },
+          { label: tr("partner.customer"), w: 112 },
+          { label: tr("partnerCommissions.pdfDates"), w: 108 },
+          { label: tr("partner.status"), w: 72 },
+          { label: tr("partnerCommissions.pdfAmount"), w: 62, align: "right" },
+          { label: tr("partner.commission"), w: WIDTH - 66 - 112 - 108 - 72 - 62, align: "right" },
         ],
         input.bookings.map((b) => ({
           faded: !b.counted,
@@ -241,7 +241,8 @@ export async function buildCommissionsPdf(input: CommissionsPdfInput): Promise<U
             // Πλήρης επιστροφή: αυτή είναι η πληροφορία που εξηγεί γιατί δεν μετρά.
             b.refunded ? tr("partner.refunded") : tr(`status.${b.status}`),
             money(b.totalCents),
-            money(b.commissionCents),
+            // Κωδικός συνεργάτη: μειωμένο ποσοστό δίπλα στο ποσό (βλ. σημείωση κάτω).
+            b.code ? `${money(b.commissionCents)} (${pct(b.code.ratePct)}*)` : money(b.commissionCents),
           ],
         })),
         7.8
@@ -252,6 +253,11 @@ export async function buildCommissionsPdf(input: CommissionsPdfInput): Promise<U
   y -= 10;
   ensure(30);
   text(tr("partner.countedNote"), MARGIN, 8, { color: MUTED, w: WIDTH });
+  if (input.bookings?.some((b) => b.code)) {
+    y -= 12;
+    ensure(20);
+    text(`* ${tr("partner.codeNote")}`, MARGIN, 8, { color: MUTED, w: WIDTH });
+  }
 
   /* ── Υποσέλιδο: «Σελίδα X / Y» ── */
   pages.forEach((p, i) => {

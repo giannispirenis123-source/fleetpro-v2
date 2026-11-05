@@ -371,6 +371,20 @@
 .sf-bk-field small { color: var(--sf-text-2); font-size: 12.5px; }
 .sf-bk-field.is-invalid input, .sf-bk-field.is-invalid select, .sf-bk-field.is-invalid textarea { border-color: var(--sf-danger); background: #fef2f2; }
 .sf-bk-err { color: var(--sf-danger); font-size: 13px; font-weight: 600; }
+/* Εκπτωτικός κωδικός (φόρμα κράτησης) */
+.sf-code .sf-h3 label { cursor: pointer; }
+.sf-code-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sf-code-row input {
+  flex: 1 1 160px; min-width: 0; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid #cbd5e1; background: #fff; color: var(--sf-text); text-transform: uppercase; letter-spacing: .04em;
+}
+.sf-code-row input[aria-invalid="true"] { border-color: var(--sf-danger); background: #fef2f2; }
+.sf-code-chip {
+  display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 999px; font-weight: 700;
+  letter-spacing: .04em; background: var(--sf-bg-2); border: 1px dashed var(--sf-accent);
+}
+.sf-code-ok { color: #15803d; font-weight: 600; margin: 8px 0 0; }
+.sf-code .sf-bk-err { display: block; margin: 8px 0 0; }
 .sf-bk-phone { display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr); gap: 8px; }
 .sf-bk-terms { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; margin-top: 12px; font-size: 14.5px; }
 .sf-bk-terms input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--sf-brand); }

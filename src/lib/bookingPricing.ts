@@ -19,6 +19,7 @@ import { INSURANCE_INVALID_MESSAGE, NO_PRICE_MESSAGE, hasUnpricedDay, requestFro
 import { fromCents } from "./public/money";
 import type { QuoteLine } from "./public/pricing";
 import { manualDiscountCents, storedManualDiscount, toPriceBreakdown, toStoredQuote, type StoredQuote } from "./pricingBridge";
+import { partnerCodeDiscountCents, type PartnerCodeShare } from "./commission";
 
 export interface PricingRequest {
   tenantId: string;
@@ -38,7 +39,16 @@ export interface PricingRequest {
   discountMode: DiscountMode;
   discountValue?: number;
   discountCode?: string | null;
+  /**
+   * Κωδικός ΣΥΝΕΡΓΑΤΗ που εφαρμόστηκε στο site (από το priceQuote της ίδιας
+   * κράτησης — discountOfBooking). Όσο ο κωδικός μένει ο ίδιος, το ποσό
+   * ξαναβγαίνει με τον ΙΔΙΟ κανόνα (ποσοστό στη βάση της προμήθειας) και η
+   * προμήθεια μένει μειωμένη· χωρίς νέο έλεγχο ισχύος (ελέγχθηκε στην κράτηση).
+   */
+  partnerCode?: StoredPartnerCode | null;
 }
+
+export type StoredPartnerCode = PartnerCodeShare & { code: string };
 
 export type PricingOutcome =
   | {
@@ -73,10 +83,13 @@ export function discountOfBooking(b: {
   discountCode: string | null;
   discountAmount: unknown;
   priceQuote?: unknown;
-}): { discountMode: DiscountMode; discountValue?: number; discountCode: string | null } {
+}): { discountMode: DiscountMode; discountValue?: number; discountCode: string | null; partnerCode?: StoredPartnerCode | null } {
   const stored = storedManualDiscount(b.priceQuote);
   if (stored !== undefined) {
     if (!stored) return { discountMode: "NONE", discountCode: null };
+    if (stored.code && stored.partner) {
+      return { discountMode: "CODE", discountCode: stored.code, partnerCode: { ...stored.partner, code: stored.code } };
+    }
     if (stored.code) return { discountMode: "CODE", discountCode: stored.code };
     return { discountMode: "AMOUNT", discountValue: stored.cents / 100, discountCode: null };
   }
@@ -146,7 +159,21 @@ export async function priceBooking(req: PricingRequest): Promise<PricingOutcome>
   const base = fromCents(q.totalCents);
   let euros = 0;
   let appliedCode: string | null = null;
-  if (req.discountMode === "CODE") {
+  let partner: PartnerCodeShare | null = null;
+  let partnerCents: number | null = null;
+  const sameCode = (a: string | null | undefined, b: string) => (a ?? "").trim().toUpperCase() === b.trim().toUpperCase();
+  if (req.discountMode === "CODE" && req.partnerCode && sameCode(req.discountCode, req.partnerCode.code)) {
+    // Κωδικός συνεργάτη από το site: ΙΔΙΟΣ κανόνας με την κράτηση (siteCode.ts).
+    const { code, ...share } = req.partnerCode;
+    const b0 = toPriceBreakdown(q);
+    partnerCents = partnerCodeDiscountCents(
+      { subtotal: b0.subtotal, extrasTotal: b0.extrasTotal, insuranceCost: b0.insuranceCost },
+      share,
+      q.totalCents
+    );
+    appliedCode = code;
+    partner = share;
+  } else if (req.discountMode === "CODE") {
     const code = (req.discountCode ?? "").trim();
     if (!code) return { ok: false, message: "Δώσε κωδικό έκπτωσης" };
     const resolved = await resolveDiscountCode({
@@ -164,7 +191,7 @@ export async function priceBooking(req: PricingRequest): Promise<PricingOutcome>
   } else if (req.discountMode === "PERCENT") {
     euros = (base * Math.min(100, Math.max(0, req.discountValue ?? 0))) / 100;
   }
-  const manualCents = manualDiscountCents(euros, q.totalCents);
+  const manualCents = partnerCents ?? manualDiscountCents(euros, q.totalCents);
 
   const extraMeta = new Map(extras.map((e) => [e.id, { chargeType: e.chargeType as string, type: e.type as string }]));
   const breakdown = toPriceBreakdown(q, { manualDiscountCents: manualCents, extraMeta });
@@ -174,7 +201,7 @@ export async function priceBooking(req: PricingRequest): Promise<PricingOutcome>
     snapshot: buildExtrasSnapshot(breakdown.lines),
     discountCode: appliedCode,
     dailyRate: breakdown.dailyRate,
-    quote: toStoredQuote(q, { cents: manualCents, code: appliedCode }, autoPrice),
+    quote: toStoredQuote(q, { cents: manualCents, code: appliedCode, ...(partner && manualCents > 0 ? { partner } : {}) }, autoPrice),
     quoteLines: q.lines,
     autoPrice,
     warnings,

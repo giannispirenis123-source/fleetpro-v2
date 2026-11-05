@@ -120,7 +120,7 @@ export interface CommissionSummary {
 
 /** Άθροισμα προμήθειας για μια λίστα κρατήσεων. */
 export function summarize(
-  bookings: (CommissionParts & { status: string })[],
+  bookings: (CommissionParts & { status: string; partnerCode?: { cents: number } | null })[],
   s: CommissionSettings
 ): CommissionSummary {
   const counted = bookings.filter((b) => countsForCommission(b.status));
@@ -128,7 +128,8 @@ export function summarize(
   return {
     bookings: counted.length,
     base: round2(counted.reduce((a, b) => a + commissionBase(b, s), 0)),
-    commission: round2(counted.reduce((a, b) => a + commissionFor(b, s), 0)),
+    // Κρατήσεις με κωδικό συνεργάτη: μειωμένη προμήθεια (bookingCommission).
+    commission: round2(counted.reduce((a, b) => a + bookingCommission(b, s, b.partnerCode), 0)),
   };
 }
 
@@ -159,3 +160,106 @@ export function checkPartnerDiscount(type: string, value: number, s: CommissionS
   // Μικρή ανοχή για δεκαδικά (π.χ. 20 έναντι 20.00 από Decimal).
   return value <= max + 1e-9 ? { ok: true } : { ok: false, reason: "over_commission", max };
 }
+
+/* ─────────────────────────────────────────────
+   Κωδικός συνεργάτη στο δημόσιο site (μειωμένη προμήθεια)
+   ───────────────────────────────────────────── */
+
+/**
+ * Ο κωδικός συνεργάτη ΟΠΩΣ εφαρμόστηκε σε μια κράτηση του site — ζει στο
+ * bookings."priceQuote".manualDiscount.partner (ΜΑΖΙ με το ποσό της έκπτωσης,
+ * ώστε να μην μπορούν ποτέ να «ξεκολλήσουν»). Οι διακόπτες βάσης είναι αυτοί
+ * που ίσχυαν τη στιγμή της κράτησης (για τον ξαναϋπολογισμό του ποσού).
+ */
+export interface PartnerCodeShare {
+  /** Ο συνεργάτης στον οποίο ανήκει ο κωδικός. */
+  userId: string;
+  /** Το ποσοστό του κωδικού (π.χ. 5). */
+  percent: number;
+  onRental: boolean;
+  onExtras: boolean;
+  onInsurance: boolean;
+  /** Ανώτατο ποσό έκπτωσης του κωδικού (€) — null/undefined = χωρίς. */
+  maxDiscount?: number | null;
+}
+
+/** Η έκπτωση του κωδικού συνεργάτη + το ποσό της (cents) — από το priceQuote. */
+export interface PartnerCodeOnBooking extends PartnerCodeShare {
+  code: string;
+  /** Η έκπτωση που πήρε ο πελάτης (cents) — την «πληρώνει» ο συνεργάτης. */
+  cents: number;
+}
+
+const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+
+/** Ο κωδικός συνεργάτη από ένα αποθηκευμένο priceQuote — null = κανένας. */
+export function partnerCodeOf(priceQuote: unknown): PartnerCodeOnBooking | null {
+  if (!priceQuote || typeof priceQuote !== "object" || Array.isArray(priceQuote)) return null;
+  const q = priceQuote as { version?: unknown; manualDiscount?: unknown };
+  if (q.version !== 1 || !q.manualDiscount || typeof q.manualDiscount !== "object") return null;
+  const m = q.manualDiscount as { cents?: unknown; code?: unknown; partner?: unknown };
+  const p = m.partner as Partial<Record<keyof PartnerCodeShare, unknown>> | null | undefined;
+  if (!p || typeof p !== "object") return null;
+  const cents = typeof m.cents === "number" && Number.isFinite(m.cents) ? Math.max(0, Math.round(m.cents)) : 0;
+  const percent = typeof p.percent === "number" && Number.isFinite(p.percent) ? p.percent : 0;
+  if (typeof m.code !== "string" || !m.code || typeof p.userId !== "string" || percent <= 0) return null;
+  return {
+    code: m.code,
+    cents,
+    userId: p.userId,
+    percent,
+    onRental: bool(p.onRental, true),
+    onExtras: bool(p.onExtras, false),
+    onInsurance: bool(p.onInsurance, false),
+    maxDiscount: typeof p.maxDiscount === "number" && Number.isFinite(p.maxDiscount) && p.maxDiscount >= 0 ? p.maxDiscount : null,
+  };
+}
+
+/**
+ * Η έκπτωση (cents) ενός κωδικού συνεργάτη: ΠΟΣΟΣΤΟ του κωδικού πάνω στην
+ * ΙΔΙΑ βάση με την προμήθεια (commissionBase — καθαρά συστατικά, μόνο όσα
+ * έχουν ανοιχτό διακόπτη), ΠΡΟΣ ΤΑ ΚΑΤΩ σε ακέραιο € (το σύνολο του site
+ * μένει ακέραιο και η έκπτωση δεν ξεπερνά ποτέ το ποσοστό × βάση), με
+ * προαιρετικό ανώτατο ποσό (€) και ποτέ πάνω από το σύνολο.
+ */
+export function partnerCodeDiscountCents(
+  parts: CommissionParts,
+  share: Pick<PartnerCodeShare, "percent" | "onRental" | "onExtras" | "onInsurance" | "maxDiscount">,
+  totalCents: number
+): number {
+  const maxDiscountEuros = share.maxDiscount ?? null;
+  const baseCents = Math.round(
+    commissionBase(parts, { rate: share.percent, onRental: share.onRental, onExtras: share.onExtras, onInsurance: share.onInsurance }) * 100
+  );
+  const pct = Math.max(0, share.percent);
+  let euros = Math.floor((baseCents * pct) / 10_000 + 1e-9);
+  if (maxDiscountEuros !== null && Number.isFinite(maxDiscountEuros) && maxDiscountEuros >= 0) {
+    euros = Math.min(euros, Math.floor(maxDiscountEuros + 1e-9));
+  }
+  const cents = Math.max(0, euros * 100);
+  return Math.min(cents, Math.max(0, Math.floor(totalCents / 100) * 100));
+}
+
+/**
+ * Η προμήθεια μιας κράτησης — με ή χωρίς κωδικό συνεργάτη.
+ *
+ * Με κωδικό: η κανονική προμήθεια (τρέχον ποσοστό, ίδια βάση) ΜΕΙΟΝ την
+ * έκπτωση που πήρε ο πελάτης. Έτσι η εταιρία παίρνει ΑΚΡΙΒΩΣ ό,τι θα έπαιρνε
+ * χωρίς κωδικό (σύνολο − έκπτωση − (προμήθεια − έκπτωση) = σύνολο − προμήθεια).
+ * Η έκπτωση είναι ≤ ποσοστό κωδικού × βάση, άρα η προμήθεια είναι ≥ (ποσοστό −
+ * ποσοστό κωδικού) × βάση· π.χ. 20% − 5% → 15% (ακριβώς, όταν η έκπτωση βγαίνει
+ * ακέραια). Ποτέ αρνητική.
+ */
+export function bookingCommission(
+  parts: CommissionParts,
+  s: CommissionSettings,
+  code: Pick<PartnerCodeOnBooking, "cents"> | null | undefined
+): number {
+  const full = commissionFor(parts, s);
+  if (!code) return full;
+  return round2(Math.max(0, full - code.cents / 100));
+}
+
+/** Το ονομαστικό ποσοστό μετά τον κωδικό (για εμφάνιση: «15%»). */
+export const reducedRate = (s: CommissionSettings, code: Pick<PartnerCodeShare, "percent"> | null | undefined): number =>
+  code ? Math.max(0, round2(s.rate - code.percent)) : s.rate;

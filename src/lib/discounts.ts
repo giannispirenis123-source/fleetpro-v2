@@ -11,7 +11,7 @@
 import { formatEuros } from "./public/money";
 import type { Discount, Prisma } from "@prisma/client";
 import { db } from "./db";
-import { round2 } from "./pricing";
+import { codeAmountEuros } from "./discountMath";
 import { toDiscountDTO } from "./discountMapper";
 import type { DiscountDTO } from "./discountsShared";
 
@@ -92,21 +92,12 @@ export function checkDiscountValidity(
   return { ok: true };
 }
 
-/** Το ποσό της έκπτωσης, μετά από cap και clamp στη βάση. */
+/** Το ποσό της έκπτωσης, μετά από cap και clamp στη βάση (ίδιος τύπος με το site: discountMath.ts). */
 export function discountAmountFor(
   discount: Discount,
   baseAmount: number
 ): number {
-  let amount =
-    discount.type === "PERCENTAGE"
-      ? (baseAmount * Number(discount.value)) / 100
-      : Number(discount.value);
-
-  if (discount.maxDiscount && amount > Number(discount.maxDiscount)) {
-    amount = Number(discount.maxDiscount);
-  }
-
-  return round2(Math.max(0, Math.min(amount, baseAmount)));
+  return codeAmountEuros(discount, baseAmount);
 }
 
 /**
@@ -195,5 +186,26 @@ export async function applyDiscountUsage(
       where: { tenantId: opts.tenantId, code: next },
       data: { usageCount: { increment: 1 } },
     });
+  }
+}
+
+/**
+ * Κρατήσεις που ΜΟΛΙΣ ακυρώθηκαν αυτόματα (έληξε / απέτυχε η online
+ * πληρωμή): επιστρέφουν τη χρήση του κωδικού τους — ίδιος κανόνας με την
+ * ακύρωση από το dashboard («ΜΟΝΟ η ακύρωση ελευθερώνει τη χρήση»).
+ * Καλείται ΜΕΤΑ την αλλαγή σε CANCELLED, με τα ids που άλλαξαν.
+ */
+export async function releaseDiscountUsageFor(
+  client: Pick<Prisma.TransactionClient, "booking" | "discount">,
+  tenantId: string,
+  bookingIds: string[]
+): Promise<void> {
+  if (bookingIds.length === 0) return;
+  const rows = await client.booking.findMany({
+    where: { tenantId, id: { in: bookingIds }, status: "CANCELLED", discountCode: { not: null } },
+    select: { discountCode: true },
+  });
+  for (const r of rows) {
+    await applyDiscountUsage({ tenantId, previousCode: r.discountCode, nextCode: null }, client as Prisma.TransactionClient);
   }
 }

@@ -117,7 +117,7 @@ export function PartnerFinanceRows({ items }: { items: PartnerFinanceRow[] }) {
                   </span>
                 </div>
                 <div className="dash-invoice-who">
-                  <span className="dash-invoice-customer">{b.vehicle}</span>
+                  <span className="dash-invoice-customer">{b.customer}</span>
                   <span>
                     <span className={`dash-status dash-status--${BOOKING_STATUS_CLASS[b.status] ?? "muted"}`}>{tr(`status.${b.status}`)}</span>
                     {b.refunded && <span className="dash-status dash-status--muted"> {tr("partner.refunded")}</span>}

@@ -63,7 +63,7 @@ test("ΙΔΙΟΣ υπολογισμός με τα «Οικονομικά» το�
 
 test("σύνολα: ακυρωμένες και με πλήρη επιστροφή δεν μετράνε· χωρίς κρατήσεις → μηδενικά", () => {
   const S = { rate: 20, onRental: true, onExtras: false, onInsurance: false };
-  const row = (id, status, cents, sub, pay = "NONE") => ({ id, bookingNumber: id, pickupDate: "2026-11-05", returnDate: "2026-11-06", vehicle: "V", status, paymentStatus: pay, totalCents: cents, subtotal: sub, extrasTotal: 0, insuranceCost: 0 });
+  const row = (id, status, cents, sub, pay = "NONE") => ({ id, bookingNumber: id, pickupDate: "2026-11-05", returnDate: "2026-11-06", customer: "Π Π", status, paymentStatus: pay, totalCents: cents, subtotal: sub, extrasTotal: 0, insuranceCost: 0 });
   const r = F.partnerFinance([row("a", "CONFIRMED", 10000, 80), row("b", "CANCELLED", 50000, 400), row("c", "COMPLETED", 20000, 150, "REFUNDED")], S);
   assert.deepEqual(r.totals, { bookings: 1, totalCents: 10000, commissionCents: 1600 });
   assert.deepEqual(F.partnerFinance([], S).totals, { bookings: 0, totalCents: 0, commissionCents: 0 });
@@ -162,16 +162,18 @@ test("PDF: χτίζεται με και χωρίς λογότυπο, για όλ
   }
   // Ένας συνεργάτης με πολλές κρατήσεις → πολλές σελίδες.
   const items = Array.from({ length: 120 }, (_, i) => ({
-    id: `b${i}`, bookingNumber: `BP-2026-${String(i).padStart(3, "0")}`, pickupDate: "2026-11-03", returnDate: "2026-11-05", vehicle: "Mercedes A-Class · XAΝ-5678",
+    id: `b${i}`, bookingNumber: `BP-2026-${String(i).padStart(3, "0")}`, pickupDate: "2026-11-03", returnDate: "2026-11-05", customer: "Μαρία Παπαδάκη",
     status: i % 7 === 0 ? "CANCELLED" : "COMPLETED", refunded: false, totalCents: 18000, commissionCents: i % 7 === 0 ? 0 : 1500, counted: i % 7 !== 0,
   }));
   const many = await buildCommissionsPdf({ ...base, lang: "en", logo: null, bookings: items });
   assert.ok((await PDFDocument.load(many)).getPageCount() >= 3);
   assert.equal(commissionsPdfFilename(period), "promitheies-2026-11-01_2026-11-30.pdf");
   assert.equal(commissionsPdfFilename({ kind: "all" }), "promitheies-ola.pdf");
-  // Τα δεδομένα του PDF δεν έχουν ΚΑΜΙΑ στήλη πελάτη (κοινό select των Οικονομικών).
+  // Από τον πελάτη ΜΟΝΟ ονοματεπώνυμο (κοινό select των Οικονομικών) — ποτέ επαφή/έγγραφο.
   const srv = read("src/lib/partnerServer.ts");
   const select = srv.slice(srv.indexOf("const FINANCE_SELECT = {"), srv.indexOf("} as const;", srv.indexOf("const FINANCE_SELECT = {")));
-  assert.doesNotMatch(select, /customer|email|phone|idNumber|firstName|lastName/);
-  assert.doesNotMatch(read("src/lib/partnerCommissionsPdf.ts"), /customer|email|phone|idNumber/i);
+  assert.match(select, /customer: \{ select: \{ firstName: true, lastName: true \} \},/);
+  assert.doesNotMatch(select, /email|phone|idNumber|license|address|dateOfBirth|vehicle/);
+  assert.doesNotMatch(read("src/lib/partnerCommissionsPdf.ts"), /email|phone|idNumber/i);
+  assert.match(read("src/lib/partnerCommissionsPdf.ts"), /\{ label: tr\("partner\.customer"\), w: 120 \},/);
 });

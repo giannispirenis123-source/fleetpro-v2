@@ -7,8 +7,8 @@
 //  · Λογότυπο πάνω αριστερά (αναλογίες, μέγιστο 150×56)· χωρίς λογότυπο → η
 //    επωνυμία της εταιρίας στη θέση του.
 //  · Πίνακας ανά συνεργάτη + «Σύνολο όλων»· για έναν συνεργάτη και οι κρατήσεις
-//    του (αριθμός, όχημα, ημερομηνίες, κατάσταση, ποσό, προμήθεια) — ΚΑΝΕΝΑ
-//    στοιχείο πελάτη.
+//    του (αριθμός, πελάτης, ημερομηνίες, κατάσταση, ποσό, προμήθεια) — από τον
+//    πελάτη ΜΟΝΟ ονοματεπώνυμο (ποτέ στοιχεία επικοινωνίας ή εγγράφου).
 //  · Νέα σελίδα με ξανά την κεφαλίδα του πίνακα· «Σελίδα X / Y» στο κάτω μέρος.
 
 import { PDFDocument, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
@@ -226,7 +226,7 @@ export async function buildCommissionsPdf(input: CommissionsPdfInput): Promise<U
       table(
         [
           { label: tr("partnerCommissions.pdfNumber"), w: 66 },
-          { label: tr("partner.vehicle"), w: 120 },
+          { label: tr("partner.customer"), w: 120 },
           { label: tr("partnerCommissions.pdfDates"), w: 116 },
           { label: tr("partner.status"), w: 78 },
           { label: tr("partnerCommissions.pdfAmount"), w: 64, align: "right" },
@@ -236,7 +236,7 @@ export async function buildCommissionsPdf(input: CommissionsPdfInput): Promise<U
           faded: !b.counted,
           cells: [
             b.bookingNumber,
-            b.vehicle,
+            b.customer,
             `${dmy(b.pickupDate)} – ${dmy(b.returnDate)}`,
             // Πλήρης επιστροφή: αυτή είναι η πληροφορία που εξηγεί γιατί δεν μετρά.
             b.refunded ? tr("partner.refunded") : tr(`status.${b.status}`),

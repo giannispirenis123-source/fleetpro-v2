@@ -24,7 +24,8 @@ export interface PartnerFinanceInput extends CommissionParts {
   /** "YYYY-MM-DD" */
   pickupDate: string;
   returnDate: string;
-  vehicle: string;
+  /** Ονοματεπώνυμο πελάτη (ΜΟΝΟ όνομα + επώνυμο — ποτέ τηλέφωνο/email/ΑΔΤ). */
+  customer: string;
   status: string;
   paymentStatus: string;
   /** Το αποθηκευμένο σύνολο της κράτησης (cents). */
@@ -36,7 +37,8 @@ export interface PartnerFinanceRow {
   bookingNumber: string;
   pickupDate: string;
   returnDate: string;
-  vehicle: string;
+  /** Ονοματεπώνυμο πελάτη. */
+  customer: string;
   status: string;
   /** Πλήρης επιστροφή χρημάτων. */
   refunded: boolean;
@@ -68,7 +70,7 @@ export function partnerFinance(
       bookingNumber: r.bookingNumber,
       pickupDate: r.pickupDate,
       returnDate: r.returnDate,
-      vehicle: r.vehicle,
+      customer: r.customer,
       status: r.status,
       refunded: r.paymentStatus === REFUNDED_PAYMENT,
       totalCents: Math.round(r.totalCents),

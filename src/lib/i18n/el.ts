@@ -2087,6 +2087,7 @@ export const el = {
     month: "Μήνας",
     allMonths: "Όλοι οι μήνες",
     date: "Ημερομηνία",
+    customer: "Πελάτης",
     vehicle: "Όχημα",
     status: "Κατάσταση",
     amount: "Ποσό κράτησης",

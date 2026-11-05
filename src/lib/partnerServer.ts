@@ -50,7 +50,8 @@ const FINANCE_SELECT = {
   subtotal: true,
   extrasTotal: true,
   insuranceCost: true,
-  vehicle: { select: { brand: true, model: true, plate: true } },
+  // Πελάτης: ΜΟΝΟ όνομα και επώνυμο (καμία επαφή/έγγραφο).
+  customer: { select: { firstName: true, lastName: true } },
 } as const;
 
 const FINANCE_ORDER = [{ pickupDate: "desc" as const }, { bookingNumber: "desc" as const }];
@@ -62,7 +63,7 @@ const toFinanceInput = (r: FinanceRow): PartnerFinanceInput => ({
   bookingNumber: r.bookingNumber,
   pickupDate: iso(r.pickupDate),
   returnDate: iso(r.returnDate),
-  vehicle: `${r.vehicle.brand} ${r.vehicle.model} · ${r.vehicle.plate}`,
+  customer: `${r.customer.firstName} ${r.customer.lastName}`.trim(),
   status: r.status,
   paymentStatus: r.paymentStatus,
   totalCents: storedTotalCents(r.priceQuote, r.total),

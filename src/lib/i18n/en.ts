@@ -2086,6 +2086,7 @@ export const en: Dictionary = {
     month: "Month",
     allMonths: "All months",
     date: "Date",
+    customer: "Customer",
     vehicle: "Vehicle",
     status: "Status",
     amount: "Booking amount",

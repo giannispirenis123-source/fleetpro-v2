@@ -74,8 +74,41 @@ export default function PartnerFinanceClient({ initialMonth, initial }: { initia
         {data.items.length === 0 ? (
           <p className="dash-form-note">{tr("partner.empty")}</p>
         ) : (
+          <PartnerFinanceRows items={data.items} />
+        )}
+      </div>
+
+      <div className="dash-kpis dash-pf-totals">
+        <div className="dash-card">
+          <div>
+            <span className="dash-card-value" data-testid="pf-total">{money(data.totals.totalCents)}</span>
+            <span className="dash-card-label">{tr("partner.totalBookings")}</span>
+          </div>
+        </div>
+        <div className="dash-card dash-card--green">
+          <div>
+            <span className="dash-card-value" data-testid="pf-net">{money(data.totals.commissionCents)}</span>
+            <span className="dash-card-label">{tr("partner.netCommission")}</span>
+          </div>
+        </div>
+      </div>
+      <p className="dash-form-note">{tr("partner.countedNote")}</p>
+    </>
+  );
+}
+
+/**
+ * Οι κρατήσεις με ποσό και προμήθεια — ΙΔΙΑ εμφάνιση για τον συνεργάτη και για
+ * τις «Προμήθειες συνεργατών» του Διαχειριστή. Ακυρωμένες/επιστραμμένες θολές
+ * με προμήθεια 0 € (counted = false από το partnerFinance).
+ */
+export function PartnerFinanceRows({ items }: { items: PartnerFinanceRow[] }) {
+  const tr = useT();
+  const locale = useLocale();
+  const money = (c: number) => formatMoney(c, locale);
+  return (
           <div className="dash-invoices" data-testid="partner-finance-list">
-            {data.items.map((b) => (
+            {items.map((b) => (
               <div key={b.id} className={`dash-invoice${b.counted ? "" : " dash-pf-uncounted"}`} data-testid="partner-finance-row">
                 <div className="dash-invoice-id">
                   <span className="dash-invoice-number">{b.bookingNumber}</span>
@@ -100,24 +133,5 @@ export default function PartnerFinanceClient({ initialMonth, initial }: { initia
               </div>
             ))}
           </div>
-        )}
-      </div>
-
-      <div className="dash-kpis dash-pf-totals">
-        <div className="dash-card">
-          <div>
-            <span className="dash-card-value" data-testid="pf-total">{money(data.totals.totalCents)}</span>
-            <span className="dash-card-label">{tr("partner.totalBookings")}</span>
-          </div>
-        </div>
-        <div className="dash-card dash-card--green">
-          <div>
-            <span className="dash-card-value" data-testid="pf-net">{money(data.totals.commissionCents)}</span>
-            <span className="dash-card-label">{tr("partner.netCommission")}</span>
-          </div>
-        </div>
-      </div>
-      <p className="dash-form-note">{tr("partner.countedNote")}</p>
-    </>
   );
 }

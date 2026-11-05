@@ -20,6 +20,7 @@ import {
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
   PARTNER_DEFAULTS,
+  STAFF_DEFAULTS,
   groupsForRole,
   permissionsFromKeys,
   togglePermission,
@@ -52,6 +53,8 @@ interface FormState {
   /** Συνεργάτης: «Μπορεί να βλέπει διαθεσιμότητα» / «Μπορεί να κάνει κράτηση» (προεπιλογή όχι). */
   partnerAvailability: boolean;
   partnerBook: boolean;
+  /** Προσωπικό: «Προβολή προμηθειών συνεργατών» (προεπιλογή όχι). */
+  staffCommissionPartners: boolean;
 }
 
 const emptyForm = (): FormState => ({
@@ -66,6 +69,7 @@ const emptyForm = (): FormState => ({
   commissionOnInsurance: false,
   partnerAvailability: false,
   partnerBook: false,
+  staffCommissionPartners: false,
 });
 
 const formFromUser = (u: UserDTO): FormState => ({
@@ -80,6 +84,7 @@ const formFromUser = (u: UserDTO): FormState => ({
   commissionOnInsurance: u.commissionOnInsurance,
   partnerAvailability: u.permissions["partner.availability"] === true,
   partnerBook: u.permissions["partner.book"] === true,
+  staffCommissionPartners: u.permissions["commission.partners"] === true,
 });
 
 export default function UsersClient({
@@ -541,6 +546,15 @@ function UserModal({
           (!!before["partner.book"]) !== (!!next["partner.book"]);
         if (changed) payload.permissions = Object.keys(next);
       }
+      // Προσωπικό: «Προβολή προμηθειών συνεργατών» στην ίδια λίστα δικαιωμάτων.
+      if (form.role === "STAFF") {
+        const before: PermissionMap =
+          mode === "create" || roleChanged ? permissionsFromKeys(STAFF_DEFAULTS) : { ...(user?.permissions ?? {}) };
+        const next = togglePermission(before, "commission.partners", form.staffCommissionPartners);
+        if (mode === "create" || !!before["commission.partners"] !== !!next["commission.partners"]) {
+          payload.permissions = Object.keys(next);
+        }
+      }
 
       const res = await fetch(
         mode === "create"
@@ -681,6 +695,22 @@ function UserModal({
             )}
 
           <p className="dash-form-note">{tr("users.commissionNote")}</p>
+
+          {form.role === "STAFF" && (
+            <fieldset className="dash-comm-bases" data-testid="staff-access">
+              <legend className="dash-comm-bases-title">{tr("users.staffAccessTitle")}</legend>
+              <label className="dash-comm-base">
+                <input
+                  type="checkbox"
+                  disabled={isSelf}
+                  checked={form.staffCommissionPartners}
+                  onChange={(e) => set({ staffCommissionPartners: e.target.checked })}
+                  data-testid="staff-access-commission-partners"
+                />
+                {tr("permissionLabel.commissionPartners")}
+              </label>
+            </fieldset>
+          )}
 
           {form.role === "PARTNER" && (
             <fieldset className="dash-comm-bases" data-testid="partner-access">

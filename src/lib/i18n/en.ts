@@ -71,6 +71,7 @@ export const en: Dictionary = {
     reports: "Reports",
     finance: "Finance",
     availability: "Availability",
+    partnerCommissions: "Partner commissions",
     users: "Users",
     settings: "Settings",
     storefront: "My page",
@@ -1155,6 +1156,7 @@ export const en: Dictionary = {
 
   users: {
     partnerAccessTitle: "Partner access",
+    staffAccessTitle: "Extra access",
     partnerAccessNote: "Unticked, the partner only sees their own bookings, as before. “Make bookings” also turns on “availability”.",
     roleCOMPANY_ADMIN: "Administrator",
     roleSTAFF: "Staff",
@@ -2028,7 +2030,20 @@ export const en: Dictionary = {
     error: "Something went wrong. Please try again.",
   },
 
+  partnerCommissions: {
+    title: "Partner commissions",
+    subtitle: "Each partner's bookings and commission — the same amounts as in their Finance.",
+    partner: "Partner",
+    rate: "Rate",
+    bookings: "Bookings",
+    commission: "Commission",
+    allPartners: "All partners",
+    inactive: "Inactive",
+    noPartners: "There are no partners.",
+  },
+
   permissionLabel: {
+    commissionPartners: "View partner commissions",
     partnerAvailability: "Can view availability",
     partnerBook: "Can make bookings",
   },

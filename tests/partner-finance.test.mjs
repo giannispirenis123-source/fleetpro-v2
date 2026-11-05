@@ -133,10 +133,11 @@ test("φίλτρο μήνα: YYYY-MM σε [αρχή, επόμενος μήνας
 test("στεγανότητα: ΜΟΝΟ οι κρατήσεις του ίδιου (partnerId) στην ΙΔΙΑ εταιρία, φίλτρο στο ερώτημα", () => {
   const s = read("src/lib/partnerServer.ts");
   assert.match(s, /const scope = bookingScope\(viewer\); \/\/ \{ tenantId, partnerId: ο ίδιος \}/);
-  assert.match(s, /where: \{ \.\.\.scope, \.\.\.\(range && \{ pickupDate: \{ gte: range\.from, lt: range\.to \} \}\) \}/);
+  assert.match(s, /where: \{ \.\.\.scope, \.\.\.pickupIn\(month\) \}/);
+  assert.match(s, /return range \? \{ pickupDate: \{ gte: range\.from, lt: range\.to \} \} : \{\};/);
   assert.match(read("src/lib/authz.ts"), /viewer\.role === "PARTNER"\s+\? \{ \.\.\.base, partnerId: viewer\.userId \}/);
-  // Καμία στήλη πελάτη στο ερώτημα των οικονομικών.
-  const select = s.slice(s.indexOf("db.booking.findMany"), s.indexOf("myCommissionSettings(viewer, true)"));
+  // Καμία στήλη πελάτη στο κοινό select των οικονομικών.
+  const select = s.slice(s.indexOf("const FINANCE_SELECT = {"), s.indexOf("} as const;", s.indexOf("const FINANCE_SELECT = {")));
   assert.doesNotMatch(select, /customer/);
 });
 

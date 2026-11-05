@@ -70,6 +70,7 @@ export const el = {
     reports: "Αναφορές",
     finance: "Οικονομικά",
     availability: "Διαθεσιμότητα",
+    partnerCommissions: "Προμήθειες συνεργατών",
     users: "Χρήστες",
     settings: "Ρυθμίσεις",
     storefront: "Η σελίδα μου",
@@ -1156,6 +1157,7 @@ export const el = {
 
   users: {
     partnerAccessTitle: "Πρόσβαση συνεργάτη",
+    staffAccessTitle: "Επιπλέον πρόσβαση",
     partnerAccessNote: "Χωρίς τσεκ ο συνεργάτης βλέπει μόνο τις δικές του κρατήσεις, όπως πριν. Η «κράτηση» φέρνει αυτόματα και τη «διαθεσιμότητα».",
     roleCOMPANY_ADMIN: "Διαχειριστής",
     roleSTAFF: "Προσωπικό",
@@ -2029,7 +2031,20 @@ export const el = {
     error: "Κάτι πήγε στραβά. Δοκίμασε ξανά.",
   },
 
+  partnerCommissions: {
+    title: "Προμήθειες συνεργατών",
+    subtitle: "Οι κρατήσεις και η προμήθεια κάθε συνεργάτη — ίδια ποσά με τα «Οικονομικά» του.",
+    partner: "Συνεργάτης",
+    rate: "Ποσοστό",
+    bookings: "Κρατήσεις",
+    commission: "Προμήθεια",
+    allPartners: "Σύνολο όλων",
+    inactive: "Ανενεργός",
+    noPartners: "Δεν υπάρχουν συνεργάτες.",
+  },
+
   permissionLabel: {
+    commissionPartners: "Προβολή προμηθειών συνεργατών",
     partnerAvailability: "Μπορεί να βλέπει διαθεσιμότητα",
     partnerBook: "Μπορεί να κάνει κράτηση",
   },

@@ -8,12 +8,13 @@
 import type { Viewer } from "./authz";
 import { bookingScope } from "./authz";
 import { db } from "./db";
-import { NO_COMMISSION } from "./commission";
+import type { Prisma } from "@prisma/client";
+import { NO_COMMISSION, commissionSettingsOf } from "./commission";
 import { myCommissionSettings } from "./listServer";
 import { storedTotalCents } from "./public/money";
 import { loadBlockingBookings } from "./public/availability";
 import { tenantNowLocal } from "./bookingConflicts";
-import { monthRange, partnerFinance } from "./partnerFinance";
+import { monthRange, partnerFinance, type PartnerFinanceInput } from "./partnerFinance";
 import { availabilityGrid, dayList } from "./partnerAvailability";
 import { findDuplicateCustomers, loadWalkInVehicles } from "./walkIn";
 import { foldText } from "./customerMatch";
@@ -26,48 +27,127 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 /* ── Οικονομικά ── */
 
-export async function loadPartnerFinance(viewer: Viewer & { tenantId: string }, month: string | null) {
+/** Ό,τι χρειάζεται μια κράτηση για τα Οικονομικά — ΙΔΙΟ για συνεργάτη και Διαχειριστή. */
+const FINANCE_SELECT = {
+  id: true,
+  partnerId: true,
+  bookingNumber: true,
+  pickupDate: true,
+  returnDate: true,
+  status: true,
+  paymentStatus: true,
+  total: true,
+  priceQuote: true,
+  subtotal: true,
+  extrasTotal: true,
+  insuranceCost: true,
+  vehicle: { select: { brand: true, model: true, plate: true } },
+} as const;
+
+const FINANCE_ORDER = [{ pickupDate: "desc" as const }, { bookingNumber: "desc" as const }];
+
+type FinanceRow = Prisma.BookingGetPayload<{ select: typeof FINANCE_SELECT }>;
+
+const toFinanceInput = (r: FinanceRow): PartnerFinanceInput => ({
+  id: r.id,
+  bookingNumber: r.bookingNumber,
+  pickupDate: iso(r.pickupDate),
+  returnDate: iso(r.returnDate),
+  vehicle: `${r.vehicle.brand} ${r.vehicle.model} · ${r.vehicle.plate}`,
+  status: r.status,
+  paymentStatus: r.paymentStatus,
+  totalCents: storedTotalCents(r.priceQuote, r.total),
+  subtotal: Number(r.subtotal),
+  extrasTotal: Number(r.extrasTotal),
+  insuranceCost: Number(r.insuranceCost),
+});
+
+/** Φίλτρο μήνα στην ημερομηνία παραλαβής (ΙΔΙΟ παντού). */
+const pickupIn = (month: string | null) => {
   const range = month ? monthRange(month) : null;
+  return range ? { pickupDate: { gte: range.from, lt: range.to } } : {};
+};
+
+export async function loadPartnerFinance(viewer: Viewer & { tenantId: string }, month: string | null) {
   const scope = bookingScope(viewer); // { tenantId, partnerId: ο ίδιος }
   const [rows, settings] = await Promise.all([
     db.booking.findMany({
-      where: { ...scope, ...(range && { pickupDate: { gte: range.from, lt: range.to } }) },
-      orderBy: [{ pickupDate: "desc" }, { bookingNumber: "desc" }],
+      where: { ...scope, ...pickupIn(month) },
+      orderBy: FINANCE_ORDER,
       take: 1000,
-      select: {
-        id: true,
-        bookingNumber: true,
-        pickupDate: true,
-        returnDate: true,
-        status: true,
-        paymentStatus: true,
-        total: true,
-        priceQuote: true,
-        subtotal: true,
-        extrasTotal: true,
-        insuranceCost: true,
-        vehicle: { select: { brand: true, model: true, plate: true } },
-      },
+      select: FINANCE_SELECT,
     }),
     // ΙΔΙΕΣ ρυθμίσεις με τη σύνοψη προμήθειας των κρατήσεων (τρέχον ποσοστό).
     myCommissionSettings(viewer, true),
   ]);
-  return partnerFinance(
-    rows.map((r) => ({
-      id: r.id,
-      bookingNumber: r.bookingNumber,
-      pickupDate: iso(r.pickupDate),
-      returnDate: iso(r.returnDate),
-      vehicle: `${r.vehicle.brand} ${r.vehicle.model} · ${r.vehicle.plate}`,
-      status: r.status,
-      paymentStatus: r.paymentStatus,
-      totalCents: storedTotalCents(r.priceQuote, r.total),
-      subtotal: Number(r.subtotal),
-      extrasTotal: Number(r.extrasTotal),
-      insuranceCost: Number(r.insuranceCost),
-    })),
-    settings ?? NO_COMMISSION
-  );
+  return partnerFinance(rows.map(toFinanceInput), settings ?? NO_COMMISSION);
+}
+
+/* ── Προμήθειες συνεργατών (Διαχειριστής / προσωπικό με «commission.partners») ── */
+
+const PARTNER_SELECT = {
+  id: true,
+  name: true,
+  isActive: true,
+  commissionRate: true,
+  commissionOnRental: true,
+  commissionOnExtras: true,
+  commissionOnInsurance: true,
+} as const;
+
+/**
+ * Ανά συνεργάτη της ΕΤΑΙΡΙΑΣ (tenantId από το session): ΙΔΙΟΣ υπολογισμός με
+ * τα «Οικονομικά» του ίδιου του συνεργάτη (partnerFinance + commissionSettingsOf),
+ * άρα ίδια ποσά. Συνεργάτες χωρίς κρατήσεις στο διάστημα → μηδενικά.
+ */
+export async function loadPartnerCommissions(tenantId: string, month: string | null) {
+  const partners = await db.user.findMany({
+    where: { tenantId, role: "PARTNER" },
+    orderBy: [{ isActive: "desc" }, { name: "asc" }],
+    select: PARTNER_SELECT,
+  });
+  const rows = partners.length
+    ? await db.booking.findMany({
+        where: { tenantId, partnerId: { in: partners.map((p) => p.id) }, ...pickupIn(month) },
+        orderBy: FINANCE_ORDER,
+        select: FINANCE_SELECT,
+      })
+    : [];
+  const byPartner = new Map<string, FinanceRow[]>();
+  for (const r of rows) {
+    if (!r.partnerId) continue;
+    byPartner.set(r.partnerId, [...(byPartner.get(r.partnerId) ?? []), r]);
+  }
+  const list = partners.map((p) => {
+    const settings = commissionSettingsOf(p) ?? NO_COMMISSION;
+    const { totals } = partnerFinance((byPartner.get(p.id) ?? []).map(toFinanceInput), settings);
+    return { id: p.id, name: p.name, isActive: p.isActive, rate: settings.rate, ...totals };
+  });
+  return {
+    partners: list,
+    totals: list.reduce(
+      (a, p) => ({ bookings: a.bookings + p.bookings, totalCents: a.totalCents + p.totalCents, commissionCents: a.commissionCents + p.commissionCents }),
+      { bookings: 0, totalCents: 0, commissionCents: 0 }
+    ),
+  };
+}
+
+/** Οι κρατήσεις ΕΝΟΣ συνεργάτη της εταιρίας — ίδιος υπολογισμός. null = δεν είναι συνεργάτης αυτής της εταιρίας. */
+export async function loadPartnerCommissionDetail(tenantId: string, partnerId: string, month: string | null) {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(partnerId)) return null;
+  const partner = await db.user.findFirst({ where: { id: partnerId, tenantId, role: "PARTNER" }, select: PARTNER_SELECT });
+  if (!partner) return null;
+  const rows = await db.booking.findMany({
+    where: { tenantId, partnerId: partner.id, ...pickupIn(month) },
+    orderBy: FINANCE_ORDER,
+    take: 1000,
+    select: FINANCE_SELECT,
+  });
+  const settings = commissionSettingsOf(partner) ?? NO_COMMISSION;
+  return {
+    partner: { id: partner.id, name: partner.name, isActive: partner.isActive, rate: settings.rate },
+    ...partnerFinance(rows.map(toFinanceInput), settings),
+  };
 }
 
 /* ── Διαθεσιμότητα ── */

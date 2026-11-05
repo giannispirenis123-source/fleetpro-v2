@@ -7,17 +7,18 @@ export const dynamic = "force-dynamic";
 
 import { badRequest, forbidden, logError, ok, serverError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { monthRange } from "@/lib/partnerFinance";
-import { loadPartnerCommissions } from "@/lib/partnerServer";
+import { loadPartnerCommissions, periodFromSearch } from "@/lib/partnerServer";
 
-// GET /api/partner-commissions?month=YYYY-MM   (κενό = όλοι οι μήνες)
+// GET /api/partner-commissions?month=YYYY-MM | ?from=YYYY-MM-DD&to=YYYY-MM-DD   (κενό = όλοι οι μήνες)
 export const GET = withPermission(
-  async (req, _session, _params, viewer) => {
+  async (req, session, _params, viewer) => {
     try {
       if (!viewer?.tenantId || viewer.role === "PARTNER" || viewer.role === "SUPER_ADMIN") return forbidden();
-      const month = new URL(req.url).searchParams.get("month") || null;
-      if (month && !monthRange(month)) return badRequest("Μη έγκυρος μήνας (YYYY-MM)");
-      return ok({ month, ...(await loadPartnerCommissions(viewer.tenantId, month)) });
+      // ?month=YYYY-MM | ?from=YYYY-MM-DD&to=YYYY-MM-DD | τίποτα (= όλοι οι μήνες)
+      const p = periodFromSearch(new URL(req.url).searchParams, session.locale);
+      if (!p.ok) return badRequest(p.message);
+      const period = p.period;
+      return ok({ period, ...(await loadPartnerCommissions(viewer.tenantId, period)) });
     } catch (error) {
       logError("partner-commissions", error);
       return serverError();

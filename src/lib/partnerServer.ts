@@ -14,7 +14,16 @@ import { myCommissionSettings } from "./listServer";
 import { storedTotalCents } from "./public/money";
 import { loadBlockingBookings } from "./public/availability";
 import { tenantNowLocal } from "./bookingConflicts";
-import { monthRange, partnerFinance, type PartnerFinanceInput } from "./partnerFinance";
+import {
+  PERIOD_MESSAGES,
+  monthRange,
+  parsePeriod,
+  partnerFinance,
+  periodRange,
+  type PartnerFinanceInput,
+  type Period,
+} from "./partnerFinance";
+import { normalizeLocale } from "./i18n/locale";
 import { availabilityGrid, dayList } from "./partnerAvailability";
 import { findDuplicateCustomers, loadWalkInVehicles } from "./walkIn";
 import { foldText } from "./customerMatch";
@@ -62,17 +71,15 @@ const toFinanceInput = (r: FinanceRow): PartnerFinanceInput => ({
   insuranceCost: Number(r.insuranceCost),
 });
 
-/** Φίλτρο μήνα στην ημερομηνία παραλαβής (ΙΔΙΟ παντού). */
-const pickupIn = (month: string | null) => {
-  const range = month ? monthRange(month) : null;
-  return range ? { pickupDate: { gte: range.from, lt: range.to } } : {};
-};
+/** Φίλτρο στην ημερομηνία παραλαβής (ΙΔΙΟ παντού): [from, to) ή κανένα. */
+const pickupIn = (range: { from: Date; to: Date } | null) =>
+  range ? { pickupDate: { gte: range.from, lt: range.to } } : {};
 
 export async function loadPartnerFinance(viewer: Viewer & { tenantId: string }, month: string | null) {
   const scope = bookingScope(viewer); // { tenantId, partnerId: ο ίδιος }
   const [rows, settings] = await Promise.all([
     db.booking.findMany({
-      where: { ...scope, ...pickupIn(month) },
+      where: { ...scope, ...pickupIn(month ? monthRange(month) : null) },
       orderBy: FINANCE_ORDER,
       take: 1000,
       select: FINANCE_SELECT,
@@ -100,7 +107,8 @@ const PARTNER_SELECT = {
  * τα «Οικονομικά» του ίδιου του συνεργάτη (partnerFinance + commissionSettingsOf),
  * άρα ίδια ποσά. Συνεργάτες χωρίς κρατήσεις στο διάστημα → μηδενικά.
  */
-export async function loadPartnerCommissions(tenantId: string, month: string | null) {
+export async function loadPartnerCommissions(tenantId: string, period: Period) {
+  const range = periodRange(period);
   const partners = await db.user.findMany({
     where: { tenantId, role: "PARTNER" },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
@@ -108,7 +116,7 @@ export async function loadPartnerCommissions(tenantId: string, month: string | n
   });
   const rows = partners.length
     ? await db.booking.findMany({
-        where: { tenantId, partnerId: { in: partners.map((p) => p.id) }, ...pickupIn(month) },
+        where: { tenantId, partnerId: { in: partners.map((p) => p.id) }, ...pickupIn(range) },
         orderBy: FINANCE_ORDER,
         select: FINANCE_SELECT,
       })
@@ -132,13 +140,22 @@ export async function loadPartnerCommissions(tenantId: string, month: string | n
   };
 }
 
+/**
+ * Το διάστημα από το URL (?month= | ?from=&to= | τίποτα) — ΙΔΙΟΣ έλεγχος για
+ * λίστα, λεπτομέρεια και PDF. Σφάλμα → μήνυμα στη γλώσσα του χρήστη.
+ */
+export function periodFromSearch(sp: URLSearchParams, locale: unknown): { ok: true; period: Period } | { ok: false; message: string } {
+  const r = parsePeriod({ month: sp.get("month"), from: sp.get("from"), to: sp.get("to") });
+  return r.ok ? r : { ok: false, message: PERIOD_MESSAGES[r.error][normalizeLocale(locale)] };
+}
+
 /** Οι κρατήσεις ΕΝΟΣ συνεργάτη της εταιρίας — ίδιος υπολογισμός. null = δεν είναι συνεργάτης αυτής της εταιρίας. */
-export async function loadPartnerCommissionDetail(tenantId: string, partnerId: string, month: string | null) {
+export async function loadPartnerCommissionDetail(tenantId: string, partnerId: string, period: Period) {
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(partnerId)) return null;
   const partner = await db.user.findFirst({ where: { id: partnerId, tenantId, role: "PARTNER" }, select: PARTNER_SELECT });
   if (!partner) return null;
   const rows = await db.booking.findMany({
-    where: { tenantId, partnerId: partner.id, ...pickupIn(month) },
+    where: { tenantId, partnerId: partner.id, ...pickupIn(periodRange(period)) },
     orderBy: FINANCE_ORDER,
     take: 1000,
     select: FINANCE_SELECT,

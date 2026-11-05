@@ -2927,3 +2927,4 @@ button.dash-pa-cell:hover, button.dash-pa-cell:focus-visible { outline: 2px soli
   .dash-pc-table td[data-label]::before { content: attr(data-label); color: var(--text-3); font-weight: 500; }
   .dash-pc-table td.dash-pc-empty { display: none; }
 }
+.dash-pc-toolbar { flex-wrap: wrap; gap: 10px; }

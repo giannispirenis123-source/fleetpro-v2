@@ -59,6 +59,8 @@ export const LIMITS = {
   billingSyncPerTenant: { scope: "billing-sync", max: 30, windowMinutes: 60 },
   /** Κρατήσεις συνεργάτη από το dashboard του (POST /api/partner/bookings). */
   partnerBookingPerUser: { scope: "partner-book", max: 20, windowMinutes: 60 },
+  /** PDF «Προμήθειες συνεργατών» (GET /api/partner-commissions/pdf). */
+  commissionsPdfPerUser: { scope: "commissions-pdf", max: 20, windowMinutes: 60 },
   /** «Πες μας τη γνώμη σου» ανά χρήστη. */
   feedbackPerUser: { scope: "feedback-user", max: 5, windowMinutes: 60 },
 } as const satisfies Record<string, Limit>;

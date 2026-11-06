@@ -15,7 +15,8 @@ import { paymentBadge, type PaymentBadge } from "./payments";
 import { ageAt } from "./engine";
 import type { QuoteLine } from "./pricing";
 import type { LocalizedText } from "./text";
-import { storedInsurance } from "../pricingBridge";
+import { storedInsurance, storedManualDiscount } from "../pricingBridge";
+import { codeLineLabel } from "./siteCode";
 import type { SearchAgeBand } from "./search";
 import { storedTotalCents } from "./money";
 
@@ -107,6 +108,8 @@ export const publicBookingSchema = z.object({
   acceptTerms: z.boolean(),
   /** Τρόπος πληρωμής — υποχρεωτικός ΜΟΝΟ όταν η εταιρία δέχεται και τους δύο (ελέγχει ο server). */
   paymentMethod: z.enum(["ONLINE", "PICKUP"]).nullable().optional(),
+  /** Εκπτωτικός κωδικός (μόνο το κείμενο· ο server τον ξαναελέγχει και βγάζει το ποσό). */
+  discountCode: z.string().max(40).nullable().optional(),
   /** Honeypot: κρυφό πεδίο — άνθρωπος δεν το βλέπει, bot το γεμίζει. */
   website: z.string().max(200).optional().default(""),
 });
@@ -380,7 +383,10 @@ export function toConfirmationDTO(b: ConfirmationSource, nowMs: number = Date.no
     to: `${iso(b.returnDate)}T${b.returnTime ?? "10:00"}`,
     pickupLocation: b.pickupLocation,
     returnLocation: b.returnLocation,
-    lines: lines.map((l) => ({ label: l.label, qty: l.qty, totalCents: l.totalCents, kind: l.kind })),
+    lines: withManualLine(
+      lines.map((l) => ({ label: l.label, qty: l.qty, totalCents: l.totalCents, kind: l.kind })),
+      b.priceQuote
+    ),
     totalCents: storedTotalCents(b.priceQuote, b.total),
     listTotalCents: q.quote?.listTotalCents ?? null,
     vatCents: q.quote?.vatCents ?? null,
@@ -391,6 +397,17 @@ export function toConfirmationDTO(b: ConfirmationSource, nowMs: number = Date.no
     insurance: ins ? { name: ins.name, coverages: ins.coverages } : null,
     payment: confirmationPayment(b, storedTotalCents(b.priceQuote, b.total), nowMs),
   };
+}
+
+/**
+ * Η έκπτωση κωδικού/χειροκίνητη ΔΕΝ είναι γραμμή της quote(): μπαίνει εδώ ως
+ * γραμμή «Εκπτωτικός κωδικός · X» (ή «Έκπτωση»), ώστε οι γραμμές να αθροίζουν
+ * στο αποθηκευμένο σύνολο. ΜΟΝΟ κωδικός και ποσό — ποτέ συνεργάτης.
+ */
+function withManualLine(lines: ConfirmationDTO["lines"], priceQuote: unknown): ConfirmationDTO["lines"] {
+  const m = storedManualDiscount(priceQuote);
+  if (!m || m.cents <= 0) return lines;
+  return [...lines, { label: codeLineLabel(m.code), qty: 1, totalCents: -m.cents, kind: "code" }];
 }
 
 function confirmationPayment(b: ConfirmationSource, totalCents: number, nowMs: number): ConfirmationPayment | null {

@@ -65,6 +65,8 @@ function TermsLabel({ d, legal }: { d: StorefrontDictionary; legal: Props["legal
 
 const DRAFT_KEY = "sf-book-draft";
 
+const CODE_FALLBACK = { el: "Ο κωδικός δεν είναι έγκυρος.", en: "This code is not valid." };
+
 interface Contact {
   firstName: string;
   lastName: string;
@@ -109,6 +111,13 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
   // Με ΔΥΟ τρόπους: καμία προεπιλογή (υποχρεωτική ρητή επιλογή). Με έναν: αυτός.
   const [method, setMethod] = useState<PaymentMethod | null>(payment.methods.length === 1 ? payment.methods[0] : null);
   const firstRender = useRef(true);
+  // Εκπτωτικός κωδικός: ο server τον ελέγχει και βγάζει το ποσό (εδώ μόνο το κείμενο).
+  const [codeInput, setCodeInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [codeMsg, setCodeMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const appliedRef = useRef<string | null>(null);
+  appliedRef.current = appliedCode;
 
   // Μετά την «Ενημέρωση τιμής» (νέα ηλικία στο URL) τα στοιχεία επιστρέφουν
   // από το sessionStorage της καρτέλας — ποτέ από το URL.
@@ -132,6 +141,78 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
 
   const extrasPayload = () => Object.entries(extras).filter(([, q]) => q > 0).map(([id, qty]) => ({ id, qty }));
 
+  /** Τιμή ΜΕ κωδικό από τον server. null = ο κωδικός δεν ισχύει (μήνυμα στο codeMsg). */
+  const quoteWithCode = async (code: string): Promise<PublicQuote | null> => {
+    const res = await fetch("/api/public/discount-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, key: cardKey, criteria, extras: extrasPayload(), insuranceId, code }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.data?.quote) {
+      setCodeMsg({ ok: true, text: fill(d.codeApplied, { code: body.data.code }) });
+      return body.data.quote as PublicQuote;
+    }
+    setCodeMsg({ ok: false, text: t(body.message) || t(CODE_FALLBACK) });
+    return null;
+  };
+
+  /** Τιμή ΧΩΡΙΣ κωδικό (η κανονική διαδρομή). */
+  const plainQuote = async (): Promise<boolean> => {
+    const res = await fetch("/api/public/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, key: cardKey, criteria, extras: extrasPayload(), insuranceId }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setQuote(body.data);
+      setQuoteError("");
+      return true;
+    }
+    if (body.message) {
+      // Π.χ. το επίπεδο απενεργοποιήθηκε στο μεταξύ: πίσω στο «χωρίς ασφάλεια».
+      setQuoteError(t(body.message));
+      setInsuranceId(null);
+    }
+    return false;
+  };
+
+  const applyCode = async () => {
+    const code = codeInput.trim().toUpperCase();
+    if (!code) {
+      setCodeMsg({ ok: false, text: d.codeRequired });
+      return;
+    }
+    if (codeBusy) return;
+    setCodeBusy(true);
+    setQuoting(true);
+    try {
+      const q = await quoteWithCode(code);
+      if (q) {
+        setQuote(q);
+        setQuoteError("");
+        setAppliedCode(code);
+      }
+    } catch {
+      setCodeMsg({ ok: false, text: lang === "el" ? "Πρόβλημα σύνδεσης. Δοκιμάστε ξανά." : "Connection problem. Please try again." });
+    } finally {
+      setCodeBusy(false);
+      setQuoting(false);
+    }
+  };
+
+  const removeCode = async (msg: { ok: boolean; text: string } | null = null) => {
+    setAppliedCode(null);
+    setCodeMsg(msg);
+    setQuoting(true);
+    try {
+      await plainQuote();
+    } finally {
+      setQuoting(false);
+    }
+  };
+
   // ── Νέα τιμή από τον server σε κάθε αλλαγή πρόσθετων/ασφάλειας ──
   const extrasKey = JSON.stringify([extras, insuranceId]);
   useEffect(() => {
@@ -143,21 +224,20 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
     setQuoting(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch("/api/public/quote", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug, key: cardKey, criteria, extras: extrasPayload(), insuranceId }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!alive) return;
-        if (res.ok) {
-          setQuote(body.data);
-          setQuoteError("");
-        } else if (body.message) {
-          // Π.χ. το επίπεδο απενεργοποιήθηκε στο μεταξύ: πίσω στο «χωρίς ασφάλεια».
-          setQuoteError(t(body.message));
-          setInsuranceId(null);
+        // Με κωδικό: η νέα τιμή ΜΑΖΙ με τον κωδικό (ο server τον ξαναελέγχει).
+        const code = appliedRef.current;
+        if (code) {
+          const q = await quoteWithCode(code);
+          if (!alive) return;
+          if (q) {
+            setQuote(q);
+            setQuoteError("");
+            return;
+          }
+          // Ο κωδικός δεν ισχύει για τη νέα επιλογή: βγαίνει και η τιμή ξαναβγαίνει χωρίς αυτόν.
+          setAppliedCode(null);
         }
+        await plainQuote();
       } finally {
         if (alive) setQuoting(false);
       }
@@ -202,6 +282,7 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
           extras: extrasPayload(),
           insuranceId,
           paymentMethod: method,
+          discountCode: appliedCode,
           ...contact,
           website,
         }),
@@ -221,6 +302,8 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
       setErrors(fieldErrors);
       setFormError(t(body.message) || "—");
       if (typeof body.ageUpdate === "number") setAgeUpdate(body.ageUpdate);
+      // Ο κωδικός δεν ισχύει πια (π.χ. εξαντλήθηκε στο μεταξύ): βγαίνει, νέα τιμή χωρίς αυτόν.
+      if (body.codeRejected) void removeCode({ ok: false, text: t(body.message) });
       const first = Object.keys(fieldErrors)[0];
       if (first === "paymentMethod") document.getElementById("bk-paymentMethod")?.scrollIntoView({ block: "center" });
       else if (first) document.getElementById(`bk-${first}`)?.focus();
@@ -363,6 +446,53 @@ export default function BookingForm({ slug, lang, cardKey, criteria, bookPath, q
           </fieldset>
         </section>
       )}
+
+      {/* Εκπτωτικός κωδικός — πάνω από την ανάλυση τιμής. Ο server βγάζει το ποσό. */}
+      <section className="sf-bk-box sf-code" aria-labelledby="bk-code-title">
+        <h2 className="sf-h3" id="bk-code-title">
+          <label htmlFor="bk-code">{d.codeTitle}</label>
+        </h2>
+        {appliedCode ? (
+          <div className="sf-code-row">
+            <span className="sf-code-chip">{appliedCode}</span>
+            <button type="button" className="sf-btn sf-btn--ghost sf-btn--sm" onClick={() => void removeCode()} disabled={quoting}>
+              {d.codeRemove}
+            </button>
+          </div>
+        ) : (
+          <div className="sf-code-row">
+            <input
+              id="bk-code"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              maxLength={40}
+              value={codeInput}
+              aria-invalid={codeMsg && !codeMsg.ok ? true : undefined}
+              aria-describedby={codeMsg ? "bk-code-msg" : undefined}
+              onChange={(e) => {
+                setCodeInput(e.target.value.toUpperCase());
+                if (codeMsg && !codeMsg.ok) setCodeMsg(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void applyCode();
+                }
+              }}
+            />
+            <button type="button" className="sf-btn sf-btn--ghost sf-btn--sm" onClick={() => void applyCode()} disabled={codeBusy || quoting}>
+              {codeBusy ? d.codeChecking : d.codeApply}
+            </button>
+          </div>
+        )}
+        {codeMsg && (
+          <p id="bk-code-msg" className={codeMsg.ok ? "sf-code-ok sf-small" : "sf-bk-err"} role={codeMsg.ok ? "status" : "alert"}>
+            {codeMsg.text}
+          </p>
+        )}
+      </section>
 
       <section className="sf-bk-box" aria-labelledby="bk-price-title" aria-busy={quoting}>
         <h2 className="sf-h3" id="bk-price-title">

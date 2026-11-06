@@ -10,7 +10,7 @@
 // πλήρη επιστροφή χρημάτων (paymentStatus REFUNDED). Μετράνε PENDING,
 // CONFIRMED, ACTIVE, COMPLETED (και με μερική επιστροφή — PARTIALLY_REFUNDED).
 
-import { commissionFor, countsForCommission, type CommissionParts, type CommissionSettings } from "./commission";
+import { bookingCommission, countsForCommission, reducedRate, type CommissionParts, type CommissionSettings } from "./commission";
 
 export const REFUNDED_PAYMENT = "REFUNDED";
 
@@ -30,6 +30,11 @@ export interface PartnerFinanceInput extends CommissionParts {
   paymentStatus: string;
   /** Το αποθηκευμένο σύνολο της κράτησης (cents). */
   totalCents: number;
+  /**
+   * Εκπτωτικός κωδικός ΣΥΝΕΡΓΑΤΗ στο site (από το priceQuote — partnerCodeOf):
+   * η έκπτωση αφαιρείται από την προμήθεια. null/undefined = κανένας.
+   */
+  partnerCode?: { code: string; percent: number; cents: number } | null;
 }
 
 export interface PartnerFinanceRow {
@@ -46,6 +51,8 @@ export interface PartnerFinanceRow {
   commissionCents: number;
   /** false = ακυρωμένη/επιστραμμένη: φαίνεται, αλλά ΔΕΝ μετρά στα σύνολα. */
   counted: boolean;
+  /** Κράτηση με κωδικό συνεργάτη: ο κωδικός και το μειωμένο ποσοστό (π.χ. 15). */
+  code: { code: string; ratePct: number } | null;
 }
 
 export interface PartnerFinanceTotals {
@@ -75,8 +82,10 @@ export function partnerFinance(
       refunded: r.paymentStatus === REFUNDED_PAYMENT,
       totalCents: Math.round(r.totalCents),
       // Ακυρωμένη δεν φέρνει προμήθεια (ίδιος κανόνας με τη σύνοψη των κρατήσεων).
-      commissionCents: counted ? toCents(commissionFor(r, settings)) : 0,
+      // Με κωδικό συνεργάτη: μειωμένη (bookingCommission — ίδια βάση, μείον την έκπτωση).
+      commissionCents: counted ? toCents(bookingCommission(r, settings, r.partnerCode)) : 0,
       counted,
+      code: r.partnerCode ? { code: r.partnerCode.code, ratePct: reducedRate(settings, r.partnerCode) } : null,
     };
   });
   const counted = items.filter((i) => i.counted);

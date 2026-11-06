@@ -35,10 +35,20 @@ import { resolvePaymentMethod, type PaymentMethod } from "./payments";
 import { loadSiteCatalog, type SiteCatalog } from "./site";
 import { textFor } from "./text";
 import { currentTermsVersion } from "../legal/legalServer";
+import { claimSiteCodeUse, loadSiteCode } from "./siteCodeServer";
+import { evaluateSiteCode, normalizeSiteCode, SITE_CODE_MESSAGES, type AppliedSiteCode, type SiteCodeRecord } from "./siteCode";
 
 export type SubmitResult =
   | { ok: true; code: string; url: string }
-  | { ok: false; status: 400 | 404 | 409 | 429 | 502; message: { el: string; en: string }; fieldErrors?: FieldError[]; ageUpdate?: number | null };
+  | {
+      ok: false;
+      status: 400 | 404 | 409 | 429 | 502;
+      message: { el: string; en: string };
+      fieldErrors?: FieldError[];
+      ageUpdate?: number | null;
+      /** true = ο εκπτωτικός κωδικός δεν ισχύει πια (η φόρμα τον αφαιρεί και ξαναζητά τιμή). */
+      codeRejected?: boolean;
+    };
 
 const msg = (el: string, en: string) => ({ el, en });
 
@@ -81,6 +91,8 @@ function prismaStore(
         nextNumber: (t) => nextBookingNumber(t, cat.companyId),
         generateCode: generateInvoiceCode,
       }),
+    loadCode: (tx, code) => loadSiteCode(tx, cat.companyId, code),
+    claimCode: (tx, discountId) => claimSiteCodeUse(tx, cat.companyId, discountId),
   };
 }
 
@@ -172,12 +184,19 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
       expiresAt: online ? holdUntil(now) : null,
     }, { version: termsVersion, acceptedAt: now }),
     cat,
-    { key: input.key, criteria: c, extras: input.extras, insuranceId: input.insuranceId, driverAge: band.age },
+    {
+      key: input.key,
+      criteria: c,
+      extras: input.extras,
+      insuranceId: input.insuranceId,
+      driverAge: band.age,
+      discountCode: input.discountCode?.trim() ? input.discountCode : null,
+    },
     now
   ));
   if (!result.ok) {
-    const status = result.error.code === "UNAVAILABLE" ? 409 : result.error.code === "NOT_FOUND" ? 404 : 400;
-    return { ok: false, status, message: result.error.message };
+    const status = result.error.code === "UNAVAILABLE" || result.error.code === "CODE" ? 409 : result.error.code === "NOT_FOUND" ? 404 : 400;
+    return { ok: false, status, message: result.error.message, ...(result.error.code === "CODE" ? { codeRejected: true } : {}) };
   }
   // Στο ΙΔΙΟ host με τη φόρμα: /el/booking/… στο domain της εταιρίας, αλλιώς /s/<slug>/…
   const bookingUrl = sitePath(
@@ -206,7 +225,9 @@ export async function submitPublicBooking(body: unknown, now = new Date(), origi
    Τιμή της φόρμας (extras/ασφάλεια) — ίδια μηχανή, χωρίς εγγραφή
    ───────────────────────────────────────────── */
 
-export type FormQuote = { ok: true; quote: QuoteResult } | { ok: false; status: 400 | 404; message: { el: string; en: string } | null };
+export type FormQuote =
+  | { ok: true; quote: QuoteResult; code?: AppliedSiteCode | null }
+  | { ok: false; status: 400 | 404 | 409; message: { el: string; en: string } | null };
 
 export function publicFormQuote(
   cat: SiteCatalog,
@@ -224,4 +245,29 @@ export function publicFormQuote(
   if (!out.ok) return out.reason === "insurance" ? { ok: false, status: 400, message: INSURANCE_INVALID_MESSAGE } : notFound;
   if (hasUnpricedDay(out.result)) return notFound;
   return { ok: true, quote: out.result };
+}
+
+/**
+ * Η τιμή της φόρμας ΜΕ εκπτωτικό κωδικό (/api/public/discount-code): ίδια
+ * τιμή με την publicFormQuote + ο κωδικός όπως θα εφαρμοστεί στην υποβολή.
+ * `record` = ο κωδικός από τη βάση (ΜΟΝΟ της εταιρίας του site) ή null.
+ */
+export function publicFormQuoteWithCode(
+  cat: SiteCatalog,
+  key: string,
+  criteria: { pl: string | null; dl: string | null; from: string; to: string; age: number | null },
+  extras: { id: string; qty: number }[],
+  insuranceId: string | null | undefined,
+  rawCode: string,
+  record: SiteCodeRecord | null,
+  now = new Date()
+): FormQuote {
+  const base = publicFormQuote(cat, key, criteria, extras, insuranceId, now);
+  if (!base.ok) return base;
+  const wanted = normalizeSiteCode(rawCode);
+  const r = wanted
+    ? evaluateSiteCode(record && record.code === wanted ? record : null, base.quote, { tenantId: cat.companyId, now })
+    : ({ ok: false, reason: "invalid" } as const);
+  if (!r.ok) return { ok: false, status: 409, message: SITE_CODE_MESSAGES[r.reason] };
+  return { ok: true, quote: base.quote, code: r.applied };
 }

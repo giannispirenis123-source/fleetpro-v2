@@ -61,6 +61,12 @@ export const LIMITS = {
   partnerBookingPerUser: { scope: "partner-book", max: 20, windowMinutes: 60 },
   /** PDF «Προμήθειες συνεργατών» (GET /api/partner-commissions/pdf). */
   commissionsPdfPerUser: { scope: "commissions-pdf", max: 20, windowMinutes: 60 },
+  /**
+   * Εκπτωτικός κωδικός στο site (/api/public/discount-code): ΑΥΣΤΗΡΑ όρια
+   * (κάθε δοκιμή μετράει, σωστή ή λάθος) — ανά IP (hash) και ανά εταιρία.
+   */
+  discountCodePerClient: { scope: "code-ip", max: 15, windowMinutes: 15 },
+  discountCodePerTenant: { scope: "code-tenant", max: 200, windowMinutes: 60 },
   /** «Πες μας τη γνώμη σου» ανά χρήστη. */
   feedbackPerUser: { scope: "feedback-user", max: 5, windowMinutes: 60 },
 } as const satisfies Record<string, Limit>;

@@ -5,6 +5,7 @@ import { chargeTotalCents, type QuoteResult, type VehicleType } from "./pricing"
 import { insuranceLevelsFor } from "./engine";
 import type { QuoteContext } from "./server";
 import { textFor } from "./text";
+import { codeLineLabel, vatIncludedCents } from "./siteCode";
 
 /** Η ανάλυση τιμής για τον browser (γραμμές + σύνολα, cents). */
 export interface PublicQuote {
@@ -19,12 +20,32 @@ export interface PublicQuote {
   excessCents: number | null;
 }
 
-export function toPublicQuote(q: QuoteResult): PublicQuote {
+/**
+ * `code` = εκπτωτικός κωδικός που εφαρμόστηκε (ΜΟΝΟ κωδικός και ποσό — ποτέ
+ * συνεργάτης/προμήθεια): γραμμή «Εκπτωτικός κωδικός · X», νέο σύνολο και ο
+ * ΦΠΑ του (vatPercent της εταιρίας). Ίδια ποσά με την αποθήκευση της κράτησης.
+ */
+export function toPublicQuote(q: QuoteResult, code?: { code: string; cents: number } | null, vatPercent = 0): PublicQuote {
+  const lines = q.lines.map((l) => ({ kind: l.kind, label: l.label, qty: l.qty, totalCents: l.totalCents }));
+  if (code && code.cents > 0) {
+    const totalCents = Math.max(0, q.totalCents - code.cents);
+    return {
+      ok: q.ok,
+      errors: q.errors.map((e) => e.message),
+      days: q.days,
+      lines: [...lines, { kind: "code", label: codeLineLabel(code.code), qty: 1, totalCents: -code.cents }],
+      totalCents,
+      listTotalCents: q.listTotalCents,
+      vatCents: vatIncludedCents(totalCents, vatPercent),
+      depositCents: q.depositCents,
+      excessCents: q.excessCents,
+    };
+  }
   return {
     ok: q.ok,
     errors: q.errors.map((e) => e.message),
     days: q.days,
-    lines: q.lines.map((l) => ({ kind: l.kind, label: l.label, qty: l.qty, totalCents: l.totalCents })),
+    lines,
     totalCents: q.totalCents,
     listTotalCents: q.listTotalCents,
     vatCents: q.vatCents,

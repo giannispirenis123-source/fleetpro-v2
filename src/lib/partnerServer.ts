@@ -9,7 +9,7 @@ import type { Viewer } from "./authz";
 import { bookingScope } from "./authz";
 import { db } from "./db";
 import type { Prisma } from "@prisma/client";
-import { NO_COMMISSION, commissionSettingsOf } from "./commission";
+import { NO_COMMISSION, commissionSettingsOf, partnerCodeOf } from "./commission";
 import { myCommissionSettings } from "./listServer";
 import { storedTotalCents } from "./public/money";
 import { loadBlockingBookings } from "./public/availability";
@@ -58,7 +58,18 @@ const FINANCE_ORDER = [{ pickupDate: "desc" as const }, { bookingNumber: "desc" 
 
 type FinanceRow = Prisma.BookingGetPayload<{ select: typeof FINANCE_SELECT }>;
 
+/**
+ * Ο κωδικός συνεργάτη της κράτησης (από το priceQuote). Η μείωση ισχύει για
+ * όποιον συνεργάτη έχει η κράτηση (η αλλαγή συνεργάτη με κωδικό μπλοκάρεται
+ * στο PATCH): η εταιρία δεν πληρώνει ποτέ ολόκληρη προμήθεια ΚΑΙ την έκπτωση.
+ */
+const codeOfRow = (r: FinanceRow) => {
+  const c = partnerCodeOf(r.priceQuote);
+  return c ? { code: c.code, percent: c.percent, cents: c.cents } : null;
+};
+
 const toFinanceInput = (r: FinanceRow): PartnerFinanceInput => ({
+  partnerCode: codeOfRow(r),
   id: r.id,
   bookingNumber: r.bookingNumber,
   pickupDate: iso(r.pickupDate),

@@ -16,6 +16,7 @@ import type { QuoteResult } from "./pricing";
 import { nowLocal, validateCriteria, type SearchCriteria, type SearchRules } from "./search";
 import type { QuoteContext } from "./server";
 import { toPriceBreakdown, toStoredQuote, type StoredQuote } from "../pricingBridge";
+import { evaluateSiteCode, normalizeSiteCode, vatIncludedCents, SITE_CODE_MESSAGES, type AppliedSiteCode, type SiteCodeRecord } from "./siteCode";
 import type { PriceBreakdown } from "../pricing";
 
 export interface PlanCatalog {
@@ -34,13 +35,16 @@ export interface PlanRequest {
   insuranceId?: string | null;
   /** Η ηλικία από την ημερομηνία γέννησης (ήδη ελεγμένη ως προς την κλίμακα). */
   driverAge: number | null;
+  /** Εκπτωτικός κωδικός ΟΠΩΣ τον έγραψε ο πελάτης (ξαναελέγχεται εδώ, ποτέ ποσό). */
+  discountCode?: string | null;
 }
 
 export type PlanError =
   | { code: "INVALID"; message: { el: string; en: string } }
   | { code: "UNAVAILABLE"; message: { el: string; en: string } }
   | { code: "NO_PRICE"; message: { el: string; en: string } }
-  | { code: "NOT_FOUND"; message: { el: string; en: string } };
+  | { code: "NOT_FOUND"; message: { el: string; en: string } }
+  | { code: "CODE"; message: { el: string; en: string } };
 
 export interface SitePlan {
   vehicleId: string;
@@ -48,6 +52,8 @@ export interface SitePlan {
   quote: QuoteResult;
   breakdown: PriceBreakdown;
   stored: StoredQuote;
+  /** Ο κωδικός που εφαρμόστηκε (null = κανένας). */
+  code: AppliedSiteCode | null;
 }
 
 export const UNAVAILABLE_MESSAGE = {
@@ -70,7 +76,9 @@ export function planSiteBooking(
   cat: PlanCatalog,
   req: PlanRequest,
   bookings: BlockingBooking[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** Ο κωδικός από τη βάση (ΜΟΝΟ της εταιρίας, νέα ανάγνωση μέσα στο κλείδωμα). */
+  codeRecord: SiteCodeRecord | null = null
 ): { ok: true; plan: SitePlan } | { ok: false; error: PlanError } {
   const criteria: SearchCriteria = { ...req.criteria, type: null };
 
@@ -112,15 +120,28 @@ export function planSiteBooking(
     return { ok: false, error: { code: "UNAVAILABLE", message: UNAVAILABLE_MESSAGE } };
   }
 
+  // ── Εκπτωτικός κωδικός: ξανά ΟΛΟΙ οι έλεγχοι, ποσό ΜΟΝΟ από τον server ──
+  let code: AppliedSiteCode | null = null;
+  if (req.discountCode) {
+    const wanted = normalizeSiteCode(req.discountCode);
+    const r = wanted ? evaluateSiteCode(codeRecord && codeRecord.code === wanted ? codeRecord : null, q, { tenantId: cat.companyId, now }) : null;
+    if (!r || !r.ok) return { ok: false, error: { code: "CODE", message: SITE_CODE_MESSAGES[r ? r.reason : "invalid"] } };
+    code = r.applied;
+  }
+
   const group = req.key.startsWith("g.") ? cat.groups.find((g) => `g.${g.code}` === req.key) ?? null : null;
+  const stored = toStoredQuote(q, code ? { cents: code.cents, code: code.code, ...(code.partner ? { partner: code.partner } : {}) } : null, true, now);
+  // Με κωδικό: ο ΦΠΑ του ΤΕΛΙΚΟΥ συνόλου (ίδιος τύπος με την quote()).
+  if (code) stored.quote.vatCents = vatIncludedCents(stored.totalCents, cat.ctx.settings.vatPercent);
   return {
     ok: true,
     plan: {
       vehicleId: free[0],
       rentalGroupId: group?.id ?? null,
       quote: q,
-      breakdown: toPriceBreakdown(q),
-      stored: toStoredQuote(q, null, true, now),
+      breakdown: toPriceBreakdown(q, { manualDiscountCents: code?.cents ?? 0 }),
+      stored,
+      code,
     },
   };
 }
@@ -136,6 +157,10 @@ export interface BookingStore<Tx> {
   loadBookings(tx: Tx, window: { from: string; to: string }): Promise<BlockingBooking[]>;
   /** Η εγγραφή (πελάτης, κράτηση, ειδοποίηση) — επιστρέφει τον κωδικό. */
   write(tx: Tx, plan: SitePlan): Promise<string>;
+  /** Ο εκπτωτικός κωδικός της εταιρίας (νέα ανάγνωση ΜΕΣΑ στο κλείδωμα) ή null. */
+  loadCode?(tx: Tx, code: string): Promise<SiteCodeRecord | null>;
+  /** +1 χρήση ατομικά, ΜΟΝΟ αν υπάρχει διαθέσιμη. false = εξαντλήθηκε. */
+  claimCode?(tx: Tx, discountId: string): Promise<boolean>;
 }
 
 /** Ένα κλείδωμα ανά εταιρία: σειριοποιεί τις υποβολές της (και τον αύξοντα αριθμό κράτησης). */
@@ -149,8 +174,15 @@ export async function runSiteBooking<Tx>(
 ): Promise<{ ok: true; code: string } | { ok: false; error: PlanError }> {
   return store.withLock(lockKeyFor(cat.companyId), async (tx) => {
     const bookings = await store.loadBookings(tx, { from: req.criteria.from, to: req.criteria.to });
-    const planned = planSiteBooking(cat, req, bookings, now);
+    const wanted = req.discountCode ? normalizeSiteCode(req.discountCode) : null;
+    const record = wanted && store.loadCode ? await store.loadCode(tx, wanted) : null;
+    const planned = planSiteBooking(cat, req, bookings, now, record);
     if (!planned.ok) return planned;
+    // Η χρήση δεσμεύεται ΠΡΙΝ από την εγγραφή, στην ΙΔΙΑ transaction.
+    if (planned.plan.code) {
+      const claimed = store.claimCode ? await store.claimCode(tx, planned.plan.code.discountId) : false;
+      if (!claimed) return { ok: false as const, error: { code: "CODE" as const, message: SITE_CODE_MESSAGES.exhausted } };
+    }
     const code = await store.write(tx, planned.plan);
     return { ok: true as const, code };
   });

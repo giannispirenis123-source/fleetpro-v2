@@ -14,6 +14,7 @@ import { fromCents, roundToEuro } from "./public/money";
 import type { InsuranceSnapshot, QuoteResult } from "./public/pricing";
 import { textFor, type LocalizedText } from "./public/text";
 import type { PriceBreakdown, PricedExtraLine } from "./pricing";
+import { partnerCodeOf, type PartnerCodeShare } from "./commission";
 
 /** Η ανάλυση που αποθηκεύεται στην κράτηση (bookings."priceQuote", JSONB). */
 export interface StoredQuote {
@@ -28,7 +29,12 @@ export interface StoredQuote {
      */
     insurance?: InsuranceSnapshot | null;
   };
-  manualDiscount: { cents: number; code: string | null } | null;
+  /**
+   * Η έκπτωση κωδικού/χειροκίνητη πάνω στο σύνολο της quote(). `partner`: ο
+   * κωδικός ανήκει σε συνεργάτη (κράτηση από το site) → η έκπτωση αφαιρείται
+   * από την προμήθειά του (commission.ts → partnerCodeOf / bookingCommission).
+   */
+  manualDiscount: StoredManualDiscount | null;
   /** Τελικό σύνολο της κράτησης (cents) — πριν από τυχόν χειροκίνητο ενοίκιο. */
   totalCents: number;
   /** false = λείπει τιμή στις ρυθμίσεις (μόνο χειροκίνητη). */
@@ -36,6 +42,12 @@ export interface StoredQuote {
 }
 
 export type PriceMode = "AUTO" | "MANUAL";
+
+export interface StoredManualDiscount {
+  cents: number;
+  code: string | null;
+  partner?: PartnerCodeShare;
+}
 
 const sum = (q: QuoteResult, kinds: string[]) => q.lines.filter((l) => kinds.includes(l.kind)).reduce((s, l) => s + l.totalCents, 0);
 
@@ -87,7 +99,7 @@ export function toPriceBreakdown(
 
 export function toStoredQuote(
   q: QuoteResult,
-  manual: { cents: number; code: string | null } | null,
+  manual: StoredManualDiscount | null,
   autoPrice: boolean,
   now = new Date()
 ): StoredQuote {
@@ -118,7 +130,7 @@ export function toStoredQuote(
  * Η χειροκίνητη έκπτωση από το αποθηκευμένο priceQuote: undefined = παλιά
  * κράτηση χωρίς priceQuote· null = καμία· αλλιώς { cents, code }.
  */
-export function storedManualDiscount(priceQuote: unknown): { cents: number; code: string | null } | null | undefined {
+export function storedManualDiscount(priceQuote: unknown): StoredManualDiscount | null | undefined {
   if (!priceQuote || typeof priceQuote !== "object" || Array.isArray(priceQuote)) return undefined;
   const q = priceQuote as { version?: unknown; manualDiscount?: unknown };
   if (q.version !== 1) return undefined;
@@ -127,7 +139,11 @@ export function storedManualDiscount(priceQuote: unknown): { cents: number; code
   const { cents, code } = m as { cents?: unknown; code?: unknown };
   const c = typeof cents === "number" && cents > 0 ? cents : 0;
   const k = typeof code === "string" && code.trim() ? code : null;
-  return c > 0 || k ? { cents: c, code: k } : null;
+  if (!(c > 0 || k)) return null;
+  const p = partnerCodeOf(priceQuote);
+  return p && p.code === k
+    ? { cents: c, code: k, partner: { userId: p.userId, percent: p.percent, onRental: p.onRental, onExtras: p.onExtras, onInsurance: p.onInsurance, maxDiscount: p.maxDiscount ?? null } }
+    : { cents: c, code: k };
 }
 
 /**

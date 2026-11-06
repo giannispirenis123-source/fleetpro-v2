@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import type Stripe from "stripe";
 import { db } from "../db";
 import { syncVehicleStatus } from "../bookingLifecycle";
+import { releaseDiscountUsageFor } from "../discounts";
 import { stripe, stripeErrorCode, stripeReady, accountFlags } from "../stripeConnect";
 import { storefrontDictionary, fill } from "../storefront/i18n";
 import { buildSiteUrl } from "../storefront/siteUrl";
@@ -66,6 +67,8 @@ export async function expireStaleHolds(client: Client, tenantId: string, now = n
     where: { tenantId, bookingId: { in: ids }, status: "OPEN", purpose: "BOOKING" },
     data: { status: "EXPIRED" },
   });
+  // Ο κωδικός έκπτωσης (αν υπήρχε) παίρνει πίσω τη χρήση — όπως σε κάθε ακύρωση.
+  await releaseDiscountUsageFor(client, tenantId, ids);
   return ids.length;
 }
 
@@ -188,10 +191,11 @@ export async function createBookingCheckout(opts: {
 /** Η πληρωμή δεν ξεκίνησε: η κράτηση ακυρώνεται αμέσως (ελευθερώνει το όχημα). */
 async function fail(bookingId: string | undefined, tenantId: string, reason: "not_ready" | "stripe" | "amount"): Promise<CheckoutResult> {
   if (bookingId) {
-    await db.booking.updateMany({
+    const r = await db.booking.updateMany({
       where: { id: bookingId, tenantId, paymentStatus: "AWAITING_PAYMENT" },
       data: { status: "CANCELLED", paymentStatus: "FAILED", cancelReasonCode: PAYMENT_CANCEL_REASON, paymentExpiresAt: null },
     });
+    if (r.count === 1) await releaseDiscountUsageFor(db, tenantId, [bookingId]);
   }
   return { ok: false, reason };
 }
@@ -269,6 +273,8 @@ export function prismaWebhookStore(): WebhookStore<Tx> {
         },
       });
       if (t.booking.status === "CONFIRMED") await syncVehicleStatus(b.vehicleId, b.tenantId, tx);
+      // Ακύρωση λόγω ληγμένης/αποτυχημένης πληρωμής → πίσω η χρήση του κωδικού.
+      if (t.booking.status === "CANCELLED" && b.status !== "CANCELLED") await releaseDiscountUsageFor(tx, b.tenantId, [b.id]);
       if (t.payment.status === "PAID" && p.purpose === "CONTRACT") {
         const c = await tx.contract.findFirst({ where: { bookingId: b.id, tenantId: b.tenantId }, select: { id: true, contractNumber: true } });
         await tx.notification.create({

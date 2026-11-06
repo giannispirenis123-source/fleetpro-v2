@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 //     και μόνο διαχειριστής αγγίζει λογαριασμό διαχειριστή (στοιχεία,
 //     κωδικό, απενεργοποίηση). Κανόνες: src/lib/adminRole.ts.
 
+import { deactivatePartnerCodes } from "@/lib/discounts";
 import { GRANT_MSG, canSetOthersPassword, permissionsBeyondActor } from "@/lib/adminRole";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -191,6 +192,11 @@ export const PATCH = withPermission(
             const final = canChangeRole(actor, target, change, others);
             if (!final.ok) throw new Rejected(final);
           }
+          // Συνεργάτης που απενεργοποιείται ή παύει να είναι συνεργάτης: οι
+          // κωδικοί που του ανατέθηκαν απενεργοποιούνται (όχι «της εταιρίας»).
+          if (target.role === "PARTNER" && (data.isActive === false || nextRole !== "PARTNER")) {
+            await deactivatePartnerCodes(tx, viewer.tenantId!, target.id);
+          }
           return tx.user.update({
         where: { id: target.id },
         data: {
@@ -252,6 +258,7 @@ export const DELETE = withPermission(
             const final = canDeactivate(actor, target, others);
             if (!final.ok) throw new Rejected(final);
           }
+          if (target!.role === "PARTNER") await deactivatePartnerCodes(tx, viewer.tenantId!, target!.id);
           return tx.user.update({
             where: { id: target!.id },
             data: { isActive: false },

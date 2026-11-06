@@ -30,6 +30,8 @@ export interface DiscountDTO {
   usageLimit: number | null;
   usageCount: number;
   isActive: boolean;
+  /** Ο συνεργάτης στον οποίο ανατέθηκε (SQL 40)· null = κωδικός της εταιρίας. */
+  partnerId: string | null;
   createdAt: string;
 }
 

@@ -10,11 +10,13 @@
 //  · Σβήνονται μαζί με τη γραμμή: sessions και tokens επαλήθευσης (FK CASCADE),
 //    δικαιώματα (ζουν στη γραμμή).
 //  · Το email ελευθερώνεται (η γραμμή φεύγει).
+//  · Συνεργάτης: οι κωδικοί έκπτωσής του απενεργοποιούνται (δεν γίνονται της εταιρίας).
 // Κάθε ερώτημα φιλτράρει με το tenantId του Διαχειριστή.
 
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { refreshSearchText } from "./contractForm";
+import { deactivatePartnerCodes } from "./discounts";
 import { DELETE_MSG, canHardDelete, isCompanyAdmin, type RoleActor, type RoleDecision } from "./adminRole";
 
 /** Οι ΑΛΛΟΙ ενεργοί διαχειριστές, με κλείδωμα (δύο ταυτόχρονες διαγραφές δεν αφήνουν 0). */
@@ -60,6 +62,10 @@ export async function hardDeleteCompanyUser(actor: RoleActor, targetId: string):
     await tx.bookingNotification.updateMany({ where: { tenantId, userId: id }, data: { userId: null } });
     await tx.bookingPayment.updateMany({ where: { tenantId, retainedBy: id }, data: { retainedBy: null } });
     await tx.siteLegalText.updateMany({ where: { tenantId, createdById: id }, data: { createdById: null } });
+    // Κωδικοί που ΑΝΑΤΕΘΗΚΑΝ στον συνεργάτη (partnerId, SQL 40 — και οι παλιοί
+    // που δημιούργησε ο ίδιος): απενεργοποιούνται ΠΡΙΝ το FK γίνει NULL, αλλιώς
+    // θα γίνονταν «κωδικοί της εταιρίας» (η έκπτωση θα έβγαινε από την εταιρία).
+    if (target.role === "PARTNER") await deactivatePartnerCodes(tx, tenantId, id);
     // activity_logs.userId → NULL από το FK (SQL 35)· sessions/tokens → CASCADE.
     await tx.user.delete({ where: { id } });
     return decision;

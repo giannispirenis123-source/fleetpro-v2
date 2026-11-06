@@ -3,12 +3,13 @@
 // (χωρίς db· τα δεδομένα τα φέρνει ο καλών: siteCodeServer.ts).
 //
 // · ΜΟΝΟ κωδικοί της εταιρίας του site (το ερώτημα φιλτράρει με tenantId).
-// · Κωδικός ΣΥΝΕΡΓΑΤΗ (createdById = PARTNER της ίδιας εταιρίας): ΜΟΝΟ ποσοστό,
-//   ≤ το ΤΡΕΧΟΝ ποσοστό προμήθειας του, ενεργός συνεργάτης. Η έκπτωση
+// · Κωδικός ΣΥΝΕΡΓΑΤΗ = κωδικός με partnerId (SQL 40 — τον αναθέτει η εταιρία·
+//   ΟΧΙ από το ποιος τον δημιούργησε): ο συνεργάτης ενεργός PARTNER της ίδιας
+//   εταιρίας, ΜΟΝΟ ποσοστό, ≤ το ΤΡΕΧΟΝ ποσοστό προμήθειάς του. Η έκπτωση
 //   υπολογίζεται στην ΙΔΙΑ βάση με την προμήθεια (commission.ts →
 //   partnerCodeDiscountCents) και αφαιρείται από την προμήθεια του
 //   (bookingCommission): η εταιρία παίρνει ό,τι και χωρίς κωδικό.
-// · Κωδικός της ΕΤΑΙΡΙΑΣ (χωρίς δημιουργό ή από Διαχειριστή/προσωπικό): όπως
+// · Κωδικός της ΕΤΑΙΡΙΑΣ (χωρίς partnerId, όποιος κι αν τον δημιούργησε): όπως
 //   στο dashboard (ποσοστό ή ποσό πάνω στο σύνολο, ακέραιο €), καμία αλλαγή
 //   σε προμήθεια.
 // · Μπαίνει ΠΑΝΩ στο σύνολο της quote() (όπως ο κωδικός του dashboard): οι
@@ -36,8 +37,10 @@ export interface SiteCodeRecord {
   usageLimit: number | null;
   usageCount: number;
   isActive: boolean;
-  /** null = κωδικός της εταιρίας (ή παλιός). */
-  creator: {
+  /** Ο συνεργάτης στον οποίο ανατέθηκε (discounts."partnerId"). null = κωδικός της εταιρίας. */
+  partnerId: string | null;
+  /** Τα στοιχεία του (νέα ανάγνωση). null με partnerId = δεν υπάρχει πια → απόρριψη. */
+  partner: {
     id: string;
     role: string;
     tenantId: string | null;
@@ -92,27 +95,28 @@ export function evaluateSiteCode(rec: SiteCodeRecord | null, q: QuoteResult, opt
   // Δεν υπάρχει / άλλης εταιρίας → ΙΔΙΑ απάντηση.
   if (!rec || rec.tenantId !== opts.tenantId) return { ok: false, reason: "invalid" };
 
-  // ── Ο δημιουργός: συνεργάτης ή εταιρία ──
+  // ── Ανατεθειμένος συνεργάτης (partnerId) ή κωδικός της εταιρίας ──
   let partner: PartnerCodeShare | null = null;
-  const c = rec.creator;
-  if (c) {
-    if (c.tenantId !== opts.tenantId) return { ok: false, reason: "invalid" };
-    if (c.role === "PARTNER") {
-      // Ανενεργός συνεργάτης / σταθερό ποσό / ποσοστό πάνω από την ΤΡΕΧΟΥΣΑ
-      // προμήθεια (π.χ. ο Διαχειριστής τη μείωσε): απόρριψη, ΟΧΙ σιωπηλό κόψιμο.
-      if (!c.isActive || rec.type !== "PERCENTAGE") return { ok: false, reason: "unavailable" };
-      const rate = Number(c.commissionRate);
-      const pct = Number(rec.value);
-      if (!(pct > 0) || !(rate > 0) || pct > rate + 1e-9) return { ok: false, reason: "unavailable" };
-      partner = {
-        userId: c.id,
-        percent: pct,
-        onRental: c.commissionOnRental,
-        onExtras: c.commissionOnExtras,
-        onInsurance: c.commissionOnInsurance,
-        maxDiscount: rec.maxDiscount,
-      };
+  if (rec.partnerId) {
+    const c = rec.partner;
+    // Ο συνεργάτης δεν υπάρχει / δεν είναι πια συνεργάτης / άλλης εταιρίας /
+    // ανενεργός / σταθερό ποσό / ποσοστό πάνω από την ΤΡΕΧΟΥΣΑ προμήθεια (π.χ.
+    // ο Διαχειριστής τη μείωσε): απόρριψη — ΠΟΤΕ σιωπηλά κωδικός εταιρίας ή κόψιμο.
+    if (!c || c.id !== rec.partnerId || c.role !== "PARTNER" || c.tenantId !== opts.tenantId || !c.isActive) {
+      return { ok: false, reason: "unavailable" };
     }
+    if (rec.type !== "PERCENTAGE") return { ok: false, reason: "unavailable" };
+    const rate = Number(c.commissionRate);
+    const pct = Number(rec.value);
+    if (!(pct > 0) || !(rate > 0) || pct > rate + 1e-9) return { ok: false, reason: "unavailable" };
+    partner = {
+      userId: c.id,
+      percent: pct,
+      onRental: c.commissionOnRental,
+      onExtras: c.commissionOnExtras,
+      onInsurance: c.commissionOnInsurance,
+      maxDiscount: rec.maxDiscount,
+    };
   }
 
   // ── Ισχύς (ίδια σειρά με το dashboard) ──

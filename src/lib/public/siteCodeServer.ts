@@ -26,7 +26,9 @@ export async function loadSiteCode(client: Pick<Prisma.TransactionClient, "disco
       usageLimit: true,
       usageCount: true,
       isActive: true,
-      createdBy: {
+      partnerId: true,
+      // Ο ΑΝΑΤΕΘΕΙΜΕΝΟΣ συνεργάτης (SQL 40) — όχι ο δημιουργός.
+      partner: {
         select: {
           id: true,
           role: true,
@@ -41,7 +43,7 @@ export async function loadSiteCode(client: Pick<Prisma.TransactionClient, "disco
     },
   });
   if (!d || !d.code) return null;
-  const c = d.createdBy;
+  const c = d.partner;
   return {
     id: d.id,
     tenantId: d.tenantId,
@@ -57,7 +59,8 @@ export async function loadSiteCode(client: Pick<Prisma.TransactionClient, "disco
     usageLimit: d.usageLimit,
     usageCount: d.usageCount,
     isActive: d.isActive,
-    creator: c
+    partnerId: d.partnerId,
+    partner: c
       ? {
           id: c.id,
           role: c.role,

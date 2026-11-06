@@ -209,3 +209,20 @@ export async function releaseDiscountUsageFor(
     await applyDiscountUsage({ tenantId, previousCode: r.discountCode, nextCode: null }, client as Prisma.TransactionClient);
   }
 }
+
+/**
+ * Ο συνεργάτης απενεργοποιήθηκε / έπαψε να είναι συνεργάτης / διαγράφεται:
+ * οι κωδικοί που του ΑΝΑΤΕΘΗΚΑΝ απενεργοποιούνται. Δεν γίνονται ΠΟΤΕ σιωπηλά
+ * «κωδικοί της εταιρίας» (η έκπτωση θα έβγαινε από την εταιρία).
+ */
+export async function deactivatePartnerCodes(
+  client: Pick<Prisma.TransactionClient, "discount">,
+  tenantId: string,
+  partnerId: string
+): Promise<number> {
+  const r = await client.discount.updateMany({
+    where: { tenantId, isActive: true, OR: [{ partnerId }, { createdById: partnerId }] },
+    data: { isActive: false },
+  });
+  return r.count;
+}

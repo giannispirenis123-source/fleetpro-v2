@@ -70,7 +70,7 @@ const partner = (over = {}) => ({
 const rec = (over = {}) => ({
   id: "D1", tenantId: "T1", code: "PART5", type: "PERCENTAGE", value: 5, target: "ALL",
   minDays: null, minAmount: null, maxDiscount: null, validFrom: null, validUntil: null,
-  usageLimit: null, usageCount: 0, isActive: true, creator: partner(), ...over,
+  usageLimit: null, usageCount: 0, isActive: true, partnerId: "P1", partner: partner(), ...over,
 });
 const SETTINGS20 = { rate: 20, onRental: true, onExtras: false, onInsurance: false };
 const partsOf = (q) => {
@@ -113,38 +113,42 @@ test("κωδικός ΙΣΟΣ με την προμήθεια (20%) → προμ�
 
 test("κωδικός πάνω από την ΤΡΕΧΟΥΣΑ προμήθεια (ο Διαχειριστής τη μείωσε) → απόρριψη με σαφές μήνυμα, όχι σιωπηλό κόψιμο", () => {
   const q = quoteOf(makeCat());
-  const r = SC.evaluateSiteCode(rec({ value: 5, creator: partner({ commissionRate: 4 }) }), q, { tenantId: "T1", now: NOW });
+  const r = SC.evaluateSiteCode(rec({ value: 5, partner: partner({ commissionRate: 4 }) }), q, { tenantId: "T1", now: NOW });
   assert.deepEqual(r, { ok: false, reason: "unavailable" });
   assert.match(SC.SITE_CODE_MESSAGES.unavailable.el, /δεν είναι πλέον διαθέσιμος/);
   // Συνεργάτης χωρίς προμήθεια: κανένας κωδικός.
-  assert.equal(SC.evaluateSiteCode(rec({ creator: partner({ commissionRate: 0 }) }), q, { tenantId: "T1", now: NOW }).ok, false);
+  assert.equal(SC.evaluateSiteCode(rec({ partner: partner({ commissionRate: 0 }) }), q, { tenantId: "T1", now: NOW }).ok, false);
   // Ίσο με το νέο ποσοστό: επιτρέπεται.
-  assert.equal(SC.evaluateSiteCode(rec({ value: 4, creator: partner({ commissionRate: 4 }) }), q, { tenantId: "T1", now: NOW }).ok, true);
+  assert.equal(SC.evaluateSiteCode(rec({ value: 4, partner: partner({ commissionRate: 4 }) }), q, { tenantId: "T1", now: NOW }).ok, true);
 });
 
 test("κωδικός συνεργάτη σε ευρώ, ανενεργού συνεργάτη, άλλης εταιρίας → απόρριψη (ίδια απάντηση για «δεν υπάρχει» και «άλλης εταιρίας»)", () => {
   const q = quoteOf(makeCat());
   const ev = (r) => SC.evaluateSiteCode(r, q, { tenantId: "T1", now: NOW });
   assert.deepEqual(ev(rec({ type: "FIXED_AMOUNT", value: 10 })), { ok: false, reason: "unavailable" });
-  assert.deepEqual(ev(rec({ creator: partner({ isActive: false }) })), { ok: false, reason: "unavailable" });
-  assert.deepEqual(ev(rec({ creator: partner({ tenantId: "T2" }) })), { ok: false, reason: "invalid" });
+  assert.deepEqual(ev(rec({ partner: partner({ isActive: false }) })), { ok: false, reason: "unavailable" });
+  // Ανατεθειμένος σε χρήστη άλλης εταιρίας / όχι πια συνεργάτη / χωρίς στοιχεία → απόρριψη (ΠΟΤΕ κωδικός εταιρίας).
+  assert.deepEqual(ev(rec({ partner: partner({ tenantId: "T2" }) })), { ok: false, reason: "unavailable" });
+  assert.deepEqual(ev(rec({ partner: partner({ role: "STAFF" }) })), { ok: false, reason: "unavailable" });
+  assert.deepEqual(ev(rec({ partner: null })), { ok: false, reason: "unavailable" });
   assert.deepEqual(ev(rec({ tenantId: "T2" })), { ok: false, reason: "invalid" });
   assert.deepEqual(ev(null), { ok: false, reason: "invalid" });
   assert.deepEqual(ev(rec({ tenantId: "T2" })), ev(null));
 });
 
-test("κωδικός της ΕΤΑΙΡΙΑΣ (χωρίς δημιουργό ή από προσωπικό): όπως στο dashboard, καμία αλλαγή στην προμήθεια", () => {
+test("κωδικός της ΕΤΑΙΡΙΑΣ (χωρίς partnerId): όπως στο dashboard, καμία αλλαγή στην προμήθεια", () => {
   const q = quoteOf(makeCat(), [{ id: "gps", qty: 1 }]); // 300 + 20 = 320 €
   assert.equal(q.totalCents, 32000);
-  for (const creator of [null, { ...partner(), role: "STAFF" }, { ...partner(), role: "COMPANY_ADMIN" }]) {
-    const r = SC.evaluateSiteCode(rec({ code: "SUMMER", value: 10, creator }), q, { tenantId: "T1", now: NOW });
+  // Χωρίς partnerId = κωδικός εταιρίας, ΟΠΟΙΟΣ κι αν τον δημιούργησε (και συνεργάτης παλιά).
+  for (const createdBy of [null, "S1", "A1", "P1"]) {
+    const r = SC.evaluateSiteCode(rec({ code: "SUMMER", value: 10, partnerId: null, partner: null, createdById: createdBy }), q, { tenantId: "T1", now: NOW });
     assert.equal(r.ok, true);
     assert.equal(r.applied.partner, null);
     // 10% πάνω στο σύνολο (όπως ο κωδικός του dashboard), ακέραιο €.
     assert.equal(r.applied.cents, 3200);
   }
   // Σταθερό ποσό: επιτρέπεται για κωδικό εταιρίας.
-  assert.equal(SC.evaluateSiteCode(rec({ type: "FIXED_AMOUNT", value: 25, creator: null }), q, { tenantId: "T1", now: NOW }).applied.cents, 2500);
+  assert.equal(SC.evaluateSiteCode(rec({ type: "FIXED_AMOUNT", value: 25, partnerId: null, partner: null }), q, { tenantId: "T1", now: NOW }).applied.cents, 2500);
   // Κράτηση χωρίς κωδικό συνεργάτη: πλήρης προμήθεια (καμία αλλαγή).
   assert.equal(C.bookingCommission(partsOf(q), SETTINGS20, null), C.commissionFor(partsOf(q), SETTINGS20));
 });
@@ -154,7 +158,7 @@ test("βάση: ο κωδικός συνεργάτη στην ΙΔΙΑ βάση 
   const r = SC.evaluateSiteCode(rec(), q, { tenantId: "T1", now: NOW });
   assert.equal(r.applied.cents, 1500, "5% του ενοικίου (300), ΟΧΙ του 320");
   // Συνεργάτης με προμήθεια ΚΑΙ στα πρόσθετα: η έκπτωση και η προμήθεια στη ίδια βάση (320).
-  const r2 = SC.evaluateSiteCode(rec({ creator: partner({ commissionOnExtras: true }) }), q, { tenantId: "T1", now: NOW });
+  const r2 = SC.evaluateSiteCode(rec({ partner: partner({ commissionOnExtras: true }) }), q, { tenantId: "T1", now: NOW });
   assert.equal(r2.applied.cents, 1600);
 });
 
@@ -371,10 +375,12 @@ test("όριο ανά IP στον έλεγχο κωδικού → μετά το 
   assert.match(read("src/lib/public/siteCodeServer.ts"), /where: \{ tenantId, code \}/);
 });
 
-test("διαγραφή συνεργάτη: οι κωδικοί του απενεργοποιούνται (δεν γίνονται «της εταιρίας»)", () => {
-  const del = read("src/lib/userDelete.ts");
-  assert.match(del, /if \(target\.role === "PARTNER"\) \{\s*await tx\.discount\.updateMany\(\{ where: \{ tenantId, createdById: id \}, data: \{ isActive: false \} \}\);/);
-  assert.ok(del.indexOf("tx.discount.updateMany") < del.indexOf("tx.user.delete"));
+test("ο κανόνας «ανήκει σε συνεργάτη» διαβάζεται από το partnerId (όχι από τον δημιουργό)", () => {
+  const server = read("src/lib/public/siteCodeServer.ts");
+  assert.match(server, /partnerId: true,/);
+  assert.match(server, /partner: \{\s*select:/);
+  assert.doesNotMatch(server, /createdBy/);
+  assert.doesNotMatch(read("src/lib/public/siteCode.ts"), /creator|createdById/);
 });
 
 /* ─────────────────────────────────────────────
@@ -452,4 +458,22 @@ test("dashboard: ξαναϋπολογισμός κράτησης με κωδικ
   const write = read("src/lib/public/bookingWrite.ts");
   assert.match(write, /\.\.\.\(plan\.code \? \{ discountCode: plan\.code\.code \} : \{\}\),/);
   assert.match(write, /\.\.\.\(plan\.code\?\.partner \? \{ partnerId: plan\.code\.partner\.userId \} : \{\}\),/);
+});
+
+test("αλλαγή/αφαίρεση συνεργάτη στον κωδικό: ΜΟΝΟ νέες κρατήσεις· οι γραμμένες κρατούν την ανάλυσή τους", () => {
+  const cat = makeCat();
+  const old = planSiteBooking(cat, { ...REQ, discountCode: "PART5" }, [], NOW, rec()).plan;
+  const oldStored = JSON.parse(JSON.stringify(old.stored)); // όπως γράφτηκε στη βάση
+  // Ο Διαχειριστής αναθέτει τον κωδικό σε άλλον συνεργάτη (15%)…
+  const moved = planSiteBooking(cat, { ...REQ, discountCode: "PART5" }, [], NOW, rec({ partnerId: "P2", partner: partner({ id: "P2", commissionRate: 15 }) })).plan;
+  assert.equal(moved.code.partner.userId, "P2");
+  // …ή τον κάνει κωδικό εταιρίας.
+  const company = planSiteBooking(cat, { ...REQ, discountCode: "PART5" }, [], NOW, rec({ partnerId: null, partner: null })).plan;
+  assert.equal(company.code.partner, null);
+  assert.equal(company.stored.manualDiscount.partner, undefined);
+  // Η παλιά κράτηση: ίδιος συνεργάτης, ίδια έκπτωση, ίδια μειωμένη προμήθεια (από το priceQuote της).
+  const c = C.partnerCodeOf(oldStored);
+  assert.equal(c.userId, "P1");
+  assert.equal(c.cents, 1500);
+  assert.equal(C.bookingCommission(partsOf(old.quote), SETTINGS20, c), 45);
 });

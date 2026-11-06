@@ -107,9 +107,11 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     en: "Discounts",
     items: [
       { key: "discounts.view", el: "Προβολή εκπτώσεων", en: "View discounts" },
-      { key: "discounts.create", el: "Νέος κωδικός", en: "Create discount codes" },
-      { key: "discounts.edit", el: "Επεξεργασία κωδικού", en: "Edit discount codes" },
-      { key: "discounts.delete", el: "Απενεργοποίηση κωδικού", en: "Deactivate discount codes" },
+      // Κωδικούς φτιάχνει/αλλάζει ΜΟΝΟ η εταιρία: ο συνεργάτης ποτέ (ακόμα κι αν
+      // τα γράφει το JSON του)· βλέπει μόνο όσους του ανατέθηκαν (discountAccess.ts).
+      { key: "discounts.create", el: "Νέος κωδικός", en: "Create discount codes", notForPartner: true },
+      { key: "discounts.edit", el: "Επεξεργασία κωδικού", en: "Edit discount codes", notForPartner: true },
+      { key: "discounts.delete", el: "Απενεργοποίηση κωδικού", en: "Deactivate discount codes", notForPartner: true },
     ],
   },
   {

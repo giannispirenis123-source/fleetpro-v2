@@ -1,6 +1,7 @@
-// tests/partner-discounts.test.mjs — κωδικοί έκπτωσης συνεργάτη: έκπτωση ως την
-// προμήθειά του (ίση επιτρέπεται), μόνο ποσοστό, ορατότητα/επεξεργασία ΜΟΝΟ
-// των δικών του κωδικών (στον server), ο Διαχειριστής όπως πριν. SQL 39.
+// tests/partner-discounts.test.mjs — κωδικοί έκπτωσης ΑΝΑΤΕΘΕΙΜΕΝΟΙ σε συνεργάτη
+// (SQL 40): τους φτιάχνει ΜΟΝΟ η εταιρία· έκπτωση ως την προμήθεια του
+// συνεργάτη (ίση επιτρέπεται), μόνο ποσοστό, ίδια εταιρία, ενεργός· ο συνεργάτης
+// 403 σε δημιουργία/αλλαγή/απενεργοποίηση και βλέπει ΜΟΝΟ τους δικούς του. SQL 39/40.
 
 import { register } from "node:module";
 import { test } from "node:test";
@@ -15,6 +16,7 @@ register(
 );
 
 const C = await import("../src/lib/commission.ts");
+const P = await import("../src/lib/permissions.ts");
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
 const S20 = { rate: 20, onRental: true, onExtras: false, onInsurance: false };
 
@@ -31,53 +33,102 @@ test("όριο: έκπτωση ≤ προμήθεια (ίση επιτρέπετ
   assert.match(read("src/lib/commission.ts"), /export const maxPartnerDiscountPercent = \(s: CommissionSettings\): number => Math\.max\(0, s\.rate\);/);
 });
 
-test("server: POST και PATCH ελέγχουν το όριο (400, τίποτα δεν γράφεται)· μόνο για συνεργάτη", () => {
-  const post = read("src/app/api/discounts/route.ts");
-  const i = post.indexOf("partnerDiscountProblem(data, await partnerCommission(viewer!))");
-  assert.ok(i > 0 && i < post.indexOf("db.discount.create"), "ο έλεγχος ΠΡΙΝ από τη δημιουργία");
-  assert.match(post, /if \(partnerProblem\) return badRequest\(partnerProblem\);/);
-  assert.match(post, /createdById: viewer!\.userId,/);
-  const patch = read("src/app/api/discounts/[id]/route.ts");
-  const j = patch.indexOf("partnerDiscountProblem(merged, await partnerCommission(viewer!))");
-  assert.ok(j > 0 && j < patch.indexOf("db.discount.update"), "ο έλεγχος ΠΡΙΝ από την αποθήκευση");
-  const access = read("src/lib/discountAccess.ts");
-  assert.match(access, /if \(viewer\.role !== "PARTNER"\) return null;/);
-  assert.match(access, /if \(!settings\) return null; \/\/ όχι συνεργάτης: καμία αλλαγή/);
-  assert.match(access, /Η έκπτωση δεν μπορεί να ξεπερνά την προμήθειά σου/);
+// Το discountAccess.ts εισάγει db: τον καθαρό έλεγχο τον φορτώνουμε μέσω ενός
+// ψεύτικου db module (κανένα ερώτημα δεν τρέχει).
+const A = await import("../src/lib/discountAccess.ts").catch(() => null);
+
+const partner = (over = {}) => ({ id: "P1", role: "PARTNER", tenantId: "T1", isActive: true, commissionRate: 20, commissionOnRental: true, commissionOnExtras: false, commissionOnInsurance: false, ...over });
+const code = (over = {}) => ({ type: "PERCENTAGE", value: 5, target: "ALL", isActive: true, ...over });
+
+test("ανάθεση: 5% σε συνεργάτη 20% → επιτρέπεται· πάνω → 400 με μήνυμα ΕΛ/EN· σε € → απόρριψη· άλλης εταιρίας/ανύπαρκτος → απόρριψη", () => {
+  assert.ok(A, "discountAccess.ts φορτώνεται");
+  const ok = (d, p, id = "P1") => A.assignmentProblem(d, id, p, "T1");
+  assert.equal(ok(code(), partner()), null);
+  assert.equal(ok(code({ value: 20 }), partner()), null, "ίσο επιτρέπεται");
+  assert.deepEqual(ok(code({ value: 21 }), partner()), A.ASSIGN_MESSAGES.over(20));
+  assert.match(A.ASSIGN_MESSAGES.over(20).el, /προμήθεια του συνεργάτη \(20%\)/);
+  assert.match(A.ASSIGN_MESSAGES.over(20).en, /partner's commission \(20%\)/);
+  assert.deepEqual(ok(code({ type: "FIXED_AMOUNT", value: 10 }), partner()), A.ASSIGN_MESSAGES.percentOnly);
+  assert.deepEqual(ok(code({ target: "CUSTOMER" }), partner()), A.ASSIGN_MESSAGES.allOnly);
+  assert.deepEqual(ok(code(), partner({ tenantId: "T2" })), A.ASSIGN_MESSAGES.notFound, "άλλης εταιρίας");
+  assert.deepEqual(ok(code(), null), A.ASSIGN_MESSAGES.notFound, "ανύπαρκτος = άλλης εταιρίας (ίδια απάντηση)");
+  assert.deepEqual(ok(code(), partner({ role: "STAFF" })), A.ASSIGN_MESSAGES.notFound, "όχι συνεργάτης");
+  assert.deepEqual(ok(code(), partner({ isActive: false })), A.ASSIGN_MESSAGES.inactive);
+  assert.deepEqual(ok(code(), partner({ commissionRate: 0 })), A.ASSIGN_MESSAGES.noCommission);
+  // Κωδικός εταιρίας (χωρίς συνεργάτη): ΚΑΝΕΝΑΣ νέος περιορισμός (όπως πριν).
+  assert.equal(A.assignmentProblem(code({ type: "FIXED_AMOUNT", value: 50, target: "CUSTOMER" }), null, null, "T1"), null);
+  // Ανενεργός κωδικός μπορεί να κρατά συνεργάτη που απενεργοποιήθηκε (ίδια εταιρία).
+  assert.equal(ok(code({ isActive: false, value: 50 }), partner({ isActive: false })), null);
 });
 
-test("ορατότητα: ο συνεργάτης ΜΟΝΟ τους δικούς του (λίστα, σελίδα, επεξεργασία, απενεργοποίηση)· οι άλλοι όλους", () => {
-  const access = read("src/lib/discountAccess.ts");
-  assert.match(access, /return viewer\.role === "PARTNER" \? \{ \.\.\.base, createdById: viewer\.userId \} : base;/);
-  const list = read("src/app/api/discounts/route.ts");
-  assert.match(list, /where: \{\s+\.\.\.discountScope\(viewer!\),/);
-  const byId = read("src/app/api/discounts/[id]/route.ts");
-  assert.equal((byId.match(/where: \{ id: params!\.id, \.\.\.discountScope\(viewer!\) \}/g) ?? []).length, 2, "PATCH και DELETE");
-  assert.doesNotMatch(byId, /where: \{ id: params!\.id, tenantId: session\.tenantId! \}/);
-  const page = read("src/app/(dashboard)/dashboard/discounts/page.tsx");
-  assert.match(page, /where: discountScope\(viewer\),/);
-  // Ο συνεργάτης δεν παίρνει τη λίστα πελατών της εταιρίας.
-  assert.match(page, /partner\s+\? Promise\.resolve\(\[\]\)/);
-  // Κανένα άλλο ερώτημα κωδικών στο dashboard/API χωρίς το φίλτρο.
-  for (const f of ["src/app/api/discounts/route.ts", "src/app/api/discounts/[id]/route.ts", "src/app/(dashboard)/dashboard/discounts/page.tsx"]) {
-    const s = read(f);
-    for (const m of s.matchAll(/db\.discount\.(findMany|findFirst|findUnique|update|delete|count)\(\{[\s\S]*?where: ([\s\S]{0,120})/g)) {
-      // Επιτρέπονται: discountScope, το ήδη ελεγμένο current.id, και ο έλεγχος μοναδικότητας κωδικού.
-      const ok = /discountScope|id: current\.id|tenantId: session\.tenantId!, code/.test(m[2]);
-      assert.ok(ok, `${f}: ${m[1]} where ${m[2]}`);
-    }
+test("server: POST και PATCH ελέγχουν την ανάθεση (400 στη γλώσσα του χρήστη, τίποτα δεν γράφεται)", () => {
+  for (const f of ["src/app/api/discounts/route.ts", "src/app/api/discounts/[id]/route.ts"]) {
+    const src = read(f);
+    assert.match(src, /assignmentProblem\(/);
+    assert.match(src, /loadAssignablePartner\(session\.tenantId!, /, "συνεργάτης ΜΟΝΟ της εταιρίας του session");
+    assert.match(src, /if \(assign\) return badRequest\(assign\[await viewerLang\(viewer!\)\]\);/);
+    assert.ok(src.indexOf("return badRequest(assign") < src.indexOf(f.includes("[id]") ? "db.discount.update" : "db.discount.create"), "έλεγχος ΠΡΙΝ την εγγραφή");
   }
+  assert.match(read("src/app/api/discounts/route.ts"), /createdById: viewer!\.userId,\n\s+partnerId,/);
+  assert.match(read("src/lib/discountAccess.ts"), /where: \{ id: partnerId, tenantId, role: "PARTNER" \}/);
 });
 
-test("φόρμα: μέγιστο ποσοστό, μήνυμα ΕΛ/EN, μόνο ποσοστό για συνεργάτη", () => {
+test("συνεργάτης: 403 σε δημιουργία/επεξεργασία/απενεργοποίηση ακόμα και με δικαιώματα στο JSON", () => {
+  const json = { "discounts.view": true, "discounts.create": true, "discounts.edit": true, "discounts.delete": true };
+  for (const k of ["discounts.create", "discounts.edit", "discounts.delete"]) {
+    assert.ok(P.PARTNER_NEVER.has(k), k);
+    assert.equal(P.can("PARTNER", json, k), false, k);
+    assert.equal(P.can("STAFF", json, k), true, `προσωπικό με δικαίωμα: ${k}`);
+    assert.equal(P.can("COMPANY_ADMIN", {}, k), true);
+  }
+  assert.equal(P.can("PARTNER", json, "discounts.view"), true, "η προβολή μένει");
+  // Δεν φαίνονται στο παράθυρο Δικαιωμάτων / φόρμα του συνεργάτη.
+  const keys = P.groupsForRole("PARTNER").flatMap((g) => g.items.map((i) => i.key));
+  assert.ok(keys.includes("discounts.view") && !keys.some((k) => /discounts\.(create|edit|delete)/.test(k)));
+  // Και ρητός έλεγχος ρόλου στα routes.
+  const post = read("src/app/api/discounts/route.ts");
+  const one = read("src/app/api/discounts/[id]/route.ts");
+  assert.match(post, /if \(viewer!\.role === "PARTNER"\) return forbidden/);
+  assert.equal((one.match(/if \(viewer!\.role === "PARTNER"\) return forbidden/g) ?? []).length, 2, "PATCH και DELETE");
+});
+
+test("ορατότητα: ο συνεργάτης ΜΟΝΟ όσους του ανατέθηκαν (λίστα, σελίδα, λεπτομέρεια)· οι άλλοι όλους", () => {
+  assert.deepEqual(A.discountScope({ role: "PARTNER", userId: "P1", tenantId: "T1", permissions: {} }), { tenantId: "T1", partnerId: "P1" });
+  assert.deepEqual(A.discountScope({ role: "STAFF", userId: "S1", tenantId: "T1", permissions: {} }), { tenantId: "T1" });
+  assert.deepEqual(A.discountScope({ role: "COMPANY_ADMIN", userId: "A1", tenantId: "T1", permissions: {} }), { tenantId: "T1" });
+  assert.match(read("src/app/api/discounts/route.ts"), /\.\.\.discountScope\(viewer!\)/);
+  const one = read("src/app/api/discounts/[id]/route.ts");
+  assert.equal((one.match(/discountScope\(viewer!\)/g) ?? []).length, 3, "GET, PATCH, DELETE");
+  assert.match(one, /export const GET = withPermission/);
+  const page = read("src/app/(dashboard)/dashboard/discounts/page.tsx");
+  assert.match(page, /where: discountScope\(viewer\)/);
+  assert.match(page, /role: "PARTNER", \.\.\.\(isPartner \? \{ id: viewer\.userId \} : \{\}\)/);
+  assert.match(page, /create: viewerCan\(viewer, "discounts\.create"\)/);
+});
+
+test("φόρμα: «Συνεργάτης» με ενεργούς συνεργάτες και ποσοστό, μέγιστο, μήνυμα ΕΛ/EN, κάρτα", () => {
+  const ui = read("src/app/(dashboard)/dashboard/discounts/DiscountsClient.tsx");
+  assert.match(ui, /data-testid="discount-partner-select"/);
+  assert.match(ui, /\{p\.name\} · \{pctLabel\(p\.rate, locale\)\}/);
+  assert.match(ui, /partners\.filter\(\(p\) => p\.isActive \|\| p\.id === discount\?\.partnerId\)/);
+  assert.match(ui, /data-testid="discount-max"/);
+  assert.match(ui, /data-testid="discount-partner"/);
   const el = read("src/lib/i18n/el.ts");
   const en = read("src/lib/i18n/en.ts");
-  assert.match(el, /partnerOverCommission: "Η έκπτωση δεν μπορεί να ξεπερνά την προμήθειά σου \(\{max\}\)\."/);
-  assert.match(en, /partnerOverCommission: "The discount cannot exceed your commission \(\{max\}\)\."/);
-  assert.match(el, /partnerMax: "Μέγιστη έκπτωση: \{max\} \(η προμήθειά σου\)"/);
-  const ui = read("src/app/(dashboard)/dashboard/discounts/DiscountsClient.tsx");
-  assert.match(ui, /max=\{form\.type === "PERCENTAGE" \? \(isPartner \? partnerMaxPercent! : 100\) : undefined\}/);
-  assert.match(ui, /data-testid="discount-max"/);
+  assert.match(el, /partnerMax: "Μέγιστη έκπτωση: \{max\} \(η προμήθεια του συνεργάτη\)"/);
+  assert.match(en, /partnerMax: "Maximum discount: \{max\} \(the partner's commission\)"/);
+  assert.match(el, /cardPartner: "Συνεργάτης: \{name\} \(προμήθεια \{rate\}\)"/);
+  assert.match(en, /cardPartner: "Partner: \{name\} \(commission \{rate\}\)"/);
+});
+
+test("απενεργοποίηση/αλλαγή ρόλου/διαγραφή συνεργάτη → οι κωδικοί του απενεργοποιούνται", () => {
+  assert.match(read("src/lib/discounts.ts"), /where: \{ tenantId, isActive: true, OR: \[\{ partnerId \}, \{ createdById: partnerId \}\] \}/);
+  const cu = read("src/app/api/company-users/[id]/route.ts");
+  assert.match(cu, /target\.role === "PARTNER" && \(data\.isActive === false \|\| nextRole !== "PARTNER"\)\) \{\s*await deactivatePartnerCodes\(tx, viewer\.tenantId!, target\.id\);/);
+  assert.match(cu, /if \(target!\.role === "PARTNER"\) await deactivatePartnerCodes\(tx, viewer\.tenantId!, target!\.id\);/);
+  const del = read("src/lib/userDelete.ts");
+  assert.match(del, /if \(target\.role === "PARTNER"\) await deactivatePartnerCodes\(tx, tenantId, id\);/);
+  assert.ok(del.indexOf("deactivatePartnerCodes(tx") < del.indexOf("tx.user.delete"));
 });
 
 test("SQL 39: μόνο προσθήκη (nullable στήλη, FK SET NULL, index), idempotent, με verification", () => {
@@ -89,4 +140,24 @@ test("SQL 39: μόνο προσθήκη (nullable στήλη, FK SET NULL, index
   assert.doesNotMatch(sql, /DROP |DELETE FROM|UPDATE "discounts"|SET NOT NULL|TEXT NOT NULL/);
   const schema = read("prisma/schema.prisma");
   assert.match(schema, /createdById String\?\n\s+createdBy\s+User\?\s+@relation\("DiscountCreatedBy", fields: \[createdById\], references: \[id\], onDelete: SetNull\)/);
+});
+
+test("SQL 40: nullable partnerId + FK SET NULL + index, backfill ΜΟΝΟ από δημιουργό-συνεργάτη της ίδιας εταιρίας, verification", () => {
+  const sql = read("prisma/sql/40-discount-partner.sql");
+  assert.match(sql, /^BEGIN;$/m);
+  assert.match(sql, /^COMMIT;$/m);
+  assert.match(sql, /ALTER TABLE "discounts" ADD COLUMN IF NOT EXISTS "partnerId" TEXT;/);
+  assert.match(sql, /FOREIGN KEY \("partnerId"\) REFERENCES "users"\("id"\) ON DELETE SET NULL/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS "discounts_tenantId_partnerId_idx" ON "discounts" \("tenantId", "partnerId"\);/);
+  // Backfill: ένα UPDATE, μόνο partnerId IS NULL, δημιουργός PARTNER της ΙΔΙΑΣ εταιρίας.
+  assert.equal((sql.match(/^UPDATE /gm) ?? []).length, 1);
+  assert.match(sql, /SET "partnerId" = d\."createdById"/);
+  assert.match(sql, /WHERE d\."partnerId" IS NULL/);
+  assert.match(sql, /AND u\."role" = 'PARTNER'::"UserRole"/);
+  assert.match(sql, /AND u\."tenantId" = d\."tenantId";/);
+  assert.doesNotMatch(sql, /DROP |DELETE FROM|"bookings"|SET NOT NULL|TEXT NOT NULL|"createdById" =/);
+  assert.match(sql, /AS bad_partner_links/);
+  const schema = read("prisma/schema.prisma");
+  assert.match(schema, /partnerId String\?\n\s+partner\s+User\?\s+@relation\("DiscountPartner", fields: \[partnerId\], references: \[id\], onDelete: SetNull\)/);
+  assert.match(schema, /@@index\(\[tenantId, partnerId\]\)/);
 });

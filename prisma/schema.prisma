@@ -355,6 +355,8 @@ model User {
   // Οι κρατήσεις που έφερε ως συνεργάτης.
   partnerBookings         Booking[]                @relation("PartnerBookings")
   createdDiscounts        Discount[]               @relation("DiscountCreatedBy")
+  // Κωδικοί έκπτωσης που του ανατέθηκαν (ως συνεργάτη).
+  assignedDiscounts       Discount[]               @relation("DiscountPartner")
   // Οι κρατήσεις που καταχώρησε ο ίδιος, όποιος ρόλος κι αν είναι.
   createdBookings         Booking[]                @relation("CreatedBookings")
   emailVerificationTokens EmailVerificationToken[]
@@ -970,10 +972,17 @@ model Discount {
   createdById String?
   createdBy   User?   @relation("DiscountCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
+  // Ο συνεργάτης στον οποίο ΑΝΑΤΕΘΗΚΕ ο κωδικός (SQL 40). NULL = κωδικός της
+  // εταιρίας. Με συνεργάτη: η έκπτωση αφαιρείται από την προμήθειά ΤΟΥ (κράτηση
+  // από το site). Τον ορίζει ΜΟΝΟ η εταιρία (Διαχειριστής/προσωπικό).
+  partnerId String?
+  partner   User?   @relation("DiscountPartner", fields: [partnerId], references: [id], onDelete: SetNull)
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, code])
   @@index([tenantId, createdById])
+  @@index([tenantId, partnerId])
   @@map("discounts")
 }
 

@@ -175,5 +175,5 @@ test("PDF: χτίζεται με και χωρίς λογότυπο, για όλ
   assert.match(select, /customer: \{ select: \{ firstName: true, lastName: true \} \},/);
   assert.doesNotMatch(select, /email|phone|idNumber|license|address|dateOfBirth|vehicle/);
   assert.doesNotMatch(read("src/lib/partnerCommissionsPdf.ts"), /email|phone|idNumber/i);
-  assert.match(read("src/lib/partnerCommissionsPdf.ts"), /\{ label: tr\("partner\.customer"\), w: 120 \},/);
+  assert.match(read("src/lib/partnerCommissionsPdf.ts"), /\{ label: tr\("partner\.customer"\), w: 112 \},/);
 });

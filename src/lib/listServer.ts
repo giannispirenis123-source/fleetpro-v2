@@ -7,7 +7,7 @@
 import { db } from "./db";
 import { bookingScope, type Viewer } from "./authz";
 import { BOOKING_PAYMENT_INCLUDE, toBookingDTO, type BookingDTO } from "./bookings";
-import { commissionSettingsOf, summarize, type CommissionSettings, type CommissionSummary } from "./commission";
+import { commissionSettingsOf, partnerCodeOf, summarize, type CommissionSettings, type CommissionSummary } from "./commission";
 import { toCustomerDTO, type CustomerDTO } from "./customers";
 import { INVOICE_RELATIONS, toInvoiceDTO, type InvoiceDTO } from "./invoices";
 import { LIST_PAGE_SIZE, pageWindow, parsePage, type ListPage } from "./pagination";
@@ -65,9 +65,11 @@ export async function loadCommissionSummary(viewer: Viewer, settings: Commission
   const who = viewer.role === "PARTNER" ? { partnerId: viewer.userId } : { createdById: viewer.userId };
   const rows = await db.booking.findMany({
     where: { tenantId: viewer.tenantId, ...who },
-    select: { status: true, pickupDate: true, subtotal: true, extrasTotal: true, insuranceCost: true },
+    select: { status: true, pickupDate: true, subtotal: true, extrasTotal: true, insuranceCost: true, priceQuote: true },
   });
+  // Ο συνεργάτης: κρατήσεις με δικό του κωδικό στο site → μειωμένη προμήθεια.
   const parts = rows.map((r) => ({
+    partnerCode: viewer.role === "PARTNER" ? partnerCodeOf(r.priceQuote) : null,
     status: r.status,
     pickupDate: r.pickupDate.toISOString().slice(0, 10),
     subtotal: Number(r.subtotal),

@@ -10,6 +10,7 @@
 // · Κωδικός: τυχαίος, μοναδικός σε όλη τη βάση (UNIQUE)· σε σύγκρουση νέος.
 // · Όροι: ποια έκδοση αποδέχτηκε ο πελάτης (termsVersion + termsAcceptedAt).
 // · Ειδοποίηση «Νέα κράτηση από το site» στο dashboard (όχι email).
+// · Εκπτωτικός κωδικός: discountCode· κωδικός συνεργάτη → και partnerId.
 
 import { buildExtrasSnapshot } from "../pricing";
 import { SITE_BOOKING_STATUS, type CleanContact } from "./bookingRequest";
@@ -102,6 +103,10 @@ export async function writeSiteBooking<Tx extends SiteBookingTx>(
       extrasTotal: b.extrasTotal,
       insuranceCost: b.insuranceCost,
       discountAmount: b.discountAmount,
+      // Εκπτωτικός κωδικός (ελεγμένος στον server). Κωδικός ΣΥΝΕΡΓΑΤΗ → η
+      // κράτηση γράφεται στον συνεργάτη (μειωμένη προμήθεια: priceQuote.manualDiscount.partner).
+      ...(plan.code ? { discountCode: plan.code.code } : {}),
+      ...(plan.code?.partner ? { partnerId: plan.code.partner.userId } : {}),
       total: b.total,
       extras: buildExtrasSnapshot(b.lines),
       priceQuote: plan.stored,

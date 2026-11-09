@@ -25,6 +25,7 @@ import { NO_PRICE_MESSAGE } from "@/lib/public/engine";
 import { manualRentalOfBooking, pricePartsOf } from "@/lib/contractForm";
 import { totalWithRental } from "@/lib/priceOverride";
 import { applyDiscountUsage } from "@/lib/discounts";
+import { partnerCodeOf } from "@/lib/commission";
 import { issueInvoiceOnCompletion, syncVehicleStatus } from "@/lib/bookingLifecycle";
 import { displayInvoiceCode } from "@/lib/invoices";
 import { DISCOUNT_MODES, readExtrasSnapshot } from "@/lib/pricing";
@@ -230,6 +231,8 @@ export const PATCH = withPermission(
             discountMode,
             discountValue,
             discountCode: data.discountCode ?? current.discountCode,
+            // Κωδικός συνεργάτη από το site: ίδιος κανόνας ποσού όσο μένει ο ίδιος κωδικός.
+            partnerCode: existing.partnerCode ?? null,
           })
         : null;
 
@@ -249,6 +252,12 @@ export const PATCH = withPermission(
         current: current.partnerId,
       });
       if (!partner.ok) return badRequest(partner.message);
+      // Κράτηση με κωδικό ΣΥΝΕΡΓΑΤΗ: η έκπτωση «πληρώνεται» από την προμήθειά
+      // του, άρα ο συνεργάτης δεν αλλάζει όσο μένει ο κωδικός.
+      const keepsPartnerCode = priced ? !!priced.quote.manualDiscount?.partner : !!partnerCodeOf(current.priceQuote);
+      if (keepsPartnerCode && partner.partnerId !== current.partnerId) {
+        return badRequest("Η κράτηση έχει εκπτωτικό κωδικό συνεργάτη. Αφαιρέστε πρώτα τον κωδικό για να αλλάξετε συνεργάτη.");
+      }
 
       const booking = await db.$transaction(
         async (tx) => {

@@ -2,12 +2,13 @@ export const dynamic = "force-dynamic";
 // src/app/api/discounts/route.ts
 // Κωδικοί έκπτωσης ανά tenant — λίστα και δημιουργία.
 // Κάθε ερώτημα φιλτράρει με discountScope: tenantId από το session ΚΑΙ, για
-// συνεργάτη, μόνο οι δικοί του κωδικοί (createdById, SQL 39).
+// συνεργάτη, μόνο όσοι του ΑΝΑΤΕΘΗΚΑΝ (partnerId, SQL 40). Δημιουργία: ΜΟΝΟ
+// η εταιρία — ο συνεργάτης 403 (ακόμα κι αν το JSON του έχει δικαίωμα).
 
 import { db } from "@/lib/db";
-import { ok, created, badRequest, serverError, logError } from "@/lib/api";
+import { ok, created, badRequest, forbidden, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { discountScope, partnerCommission, partnerDiscountProblem } from "@/lib/discountAccess";
+import { assignmentProblem, discountScope, loadAssignablePartner, viewerLang } from "@/lib/discountAccess";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import {
   discountFormSchema,
@@ -43,6 +44,8 @@ export const GET = withPermission(
 export const POST = withPermission(
   async (req, session, _params, viewer) => {
     try {
+      // Οι συνεργάτες ΔΕΝ δημιουργούν κωδικούς (και το can() το αρνείται).
+      if (viewer!.role === "PARTNER") return forbidden("Δεν έχετε δικαίωμα για αυτή την ενέργεια");
       const parsed = discountFormSchema.safeParse(await req.json());
       if (!parsed.success) {
         return badRequest("Μη έγκυρα δεδομένα", parsed.error.errors);
@@ -51,9 +54,10 @@ export const POST = withPermission(
       const data = parsed.data;
       const problem = await validateDiscountShape(data, session.tenantId!);
       if (problem) return badRequest(problem);
-      // Συνεργάτης: έκπτωση ως την προμήθειά του, μόνο ποσοστό, μόνο για όλους.
-      const partnerProblem = partnerDiscountProblem(data, await partnerCommission(viewer!));
-      if (partnerProblem) return badRequest(partnerProblem);
+      // Ανάθεση σε συνεργάτη: ΙΔΙΑ εταιρία, ενεργός, μόνο %, ≤ την προμήθειά του.
+      const partnerId = data.partnerId || null;
+      const assign = assignmentProblem(data, partnerId, await loadAssignablePartner(session.tenantId!, partnerId), session.tenantId!);
+      if (assign) return badRequest(assign[await viewerLang(viewer!)]);
 
       const code = data.code.trim().toUpperCase();
 
@@ -78,6 +82,7 @@ export const POST = withPermission(
           targetValue: data.target === "CUSTOMER" ? data.targetValue! : null,
           // Ποιος τον δημιούργησε — πάντα από το session.
           createdById: viewer!.userId,
+          partnerId,
         },
       });
 

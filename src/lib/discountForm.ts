@@ -32,6 +32,8 @@ export const discountFormSchema = z.object({
   target: z.enum(DISCOUNT_TARGETS).default("ALL"),
   /** Το id πελάτη όταν target = CUSTOMER. */
   targetValue: z.union([z.string(), z.null()]).optional(),
+  /** Ανάθεση σε συνεργάτη της εταιρίας (SQL 40)· null/"" = κωδικός της εταιρίας. */
+  partnerId: z.union([z.string().max(64), z.literal(""), z.null()]).optional(),
 });
 
 export type DiscountFormData = z.infer<typeof discountFormSchema>;

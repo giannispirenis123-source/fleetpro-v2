@@ -2,7 +2,7 @@
 
 import { formatEuros } from "@/lib/public/money";
 import { useMemo, useState } from "react";
-import { Plus, Search, Pencil, Ban, X, Tag, User, Calendar } from "lucide-react";
+import { Plus, Search, Pencil, Ban, X, Tag, User, Calendar, Handshake } from "lucide-react";
 import { useT, useLocale } from "@/lib/i18n/I18nProvider";
 import {
   DISCOUNT_TYPES,
@@ -30,6 +30,17 @@ interface Option {
 
 type Filter = "ALL" | "ACTIVE" | "INACTIVE";
 
+/** Συνεργάτης της εταιρίας (για τη λίστα της φόρμας και την κάρτα). */
+interface PartnerOption {
+  id: string;
+  name: string;
+  isActive: boolean;
+  /** Το ΤΡΕΧΟΝ ποσοστό προμήθειας (%). */
+  rate: number;
+}
+
+const pctLabel = (n: number, locale: string) => `${String(n).replace(".", locale === "en" ? "." : ",")}%`;
+
 interface FormState {
   code: string;
   name: string;
@@ -41,6 +52,8 @@ interface FormState {
   usageLimit: string;
   target: string;
   targetValue: string;
+  /** "" = κωδικός της εταιρίας. */
+  partnerId: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -54,6 +67,7 @@ const emptyForm = (): FormState => ({
   usageLimit: "",
   target: "ALL",
   targetValue: "",
+  partnerId: "",
 });
 
 const formFromDiscount = (d: DiscountDTO): FormState => ({
@@ -67,17 +81,21 @@ const formFromDiscount = (d: DiscountDTO): FormState => ({
   usageLimit: d.usageLimit === null ? "" : String(d.usageLimit),
   target: d.target === "CUSTOMER" ? "CUSTOMER" : "ALL",
   targetValue: d.targetValue ?? "",
+  partnerId: d.partnerId ?? "",
 });
 
 export default function DiscountsClient({
   initialDiscounts,
   customers,
-  partnerMaxPercent = null,
+  partners = [],
+  can = { create: true, edit: true, delete: true },
 }: {
   initialDiscounts: DiscountDTO[];
   customers: Option[];
-  /** Συνεργάτης: το μέγιστο ποσοστό έκπτωσης (= η προμήθειά του)· null = όχι συνεργάτης. */
-  partnerMaxPercent?: number | null;
+  /** Οι συνεργάτες της εταιρίας (ο συνεργάτης-θεατής: μόνο ο ίδιος). */
+  partners?: PartnerOption[];
+  /** Τι επιτρέπεται (ο server το ξαναελέγχει· ο συνεργάτης: τίποτα — μόνο ανάγνωση). */
+  can?: { create: boolean; edit: boolean; delete: boolean };
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -125,12 +143,15 @@ export default function DiscountsClient({
           <h1 className="dash-page-title">{tr("discounts.title")}</h1>
           <p className="dash-page-sub">{tr("discounts.subtitle")}</p>
         </div>
-        <button
-          className="dash-btn dash-btn--primary"
-          onClick={() => setShowCreate(true)}
-        >
-          <Plus size={17} /> {tr("discounts.addDiscount")}
-        </button>
+        {can.create && (
+          <button
+            className="dash-btn dash-btn--primary"
+            onClick={() => setShowCreate(true)}
+            data-testid="discount-add"
+          >
+            <Plus size={17} /> {tr("discounts.addDiscount")}
+          </button>
+        )}
       </div>
 
       <div className="dash-toolbar">
@@ -183,8 +204,9 @@ export default function DiscountsClient({
                     tr("discounts.targetCustomer")
                   : null
               }
-              onEdit={() => setEditing(d)}
-              onDeactivate={() => setDeactivating(d)}
+              partner={d.partnerId ? partners.find((p) => p.id === d.partnerId) ?? null : null}
+              onEdit={can.edit ? () => setEditing(d) : null}
+              onDeactivate={can.delete ? () => setDeactivating(d) : null}
             />
           ))}
         </div>
@@ -195,7 +217,7 @@ export default function DiscountsClient({
           mode="create"
           tr={tr}
           customers={customers}
-          partnerMaxPercent={partnerMaxPercent}
+          partners={partners}
           onClose={() => setShowCreate(false)}
           onSaved={(d) => {
             upsert(d);
@@ -210,7 +232,7 @@ export default function DiscountsClient({
           discount={editing}
           tr={tr}
           customers={customers}
-          partnerMaxPercent={partnerMaxPercent}
+          partners={partners}
           onClose={() => setEditing(null)}
           onSaved={(d) => {
             upsert(d);
@@ -243,6 +265,7 @@ function DiscountCard({
   locale,
   tr,
   customerLabel,
+  partner,
   onEdit,
   onDeactivate,
 }: {
@@ -251,8 +274,11 @@ function DiscountCard({
   tr: (key: string) => string;
   /** null όταν ο κωδικός ισχύει για όλους. */
   customerLabel: string | null;
-  onEdit: () => void;
-  onDeactivate: () => void;
+  /** Ο συνεργάτης στον οποίο ανατέθηκε (null = κωδικός της εταιρίας). */
+  partner: PartnerOption | null;
+  /** null = δεν επιτρέπεται (π.χ. συνεργάτης: μόνο ανάγνωση). */
+  onEdit: (() => void) | null;
+  onDeactivate: (() => void) | null;
 }) {
   const state = discountState(d);
 
@@ -278,6 +304,21 @@ function DiscountCard({
         <span>
           <User size={13} /> {customerLabel ?? tr("discounts.targetAll")}
         </span>
+        {d.partnerId && (
+          <span data-testid="discount-partner">
+            <Handshake size={13} />{" "}
+            {tr("discounts.cardPartner")
+              .replace("{name}", partner?.name ?? tr("common.deletedUser"))
+              .replace("{rate}", partner ? pctLabel(partner.rate, locale) : "—")}
+            {partner && !partner.isActive ? ` · ${tr("discounts.partnerInactive")}` : ""}
+          </span>
+        )}
+        {/* Ο κωδικός ΑΠΟΡΡΙΠΤΕΤΑΙ στο site (π.χ. η προμήθεια μειώθηκε κάτω από την έκπτωση). */}
+        {d.partnerId && d.isActive && (!partner || !partner.isActive || d.type !== "PERCENTAGE" || d.value > partner.rate + 1e-9) && (
+          <span className="dash-form-error" data-testid="discount-partner-warning">
+            {tr("discounts.partnerWarning")}
+          </span>
+        )}
         {(d.validFrom || d.validUntil) && (
           <span>
             <Calendar size={13} />{" "}
@@ -299,6 +340,7 @@ function DiscountCard({
           )}
         </span>
         <div className="dash-vehicle-actions">
+          {onEdit && (
           <button
             className="dash-icon-btn"
             onClick={onEdit}
@@ -307,7 +349,8 @@ function DiscountCard({
           >
             <Pencil size={16} />
           </button>
-          {d.isActive && (
+          )}
+          {d.isActive && onDeactivate && (
             <button
               className="dash-icon-btn dash-icon-btn--danger"
               onClick={onDeactivate}
@@ -332,7 +375,7 @@ function DiscountModal({
   discount,
   tr,
   customers,
-  partnerMaxPercent,
+  partners,
   onClose,
   onSaved,
 }: {
@@ -340,16 +383,22 @@ function DiscountModal({
   discount?: DiscountDTO;
   tr: (key: string) => string;
   customers: Option[];
-  partnerMaxPercent: number | null;
+  partners: PartnerOption[];
   onClose: () => void;
   onSaved: (d: DiscountDTO) => void;
 }) {
   const [form, setForm] = useState<FormState>(
     discount ? formFromDiscount(discount) : emptyForm()
   );
-  // Συνεργάτης: μόνο ποσοστό, μόνο για όλους, ως την προμήθειά του (ο server το επιβάλλει).
-  const isPartner = partnerMaxPercent !== null;
-  const maxLabel = isPartner ? `${String(partnerMaxPercent).replace(".", ",")}%` : "";
+  const locale = useLocale();
+  // Ανάθεση σε συνεργάτη: μόνο ποσοστό, για όλους, ως την ΤΡΕΧΟΥΣΑ προμήθειά
+  // του (ο server το επιβάλλει ξανά). Στη λίστα ΜΟΝΟ ενεργοί συνεργάτες
+  // (+ ο ήδη ανατεθειμένος, για να φαίνεται).
+  const chosen = form.partnerId ? partners.find((p) => p.id === form.partnerId) ?? null : null;
+  const isPartner = !!form.partnerId;
+  const partnerMaxPercent = chosen ? chosen.rate : null;
+  const maxLabel = chosen ? pctLabel(chosen.rate, locale) : "";
+  const partnerChoices = partners.filter((p) => p.isActive || p.id === discount?.partnerId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -370,9 +419,15 @@ function DiscountModal({
       setError(tr("discounts.errorCustomer"));
       return;
     }
-    if (isPartner && form.isActive && (form.type !== "PERCENTAGE" || value > partnerMaxPercent!)) {
-      setError(tr(form.type !== "PERCENTAGE" ? "discounts.partnerPercentOnly" : "discounts.partnerOverCommission").replace("{max}", maxLabel));
-      return;
+    if (isPartner && form.isActive) {
+      if (!chosen || !chosen.isActive) {
+        setError(tr("discounts.partnerNotActive"));
+        return;
+      }
+      if (form.type !== "PERCENTAGE" || value > partnerMaxPercent! + 1e-9) {
+        setError(tr(form.type !== "PERCENTAGE" ? "discounts.partnerPercentOnly" : "discounts.partnerOverCommission").replace("{max}", maxLabel));
+        return;
+      }
     }
 
     setLoading(true);
@@ -390,6 +445,7 @@ function DiscountModal({
         usageLimit: form.usageLimit === "" ? null : Number(form.usageLimit),
         target: form.target,
         targetValue: form.target === "CUSTOMER" ? form.targetValue : null,
+        partnerId: form.partnerId || null,
       };
 
       const res = await fetch(
@@ -452,6 +508,32 @@ function DiscountModal({
               />
             </label>
 
+            <label className="dash-field dash-field--wide">
+              {tr("discounts.partner")}
+              <select
+                value={form.partnerId}
+                data-testid="discount-partner-select"
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setForm((f) => ({
+                    ...f,
+                    partnerId: id,
+                    // Με συνεργάτη: μόνο ποσοστό, για όλους τους πελάτες.
+                    ...(id ? { type: "PERCENTAGE", target: "ALL", targetValue: "" } : {}),
+                  }));
+                }}
+              >
+                <option value="">{tr("discounts.partnerNone")}</option>
+                {partnerChoices.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {pctLabel(p.rate, locale)}
+                    {p.isActive ? "" : ` (${tr("discounts.partnerInactive")})`}
+                  </option>
+                ))}
+              </select>
+              <small className="dash-form-note">{tr(isPartner ? "discounts.partnerHint" : "discounts.partnerNoneHint")}</small>
+            </label>
+
             <label className="dash-field">
               {tr("discounts.type")}
               <select
@@ -480,7 +562,7 @@ function DiscountModal({
                 onChange={(e) => set("value", e.target.value)}
                 data-testid="discount-value"
               />
-              {isPartner && (
+              {isPartner && chosen && (
                 <small className="dash-form-note" data-testid="discount-max">
                   {tr("discounts.partnerMax").replace("{max}", maxLabel)}
                 </small>

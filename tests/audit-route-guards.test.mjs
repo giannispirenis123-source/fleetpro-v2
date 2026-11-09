@@ -35,6 +35,7 @@ const NO_WRAPPER = {
   "/users/me/locale": "getSessionFromRequest στο handler — μόνο ο ίδιος χρήστης",
   "/public/booking": "δημόσια κράτηση: εταιρία ΜΟΝΟ από το slug, rate limits",
   "/public/quote": "δημόσια τιμή: εταιρία ΜΟΝΟ από το slug",
+  "/public/discount-code": "εκπτωτικός κωδικός στο site: εταιρία ΜΟΝΟ από το slug, αυστηρά όρια IP/εταιρίας, σταθερός χρόνος",
   "/stripe/connect/webhook": "υπογραφή Stripe (STRIPE_CONNECT_WEBHOOK_SECRET)",
   "/auth/signup": "αυτόματη εγγραφή (δημόσιο): SELF_SIGNUP_ENABLED, rate limits, ουδέτερη απάντηση",
   "/auth/verify-email": "επαλήθευση email (δημόσιο): SELF_SIGNUP_ENABLED, token μίας χρήσης, rate limit",

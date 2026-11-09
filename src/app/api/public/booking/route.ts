@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const r = await submitPublicBooking(body, new Date(), publicOrigin(req), ip);
     if (r.ok) return NextResponse.json({ success: true, data: { code: r.code, url: r.url } }, { status: 201, headers: NO_STORE });
     return NextResponse.json(
-      { success: false, message: r.message, fieldErrors: r.fieldErrors ?? [], ageUpdate: r.ageUpdate ?? null },
+      { success: false, message: r.message, fieldErrors: r.fieldErrors ?? [], ageUpdate: r.ageUpdate ?? null, codeRejected: r.codeRejected ?? false },
       { status: r.status, headers: NO_STORE }
     );
   } catch (error) {

@@ -1,13 +1,16 @@
 export const dynamic = "force-dynamic";
 // src/app/api/discounts/[id]/route.ts
 // Επεξεργασία και ήπια απενεργοποίηση κωδικού έκπτωσης.
-// Κάθε ερώτημα φιλτράρει με discountScope: tenantId από το session ΚΑΙ, για
-// συνεργάτη, μόνο οι δικοί του κωδικοί — κωδικός άλλου → 404 (ούτε ότι υπάρχει).
+// ΜΟΝΟ η εταιρία (Διαχειριστής/προσωπικό με δικαίωμα): ο συνεργάτης 403 σε
+// επεξεργασία και απενεργοποίηση, ακόμα κι αν το JSON του έχει δικαίωμα.
+// GET: ο συνεργάτης βλέπει ΜΟΝΟ κωδικό που του ανατέθηκε (αλλιώς 404).
+// Αλλαγή/αφαίρεση συνεργάτη επηρεάζει ΜΟΝΟ νέες κρατήσεις (οι γραμμένες
+// κρατούν την ανάλυσή τους στο priceQuote).
 
 import { db } from "@/lib/db";
-import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
+import { ok, badRequest, forbidden, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
-import { discountScope, partnerCommission, partnerDiscountProblem } from "@/lib/discountAccess";
+import { assignmentProblem, discountScope, loadAssignablePartner, viewerLang } from "@/lib/discountAccess";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import {
   discountFormSchema,
@@ -15,10 +18,26 @@ import {
   validateDiscountShape,
 } from "@/lib/discountForm";
 
+// GET /api/discounts/[id] — λεπτομέρεια (συνεργάτης: μόνο ανατεθειμένος σε αυτόν).
+export const GET = withPermission(
+  async (_req, _session, params, viewer) => {
+    try {
+      const d = await db.discount.findFirst({ where: { id: params!.id, ...discountScope(viewer!) } });
+      if (!d) return notFound("Ο κωδικός δεν βρέθηκε");
+      return ok({ discount: toDiscountDTO(d) });
+    } catch (error) {
+      logError("discounts/[id]", error);
+      return serverError();
+    }
+  },
+  "discounts.view"
+);
+
 // PATCH /api/discounts/[id]
 export const PATCH = withPermission(
   async (req, session, params, viewer) => {
     try {
+      if (viewer!.role === "PARTNER") return forbidden("Δεν έχετε δικαίωμα για αυτή την ενέργεια");
       const current = await db.discount.findFirst({
         where: { id: params!.id, ...discountScope(viewer!) },
       });
@@ -56,6 +75,8 @@ export const PATCH = withPermission(
           parsed.data.targetValue !== undefined
             ? parsed.data.targetValue
             : current.targetValue,
+        partnerId:
+          parsed.data.partnerId !== undefined ? parsed.data.partnerId || null : current.partnerId,
       } as const;
 
       const problem = await validateDiscountShape(
@@ -63,12 +84,15 @@ export const PATCH = withPermission(
         session.tenantId!
       );
       if (problem) return badRequest(problem);
-      // Συνεργάτης: ο ενεργός κωδικός του μένει ως την προμήθειά του (η
-      // απενεργοποίηση επιτρέπεται πάντα).
-      if (merged.isActive) {
-        const partnerProblem = partnerDiscountProblem(merged, await partnerCommission(viewer!));
-        if (partnerProblem) return badRequest(partnerProblem);
-      }
+      // Ανάθεση σε συνεργάτη (νέα ή υπάρχουσα): ΙΔΙΑ εταιρία, ενεργός, μόνο %,
+      // ≤ την ΤΡΕΧΟΥΣΑ προμήθειά του (ανενεργός κωδικός: μόνο ίδια εταιρία).
+      const assign = assignmentProblem(
+        merged,
+        merged.partnerId,
+        await loadAssignablePartner(session.tenantId!, merged.partnerId),
+        session.tenantId!
+      );
+      if (assign) return badRequest(assign[await viewerLang(viewer!)]);
 
       // Αλλαγή κωδικού: πρέπει να μείνει μοναδικός μέσα στην εταιρία.
       const nextCode = merged.code.trim().toUpperCase();
@@ -93,6 +117,7 @@ export const PATCH = withPermission(
           usageLimit: merged.usageLimit ?? null,
           target: merged.target,
           targetValue: merged.target === "CUSTOMER" ? merged.targetValue : null,
+          partnerId: merged.partnerId,
         },
       });
 
@@ -111,6 +136,7 @@ export const PATCH = withPermission(
 export const DELETE = withPermission(
   async (_req, _session, params, viewer) => {
     try {
+      if (viewer!.role === "PARTNER") return forbidden("Δεν έχετε δικαίωμα για αυτή την ενέργεια");
       const current = await db.discount.findFirst({
         where: { id: params!.id, ...discountScope(viewer!) },
       });

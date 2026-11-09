@@ -870,7 +870,9 @@ function BookingCard({
             label={
               <>
                 <Handshake size={12} /> {b.partnerDeleted ? tr("common.deletedUser") : (b.partnerName ?? tr("bookings.partner"))}
-                {b.partnerCommissionRate > 0 && ` · ${b.partnerCommissionRate}%`}
+                {b.partnerCode
+                  ? ` · ${b.partnerCode.ratePct}% (${tr("bookings.partnerCodeNote")} ${b.partnerCode.code}: ${b.partnerCommissionRate}% − ${b.partnerCode.percent}%)`
+                  : b.partnerCommissionRate > 0 && ` · ${b.partnerCommissionRate}%`}
               </>
             }
             value={
@@ -1147,6 +1149,7 @@ function BookingModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...(form.customerId ? { customerId: form.customerId } : {}),
+            ...(booking ? { bookingId: booking.id } : {}),
             vehicleId: form.vehicleId,
             pickupDate: form.pickupDate,
             pickupTime: form.pickupTime,

@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { pageGuard } from "@/lib/authz";
-import { discountScope, partnerCommission } from "@/lib/discountAccess";
-import { maxPartnerDiscountPercent } from "@/lib/commission";
+import { pageGuard, viewerCan } from "@/lib/authz";
+import { discountScope } from "@/lib/discountAccess";
 import { db } from "@/lib/db";
 import { toDiscountDTO } from "@/lib/discountMapper";
 import DiscountsClient from "./DiscountsClient";
@@ -16,24 +15,31 @@ export default async function DiscountsPage() {
   const { session, viewer } = guard;
 
   const tenantId = session.tenantId;
-  // Συνεργάτης: μόνο οι δικοί του κωδικοί, χωρίς λίστα πελατών της εταιρίας,
-  // και το μέγιστο ποσοστό (= η προμήθειά του) για τη φόρμα.
-  const partner = await partnerCommission(viewer);
+  // Συνεργάτης: ΜΟΝΟ όσοι κωδικοί του ανατέθηκαν, μόνο ανάγνωση, χωρίς λίστα
+  // πελατών ή άλλων συνεργατών της εταιρίας.
+  const isPartner = viewer.role === "PARTNER";
 
   // Φέρνουμε και τους ανενεργούς: ο διαχειριστής πρέπει να μπορεί να τους
   // ξαναενεργοποιήσει από το φίλτρο.
-  const [discounts, customers] = await Promise.all([
+  const [discounts, customers, partners] = await Promise.all([
     db.discount.findMany({
       where: discountScope(viewer),
       orderBy: { createdAt: "desc" },
     }),
-    partner
+    isPartner
       ? Promise.resolve([])
       : db.customer.findMany({
           where: { tenantId },
           orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
           select: { id: true, firstName: true, lastName: true },
         }),
+    // Οι συνεργάτες της ΙΔΙΑΣ εταιρίας (για τη λίστα της φόρμας και την κάρτα)·
+    // ο συνεργάτης βλέπει μόνο τον εαυτό του.
+    db.user.findMany({
+      where: { tenantId: tenantId!, role: "PARTNER", ...(isPartner ? { id: viewer.userId } : {}) },
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, isActive: true, commissionRate: true },
+    }),
   ]);
 
   // Το targetValue κρατά id πελάτη· το μετατρέπουμε σε όνομα για εμφάνιση.
@@ -55,7 +61,12 @@ export default async function DiscountsPage() {
         id: c.id,
         label: `${c.firstName} ${c.lastName}`,
       }))}
-      partnerMaxPercent={partner ? maxPartnerDiscountPercent(partner) : null}
+      partners={partners.map((p) => ({ id: p.id, name: p.name, isActive: p.isActive, rate: Number(p.commissionRate) }))}
+      can={{
+        create: viewerCan(viewer, "discounts.create"),
+        edit: viewerCan(viewer, "discounts.edit"),
+        delete: viewerCan(viewer, "discounts.delete"),
+      }}
     />
   );
 }

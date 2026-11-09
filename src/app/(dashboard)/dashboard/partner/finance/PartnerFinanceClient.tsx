@@ -123,6 +123,11 @@ export function PartnerFinanceRows({ items }: { items: PartnerFinanceRow[] }) {
                     {b.refunded && <span className="dash-status dash-status--muted"> {tr("partner.refunded")}</span>}
                   </span>
                   {!b.counted && <span className="dash-invoice-booking">{tr("partner.notCounted")}</span>}
+                  {b.code && (
+                    <span className="dash-invoice-booking" data-testid="pf-code" title={tr("partner.codeNote")}>
+                      {tr("partner.codeBadge").replace("{code}", b.code.code).replace("{rate}", `${b.code.ratePct}%`)}
+                    </span>
+                  )}
                 </div>
                 <div className="dash-invoice-money">
                   <span className="dash-invoice-total" data-testid="pf-amount">{money(b.totalCents)}</span>

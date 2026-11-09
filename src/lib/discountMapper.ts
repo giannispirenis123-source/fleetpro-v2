@@ -29,6 +29,7 @@ export function toDiscountDTO(
     usageLimit: d.usageLimit,
     usageCount: d.usageCount,
     isActive: d.isActive,
+    partnerId: d.partnerId ?? null,
     createdAt: d.createdAt.toISOString(),
   };
 }

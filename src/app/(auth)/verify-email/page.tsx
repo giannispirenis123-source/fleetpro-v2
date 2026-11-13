@@ -12,7 +12,7 @@ import VerifyClient from "./VerifyClient";
 import "../auth-pages.css";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "FleetPro", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Kratisi", robots: { index: false, follow: false } };
 
 export default function VerifyEmailPage({ searchParams }: { searchParams: { token?: string; lang?: string } }) {
   if (!selfSignupEnabled()) notFound();

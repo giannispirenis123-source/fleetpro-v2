@@ -298,8 +298,8 @@ export async function buildContractPdf(input: ContractPdfInput): Promise<Uint8Ar
   ]);
   doc.setTitle(`${BI.contract} ${contract.contractNumber}`);
   doc.setSubject(contract.contractNumber);
-  doc.setCreator("FleetPro");
-  doc.setProducer("FleetPro");
+  doc.setCreator("Kratisi");
+  doc.setProducer("Kratisi");
   doc.setCreationDate(input.now ?? new Date());
 
   const w = new Writer(doc, font, bold);

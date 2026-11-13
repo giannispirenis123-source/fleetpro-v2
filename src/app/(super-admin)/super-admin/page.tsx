@@ -3,6 +3,7 @@
 
 "use client";
 
+import { DEFAULT_PLATFORM_BASE_DOMAIN } from "@/lib/storefront/domain";
 import { formatEuros, formatMoney } from "@/lib/public/money";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -323,7 +324,7 @@ export default function SuperAdminDashboard() {
       <aside className="sa-sidebar">
         <div className="sa-logo">
           <Zap size={20} className="sa-logo-icon" />
-          <span>FleetPro</span>
+          <span>Kratisi</span>
           <span className="sa-badge">Super Admin</span>
         </div>
 
@@ -351,7 +352,7 @@ export default function SuperAdminDashboard() {
         {/* Στο κινητό η πλαϊνή στήλη κρύβεται: σταθερή μπάρα με το ΙΔΙΟ μενού λογαριασμού. */}
         <div className="sa-mobile-bar">
           <span className="sa-mobile-brand">
-            <Zap size={16} className="sa-logo-icon" /> FleetPro
+            <Zap size={16} className="sa-logo-icon" /> Kratisi
           </span>
           <AccountMenu name={me.name} email={me.email} role="SUPER_ADMIN" variant="topbar" accountHref={null} />
           {/* Στο κινητό (≤768px) οι ΙΔΙΕΣ ενότητες με το πλαϊνό μενού, σε οριζόντια μπάρα με κύλισμα. */}
@@ -726,7 +727,7 @@ function TenantRow({
           <div>
             <div className="sa-tenant-name">{tenant.name}</div>
             <div className="sa-tenant-slug">
-              {tenant.slug}.fleetpro.gr
+              {tenant.slug}.{DEFAULT_PLATFORM_BASE_DOMAIN}
             </div>
           </div>
         </div>
@@ -1722,9 +1723,9 @@ function PlatformSettingsView() {
       <div className="sa-settings-card">
         <h3>Στοιχεία Πλατφόρμας</h3>
         <div className="sa-form-grid">
-          <label>Όνομα Πλατφόρμας<input defaultValue="FleetPro" /></label>
+          <label>Όνομα Πλατφόρμας<input defaultValue="Kratisi" /></label>
           <label>Email Επικοινωνίας<input defaultValue="support@fleetpro.gr" /></label>
-          <label>URL Πλατφόρμας<input defaultValue="https://fleetpro.gr" /></label>
+          <label>URL Πλατφόρμας<input defaultValue={`https://${DEFAULT_PLATFORM_BASE_DOMAIN}`} /></label>
         </div>
         <button className="sa-btn-primary" style={{ marginTop: 16 }}>
           Αποθήκευση
@@ -1991,7 +1992,7 @@ function CreateTenantModal({
               <input
                 value={form.name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="π.χ. Fleet-Pro Car Rental"
+                placeholder="π.χ. Ενοικιάσεις Χανίων"
               />
             </label>
             <label>
@@ -2004,7 +2005,7 @@ function CreateTenantModal({
                   }
                   placeholder="p-rentals"
                 />
-                <span>.fleetpro.gr</span>
+                <span>.{DEFAULT_PLATFORM_BASE_DOMAIN}</span>
               </div>
             </label>
             <label>

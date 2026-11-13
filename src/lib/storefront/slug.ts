@@ -19,7 +19,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "login", "logout", "signup", "register", "dashboard", "api", "c", "s", "v",
   "admin", "super-admin", "superadmin", "print", "public", "static", "assets",
   "_next", "app", "www", "mail", "email", "help", "support", "about", "terms",
-  "privacy", "blog", "docs", "status", "pricing", "fleetpro", "fleet-pro",
+  "privacy", "blog", "docs", "status", "pricing", "fleetpro", "fleet-pro", "kratisi",
   "settings", "account", "billing", "booking", "bookings", "checkout", "pay",
   "payment", "payments", "contracts", "invoices", "new", "edit", "null",
   "undefined", "test", "demo", "el", "en", "fr", "de", "it", "es", "pl",

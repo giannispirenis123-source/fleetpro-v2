@@ -7,7 +7,7 @@ import { notFound } from "next/navigation";
 
 export const dynamic = "force-static";
 export const dynamicParams = false;
-export const metadata = { title: "FleetPro", robots: { index: false, follow: false } };
+export const metadata = { title: "Kratisi", robots: { index: false, follow: false } };
 
 const TEXT = {
   done: {

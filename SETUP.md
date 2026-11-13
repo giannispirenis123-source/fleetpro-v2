@@ -1,4 +1,4 @@
-# 🚀 FleetPro v2 — Οδηγός Εγκατάστασης
+# 🚀 Kratisi (FleetPro v2) — Οδηγός Εγκατάστασης
 
 ## Τι περιλαμβάνει αυτό το παρεδόθη
 
@@ -174,4 +174,4 @@ model Discount {
 
 ---
 
-*FleetPro v2 — Κατασκευάστηκε με Next.js 14 + PostgreSQL + Prisma*
+*Kratisi (repo fleetpro-v2) — Κατασκευάστηκε με Next.js 14 + PostgreSQL + Prisma*

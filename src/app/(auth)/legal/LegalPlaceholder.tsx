@@ -12,7 +12,7 @@ export default function LegalPlaceholder({ kind, lang: rawLang }: { kind: "terms
     <div className="signup-root">
       <article className="signup-card signup-card--wide" lang={lang}>
         <div className="signup-top">
-          <a className="signup-brand" href="/login">FleetPro</a>
+          <a className="signup-brand" href="/login">Kratisi</a>
           <div className="signup-lang">
             <a className="signup-link" href={`?lang=${lang === "el" ? "en" : "el"}`}>{lang === "el" ? "EN" : "ΕΛ"}</a>
           </div>

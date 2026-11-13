@@ -2,7 +2,7 @@
 // Domain ανά εταιρία — καθαρή λογική, χωρίς imports (τρέχει και στο middleware).
 //
 // Πώς δουλεύει: ένα αίτημα σε host που ΔΕΝ είναι της πλατφόρμας (localhost,
-// *.vercel.app, το base domain του PLATFORM_URL και το www. του) θεωρείται
+// *.vercel.app, το base domain — PLATFORM_BASE_DOMAIN / PLATFORM_URL / kratisi.eu — και το www. του) θεωρείται
 // «domain εταιρίας». Το middleware
 // μεταφράζει τη διαδρομή του (/el/search) στην εσωτερική /s/_domain/el/search
 // και περνά το host στο SITE_HOST_HEADER (αφού το καθαρίσει — κάθε εισερχόμενο
@@ -61,7 +61,15 @@ function hostOf(value: string | undefined): string | null {
   }
 }
 
+/**
+ * Το base domain της πλατφόρμας όταν δεν δίνεται ρύθμιση (PLATFORM_BASE_DOMAIN
+ * ή PLATFORM_URL). Τα subdomains του (π.χ. company.kratisi.eu) είναι sites εταιριών.
+ */
+export const DEFAULT_PLATFORM_BASE_DOMAIN = "kratisi.eu";
+
 export interface PlatformEnv {
+  /** Ρητό base domain (π.χ. kratisi.eu) — έχει προτεραιότητα από το PLATFORM_URL. */
+  PLATFORM_BASE_DOMAIN?: string;
   PLATFORM_URL?: string;
   VERCEL_PROJECT_PRODUCTION_URL?: string;
   VERCEL_URL?: string;
@@ -76,6 +84,7 @@ export interface PlatformEnv {
  */
 export function readPlatformEnv(): PlatformEnv {
   return {
+    PLATFORM_BASE_DOMAIN: process.env.PLATFORM_BASE_DOMAIN,
     PLATFORM_URL: process.env.PLATFORM_URL,
     VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
     VERCEL_URL: process.env.VERCEL_URL,
@@ -84,12 +93,13 @@ export function readPlatformEnv(): PlatformEnv {
 }
 
 /**
- * Το base domain της πλατφόρμας: το host του PLATFORM_URL χωρίς «www.»
- * (https://www.platform.example → platform.example). null = δεν ορίστηκε.
+ * Το base domain της πλατφόρμας, χωρίς «www.»: PLATFORM_BASE_DOMAIN, αλλιώς το
+ * host του PLATFORM_URL (https://www.platform.example → platform.example),
+ * αλλιώς DEFAULT_PLATFORM_BASE_DOMAIN (kratisi.eu). Δεν είναι ποτέ null.
  */
-export function platformBaseDomain(env: PlatformEnv): string | null {
-  const host = hostOf(env.PLATFORM_URL);
-  if (!host) return null;
+export function platformBaseDomain(env: PlatformEnv): string {
+  const host = hostOf(env.PLATFORM_BASE_DOMAIN) ?? hostOf(env.PLATFORM_URL);
+  if (!host) return DEFAULT_PLATFORM_BASE_DOMAIN;
   const bare = host.startsWith("www.") ? host.slice(4) : host;
   return bare.includes(".") ? bare : host;
 }
@@ -103,7 +113,7 @@ export function platformHostsFromEnv(env: PlatformEnv): string[] {
   const base = platformBaseDomain(env);
   const hosts = [
     base,
-    base ? `www.${base}` : null,
+    `www.${base}`,
     ...[env.VERCEL_PROJECT_PRODUCTION_URL, env.VERCEL_URL, env.VERCEL_BRANCH_URL].map(hostOf),
   ].filter((h): h is string => !!h);
   return [...new Set(hosts)];

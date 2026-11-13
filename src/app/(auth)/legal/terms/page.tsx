@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 import LegalPlaceholder from "../LegalPlaceholder";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "FleetPro", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Kratisi", robots: { index: false, follow: false } };
 
 export default function Page({ searchParams }: { searchParams: { lang?: string } }) {
   return <LegalPlaceholder kind="terms" lang={searchParams.lang} />;

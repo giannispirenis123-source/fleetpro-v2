@@ -85,7 +85,7 @@ export default function LoginClient({
           <div className="login-logo">
             <Zap size={24} />
           </div>
-          <span>FleetPro</span>
+          <span>Kratisi</span>
         </div>
 
         <div className="login-hero">

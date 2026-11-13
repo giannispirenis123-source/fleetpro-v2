@@ -204,8 +204,8 @@ export async function buildInvoicePdf(input: InvoicePdfInput): Promise<Uint8Arra
   ]);
   pdf.setTitle(`${L.docTitle.el} / ${L.docTitle.en} ${inv.code}`);
   pdf.setSubject(inv.code);
-  pdf.setCreator("FleetPro");
-  pdf.setProducer("FleetPro");
+  pdf.setCreator("Kratisi");
+  pdf.setProducer("Kratisi");
   pdf.setCreationDate(input.now ?? new Date());
   pdf.setModificationDate(input.now ?? new Date());
 

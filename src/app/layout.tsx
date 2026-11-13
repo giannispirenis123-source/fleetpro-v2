@@ -9,7 +9,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin", "greek"] });
 
 export const metadata: Metadata = {
-  title: "FleetPro — Διαχείριση Στόλου Οχημάτων",
+  title: "Kratisi — Διαχείριση Στόλου Οχημάτων",
   description:
     "Η πλατφόρμα SaaS για εταιρίες ενοικίασης οχημάτων. Κρατήσεις, συμβόλαια, τιμολόγια και στατιστικά σε ένα μέρος.",
   keywords: "rent a car, διαχείριση στόλου, κρατήσεις, συμβόλαια",

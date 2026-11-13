@@ -101,7 +101,7 @@ function wrap(paragraphs: string[], link?: { href: string; label: string }): str
   const btn = link
     ? `<p style="margin:20px 0"><a href="${escapeHtml(link.href)}" style="background:#2563eb;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600">${escapeHtml(link.label)}</a></p><p style="margin:0 0 14px;font-size:12px;color:#64748b;word-break:break-all">${escapeHtml(link.href)}</p>`
     : "";
-  return `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#0f172a;max-width:520px">${ps}${btn}<p style="margin:24px 0 0;font-size:12px;color:#64748b">FleetPro</p></div>`;
+  return `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#0f172a;max-width:520px">${ps}${btn}<p style="margin:24px 0 0;font-size:12px;color:#64748b">Kratisi</p></div>`;
 }
 
 /** «Επιβεβαιώστε το email σας» — ο σύνδεσμος ισχύει 24 ώρες, μία φορά. */
@@ -109,13 +109,13 @@ export function verificationEmail(lang: SignupLang, to: string, name: string, ur
   const el = lang === "el";
   const hello = el ? `Γεια σας ${name},` : `Hello ${name},`;
   const lines = el
-    ? [hello, "Για να ολοκληρωθεί η εγγραφή της εταιρίας σας στο FleetPro, επιβεβαιώστε το email σας.", "Ο σύνδεσμος ισχύει 24 ώρες και χρησιμοποιείται μία φορά. Αν δεν κάνατε εσείς την εγγραφή, αγνοήστε αυτό το μήνυμα."]
-    : [hello, "To finish registering your company on FleetPro, please confirm your email address.", "The link is valid for 24 hours and can be used once. If you did not sign up, you can ignore this message."];
+    ? [hello, "Για να ολοκληρωθεί η εγγραφή της εταιρίας σας στο Kratisi, επιβεβαιώστε το email σας.", "Ο σύνδεσμος ισχύει 24 ώρες και χρησιμοποιείται μία φορά. Αν δεν κάνατε εσείς την εγγραφή, αγνοήστε αυτό το μήνυμα."]
+    : [hello, "To finish registering your company on Kratisi, please confirm your email address.", "The link is valid for 24 hours and can be used once. If you did not sign up, you can ignore this message."];
   const label = el ? "Επιβεβαίωση email" : "Confirm email";
   return {
     to,
-    subject: el ? "Επιβεβαιώστε το email σας — FleetPro" : "Confirm your email — FleetPro",
-    text: `${lines.join("\n\n")}\n\n${url}\n\nFleetPro`,
+    subject: el ? "Επιβεβαιώστε το email σας — Kratisi" : "Confirm your email — Kratisi",
+    text: `${lines.join("\n\n")}\n\n${url}\n\nKratisi`,
     html: wrap(lines, { href: url, label }),
   };
 }
@@ -124,12 +124,12 @@ export function verificationEmail(lang: SignupLang, to: string, name: string, ur
 export function existingAccountEmail(lang: SignupLang, to: string, loginUrl: string): SignupEmail {
   const el = lang === "el";
   const lines = el
-    ? ["Κάποιος προσπάθησε να εγγραφεί στο FleetPro με αυτή τη διεύθυνση email, αλλά υπάρχει ήδη λογαριασμός.", "Αν ήσασταν εσείς, συνδεθείτε με τον υπάρχοντα λογαριασμό σας. Αν όχι, δεν χρειάζεται να κάνετε τίποτα — δεν άλλαξε τίποτα στον λογαριασμό σας."]
-    : ["Someone tried to sign up for FleetPro with this email address, but an account already exists.", "If this was you, sign in with your existing account. If not, you don't need to do anything — nothing changed on your account."];
+    ? ["Κάποιος προσπάθησε να εγγραφεί στο Kratisi με αυτή τη διεύθυνση email, αλλά υπάρχει ήδη λογαριασμός.", "Αν ήσασταν εσείς, συνδεθείτε με τον υπάρχοντα λογαριασμό σας. Αν όχι, δεν χρειάζεται να κάνετε τίποτα — δεν άλλαξε τίποτα στον λογαριασμό σας."]
+    : ["Someone tried to sign up for Kratisi with this email address, but an account already exists.", "If this was you, sign in with your existing account. If not, you don't need to do anything — nothing changed on your account."];
   return {
     to,
-    subject: el ? "Προσπάθεια εγγραφής με το email σας — FleetPro" : "Sign-up attempt with your email — FleetPro",
-    text: `${lines.join("\n\n")}\n\n${loginUrl}\n\nFleetPro`,
+    subject: el ? "Προσπάθεια εγγραφής με το email σας — Kratisi" : "Sign-up attempt with your email — Kratisi",
+    text: `${lines.join("\n\n")}\n\n${loginUrl}\n\nKratisi`,
     html: wrap(lines, { href: loginUrl, label: el ? "Σύνδεση" : "Sign in" }),
   };
 }

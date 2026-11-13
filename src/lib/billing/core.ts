@@ -580,25 +580,25 @@ export function founderNoticeEmail(
   if (lang === "el") {
     return withAmountCheck({
       to,
-      subject: "Η έκπτωση ιδρυτή τελειώνει σε 30 ημέρες — FleetPro",
+      subject: "Η έκπτωση ιδρυτή τελειώνει σε 30 ημέρες — Kratisi",
       text: [
         `Γεια σας,`,
-        `Ευχαριστούμε που η ${companyName} είναι μία από τις πρώτες εταιρίες του FleetPro.`,
+        `Ευχαριστούμε που η ${companyName} είναι μία από τις πρώτες εταιρίες του Kratisi.`,
         `Η έκπτωση 50% των 12 μηνών ολοκληρώνεται στις ${fmtDate(endsAt, "el")}. Από την επόμενη χρέωση η συνδρομή ${planName} θα κοστίζει ${priceLine} (χωρίς ΦΠΑ).`,
-        `Δεν χρειάζεται να κάνετε τίποτα. Αν θέλετε να αλλάξετε πλάνο ή κάρτα, μπείτε στο FleetPro → Συνδρομή.`,
-        `FleetPro`,
+        `Δεν χρειάζεται να κάνετε τίποτα. Αν θέλετε να αλλάξετε πλάνο ή κάρτα, μπείτε στο Kratisi → Συνδρομή.`,
+        `Kratisi`,
       ].join("\n\n"),
     }, normalCents, priceLine);
   }
   return withAmountCheck({
     to,
-    subject: "Your founding discount ends in 30 days — FleetPro",
+    subject: "Your founding discount ends in 30 days — Kratisi",
     text: [
       `Hello,`,
-      `Thank you for having ${companyName} among the first companies on FleetPro.`,
+      `Thank you for having ${companyName} among the first companies on Kratisi.`,
       `Your 50% discount for 12 months ends on ${fmtDate(endsAt, "en")}. From the next charge your ${planName} plan will cost ${priceLine} (excl. VAT).`,
-      `You don't need to do anything. To change your plan or card, open FleetPro → Subscription.`,
-      `FleetPro`,
+      `You don't need to do anything. To change your plan or card, open Kratisi → Subscription.`,
+      `Kratisi`,
     ].join("\n\n"),
   }, normalCents, priceLine);
 }

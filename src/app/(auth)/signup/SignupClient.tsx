@@ -68,7 +68,7 @@ export default function SignupClient({ initialLang, billing = false }: { initial
     <div className="signup-root">
       <div className="signup-card">
         <div className="signup-top">
-          <a className="signup-brand" href="/login">FleetPro</a>
+          <a className="signup-brand" href="/login">Kratisi</a>
           <div className="signup-lang" role="group" aria-label={t("common.language", lang)}>
             {(["el", "en"] as const).map((l) => (
               <button key={l} type="button" className={lang === l ? "active" : ""} aria-pressed={lang === l} onClick={() => setLang(l)}>

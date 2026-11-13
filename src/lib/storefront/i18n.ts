@@ -35,7 +35,7 @@ const en = {
   year: "Year",
   payOnPickup: "Pay on pickup",
   bookingRequest: "Bookings are confirmed by the company.",
-  poweredBy: "Powered by FleetPro",
+  poweredBy: "Powered by Kratisi",
   staffLogin: "Staff login",
   /** Κουμπί στο header (προσωπικό της εταιρίας). */
   /** Κουμπί του μενού «Είσοδος» και οι επιλογές του. */
@@ -301,7 +301,7 @@ const el: Partial<StorefrontDictionary> = {
   year: "Έτος",
   payOnPickup: "Πληρωμή κατά την παραλαβή",
   bookingRequest: "Οι κρατήσεις επιβεβαιώνονται από την εταιρία.",
-  poweredBy: "Με την τεχνολογία του FleetPro",
+  poweredBy: "Με την τεχνολογία του Kratisi",
   staffLogin: "Είσοδος προσωπικού",
   headerAccount: "Είσοδος",
   headerLogin: "Σύνδεση",

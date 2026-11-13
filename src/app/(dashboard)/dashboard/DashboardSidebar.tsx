@@ -125,7 +125,7 @@ export default function DashboardSidebar({
         <div className="dash-brand-logo">
           <Zap size={18} />
         </div>
-        <span className="dash-brand-name">FleetPro</span>
+        <span className="dash-brand-name">Kratisi</span>
         {/* Λογαριασμός: σταθερά ορατός στο κινητό, χωρίς να ανοίξει το μενού. */}
         <AccountMenu name={name} email={email} role={role} variant="topbar" links={accountLinks} />
       </div>
@@ -143,7 +143,7 @@ export default function DashboardSidebar({
             <Zap size={18} />
           </div>
           <div>
-            <span className="dash-brand-name">FleetPro</span>
+            <span className="dash-brand-name">Kratisi</span>
             <span className="dash-brand-sub">{companyName}</span>
           </div>
           <button

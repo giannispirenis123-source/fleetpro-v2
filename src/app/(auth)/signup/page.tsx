@@ -11,7 +11,7 @@ import SignupClient from "./SignupClient";
 import "../auth-pages.css";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "FleetPro", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Kratisi", robots: { index: false, follow: false } };
 
 export default function SignupPage({ searchParams }: { searchParams: { lang?: string } }) {
   if (!selfSignupEnabled()) notFound();

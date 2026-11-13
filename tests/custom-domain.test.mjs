@@ -98,7 +98,11 @@ test("base domain από ΜΙΑ ρύθμιση (PLATFORM_URL): kratisi.eu + www 
   const prodEnv = { PLATFORM_URL: "https://kratisi.eu", VERCEL_PROJECT_PRODUCTION_URL: "fleetpro-app-eight.vercel.app", VERCEL_URL: "fleetpro-app-abc123.vercel.app" };
   assert.equal(domain.platformBaseDomain(prodEnv), "kratisi.eu");
   assert.equal(domain.platformBaseDomain({ PLATFORM_URL: "https://www.Kratisi.eu/el" }), "kratisi.eu", "www. και διαδρομή φεύγουν");
-  assert.equal(domain.platformBaseDomain({}), null);
+  // Χωρίς ρύθμιση: το default kratisi.eu· ρητό PLATFORM_BASE_DOMAIN έχει προτεραιότητα.
+  assert.equal(domain.platformBaseDomain({}), "kratisi.eu");
+  assert.equal(domain.DEFAULT_PLATFORM_BASE_DOMAIN, "kratisi.eu");
+  assert.equal(domain.platformBaseDomain({ PLATFORM_BASE_DOMAIN: "www.example.com", PLATFORM_URL: "https://kratisi.eu" }), "example.com");
+  assert.equal(domain.platformBaseDomain({ PLATFORM_BASE_DOMAIN: "bad host", PLATFORM_URL: "https://kratisi.eu" }), "kratisi.eu", "άκυρο → επόμενη πηγή");
   const hosts = domain.platformHostsFromEnv(prodEnv);
   for (const h of ["kratisi.eu", "www.kratisi.eu", "fleetpro-app-eight.vercel.app", "fleetpro-app-git-x-giannis.vercel.app", "fleetpro-app-abc123.vercel.app"]) {
     assert.equal(domain.isPlatformHost(h, hosts), true, h);
@@ -110,11 +114,15 @@ test("base domain από ΜΙΑ ρύθμιση (PLATFORM_URL): kratisi.eu + www 
   assert.equal(domain.validateCustomDomain("company.kratisi.eu", hosts).ok, true);
   // «Είσοδος» από domain εταιρίας → login στο kratisi.eu.
   assert.equal(domain.platformOrigin(prodEnv), "https://kratisi.eu");
-  // Χωρίς PLATFORM_URL: η σημερινή συμπεριφορά (μόνο Vercel hosts).
-  assert.deepEqual(domain.platformHostsFromEnv({ VERCEL_PROJECT_PRODUCTION_URL: "fleetpro-app-eight.vercel.app" }), ["fleetpro-app-eight.vercel.app"]);
-  assert.equal(domain.isPlatformHost("kratisi.eu", domain.platformHostsFromEnv({})), false);
-  // Κανένα hardcoded base domain στον κώδικα δρομολόγησης.
-  for (const f of ["src/lib/storefront/domain.ts", "src/middleware.ts"]) assert.doesNotMatch(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), /kratisi/, f);
+  // Χωρίς ρύθμιση: kratisi.eu + www (default) + τα Vercel hosts· το login (platformOrigin) ΔΕΝ παίρνει default.
+  assert.deepEqual(domain.platformHostsFromEnv({ VERCEL_PROJECT_PRODUCTION_URL: "fleetpro-app-eight.vercel.app" }), ["kratisi.eu", "www.kratisi.eu", "fleetpro-app-eight.vercel.app"]);
+  assert.equal(domain.isPlatformHost("kratisi.eu", domain.platformHostsFromEnv({})), true);
+  assert.equal(domain.isPlatformHost("company.kratisi.eu", domain.platformHostsFromEnv({})), false);
+  assert.equal(domain.platformOrigin({}), null);
+  // Το base domain είναι ΜΙΑ σταθερά (default) — όχι σκόρπιο hardcoded στη δρομολόγηση.
+  const src = readFileSync(new URL("../src/lib/storefront/domain.ts", import.meta.url), "utf8");
+  assert.equal((src.match(/"kratisi\.eu"/g) ?? []).length, 1);
+  assert.doesNotMatch(readFileSync(new URL("../src/middleware.ts", import.meta.url), "utf8"), /kratisi/);
 });
 
 /* ─────────────────────────────────────────────

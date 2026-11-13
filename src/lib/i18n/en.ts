@@ -6,7 +6,7 @@ import type { Dictionary } from "./el";
 
 export const en: Dictionary = {
   common: {
-    appName: "FleetPro",
+    appName: "Kratisi",
     language: "Language",
     greek: "Greek",
     english: "English",
@@ -274,7 +274,7 @@ export const en: Dictionary = {
     senderVerifiedAt: "Verified: {date}",
     senderStepsTitle: "Steps",
     senderStep1: "You need a domain you control (e.g. your site's domain). A sending-only subdomain is recommended, e.g. mail.helios-rent.gr, so the emails you already receive are not affected.",
-    senderStep2: "The FleetPro administrator adds it in Resend: Resend → Domains → Add Domain → {domain} → Add.",
+    senderStep2: "The Kratisi administrator adds it in Resend: Resend → Domains → Add Domain → {domain} → Add.",
     senderStep3: "At the DNS provider add exactly the records Resend shows (MX and TXT/SPF for sending, TXT/DKIM, optionally DMARC). Do not delete existing MX or SPF records.",
     senderStep4: "Resend → Verify DNS Records. Wait for “Verified” (a few minutes up to 48 hours).",
     senderStep5: "Here: enter a name and an address ON THE SAME domain (e.g. bookings@{domain}), tick the verification and press “Save”.",
@@ -1322,7 +1322,7 @@ export const en: Dictionary = {
     email: "Email",
     address: "Address",
     noAddress: "\u2014",
-    printedNote: "This document was issued electronically by FleetPro.",
+    printedNote: "This document was issued electronically by Kratisi.",
 
     errorSave: "Could not save",
     errorConnection: "Connection error",
@@ -1599,7 +1599,7 @@ export const en: Dictionary = {
     domainStepsTitle: "Steps",
     domainStep1: "Buy the domain (if you don't have it already) from a registrar, e.g. Papaki or Cloudflare.",
     domainStep2: "Enter it here and press “Save”. The status becomes “Pending verification” — the site does not open from it yet.",
-    domainStep3: "The FleetPro administrator adds it in Vercel: project fleetpro-app → Settings → Domains → Add → the same domain → Add. (If Vercel also suggests the www or bare domain, add both and set one to redirect to the one entered here.)",
+    domainStep3: "The Kratisi administrator adds it in Vercel: project fleetpro-app → Settings → Domains → Add → the same domain → Add. (If Vercel also suggests the www or bare domain, add both and set one to redirect to the one entered here.)",
     domainStep4: "At the domain's DNS provider, add the record Vercel shows next to the domain. Usually:",
     domainStep5: "Wait until Vercel shows it green (“Valid Configuration”) — from a few minutes up to 48 hours. Do not delete existing email records (MX, SPF).",
     domainStep6: "Press “Check domain”. When the status becomes “Active”, the site opens at https://{domain}/ and search engines are pointed there.",
@@ -1607,7 +1607,7 @@ export const en: Dictionary = {
     domainDnsName: "Name (Host)",
     domainDnsValue: "Value",
     domainOpen: "Open",
-    domainLoginNote: "Only the site opens on the domain. Staff sign in from the “Staff login” link at the bottom of the site, which leads to FleetPro.",
+    domainLoginNote: "Only the site opens on the domain. Staff sign in from the “Staff login” link at the bottom of the site, which leads to Kratisi.",
     legalIntro: "Rental terms, privacy policy and cookie policy of the site. Linked at the bottom of every page and in the booking form (the terms checkbox opens your own terms).",
     legalTemplateBadge: "Template — to be reviewed by a lawyer",
     legalOwnBadge: "Your text · version {v}",
@@ -1873,7 +1873,7 @@ export const en: Dictionary = {
 
   signup: {
     title: "Create your company",
-    subtitle: "Set up your company on FleetPro in a few minutes.",
+    subtitle: "Set up your company on Kratisi in a few minutes.",
     companyName: "Company name",
     ownerName: "Your full name",
     email: "Email",
@@ -1908,10 +1908,10 @@ export const en: Dictionary = {
 
   legal: {
     draftBanner: "TEMPORARY TEXT — this is not the final legal text. The final text will be published after review by a lawyer.",
-    termsTitle: "FleetPro terms of use (temporary text)",
-    privacyTitle: "FleetPro privacy policy (temporary text)",
+    termsTitle: "Kratisi terms of use (temporary text)",
+    privacyTitle: "Kratisi privacy policy (temporary text)",
     termsBody:
-      "FleetPro is management software for vehicle rental companies. By creating a company you confirm that you are entitled to represent the company and that the details you provide are true. You are responsible for the data you enter (vehicles, customers, bookings) and for the use of your account. The platform may suspend accounts in case of abuse.",
+      "Kratisi is management software for vehicle rental companies. By creating a company you confirm that you are entitled to represent the company and that the details you provide are true. You are responsible for the data you enter (vehicles, customers, bookings) and for the use of your account. The platform may suspend accounts in case of abuse.",
     privacyBody:
       "To run your account we keep your name, email and company details. Passwords are stored only as a hash. Emails are sent through an email delivery provider. We do not sell data to third parties. For questions or account deletion, contact the platform support.",
     back: "Back",
@@ -1965,7 +1965,7 @@ export const en: Dictionary = {
 
   billing: {
     title: "Subscription",
-    subtitle: "Your company's FleetPro plan, trial and payment.",
+    subtitle: "Your company's Kratisi plan, trial and payment.",
     currentPlan: "Current plan",
     status: "Status",
     vehicles: "Vehicles",
@@ -2028,7 +2028,7 @@ export const en: Dictionary = {
 
   feedback: {
     title: "Tell us what you think",
-    subtitle: "Three short questions, all optional. They help us make FleetPro better.",
+    subtitle: "Three short questions, all optional. They help us make Kratisi better.",
     q1: "What has helped you the most so far?",
     q2: "What was missing or confusing?",
     q3: "How many vehicles does your company have?",

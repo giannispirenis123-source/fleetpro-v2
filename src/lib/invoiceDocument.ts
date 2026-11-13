@@ -98,7 +98,7 @@ export const INVOICE_LABELS = {
     en: "Please quote the invoice code as the payment reference.",
   },
   vatNote: { el: "Οι τιμές των γραμμών περιλαμβάνουν ΦΠΑ.", en: "Line amounts include VAT." },
-  issuedBy: { el: "Εκδόθηκε ηλεκτρονικά με το FleetPro.", en: "Issued electronically with FleetPro." },
+  issuedBy: { el: "Εκδόθηκε ηλεκτρονικά με το Kratisi.", en: "Issued electronically with Kratisi." },
   status_PAID: { el: "Πληρωμένο", en: "Paid" },
   status_UNPAID: { el: "Απλήρωτο", en: "Unpaid" },
   status_OVERDUE: { el: "Ληξιπρόθεσμο", en: "Overdue" },

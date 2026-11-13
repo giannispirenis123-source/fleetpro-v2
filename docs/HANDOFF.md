@@ -1,3 +1,5 @@
+> **13/11/2026 — Πού βρισκόμαστε:** PR #53 (μετονομασία σε Kratisi) ανοιχτό, mergeable, χωρίς SQL/env. Επόμενος ελεύθερος αριθμός SQL: **`41`** (τελευταίο αρχείο το `40-discount-partner.sql`). Δες §«Πού βρισκόμαστε (13/11/2026)» στο τέλος.
+
 > **28/10/2026 — PR #45 ακεραιότητας ποσών MERGED** (το SQL 38 έχει τρέξει· το #44 έγινε rebase πάνω του). Ιστορικό: (branch `claude/price-integrity`, από main, ανεξάρτητο από το #44). Θέλει **SQL `38`** ΠΡΙΝ το preview και πριν το merge (τα 36/37 ανήκουν στο #44· η σειρά δεν έχει σημασία). Χωρίς env. Επόμενος ελεύθερος αριθμός SQL: `39`.
 
 > **24/10/2026 — Ανοιχτό PR συνδρομών (Stripe Billing, ΜΟΝΟ test mode) + «Πρώτες 10 εταιρίες»** (branch `ccr-52cd80f4-94tj7a`, §«Συνδρομές» στο τέλος). Θέλει **SQL `36` και `37`** ΠΡΙΝ το preview (και φυσικά πριν το merge) και τα env `STRIPE_BILLING_*` **μόνο στο Preview**. Χωρίς αυτά το Billing είναι κλειστό και όλα δουλεύουν όπως πριν. Επόμενος ελεύθερος αριθμός SQL: `40` (το `38` είναι του #45, το `39` του PR #50 — κωδικοί έκπτωσης συνεργάτη).
@@ -1010,3 +1012,22 @@ npm test                # unit tests (node:test, χωρίς εξάρτηση)
 **Stripe:** ο κώδικας δεν στέλνει όνομα πλατφόρμας: Checkout κρατήσεων/συμβολαίων = «Κράτηση X · <εταιρία>», connected account `business_profile.name` = εταιρία, συνδρομή = price ids από env (όνομα προϊόντος από το dashboard), κουπόνι «Founding company −50%». Τα ορατά «FleetPro» είναι στο Stripe dashboard (βλ. αναφορά PR).
 
 **Domains εταιριών:** σήμερα ένα site εταιρίας ανοίγει (α) στο `/s/<slug>` της πλατφόρμας ή (β) σε δικό της domain/subdomain (π.χ. `company.kratisi.eu`) που δηλώνεται στις Ρυθμίσεις → «Domain» και γίνεται VERIFIED (`resolveStorefrontByHost`). ΔΕΝ υπάρχει αυτόματο `<slug>.kratisi.eu`. Base domain: `PLATFORM_BASE_DOMAIN` → `PLATFORM_URL` → default `kratisi.eu`.
+
+## Πού βρισκόμαστε (13/11/2026)
+
+**1) PR #53** (`claude/rename-kratisi`, 1 commit `b9cfcf8`): ανοιχτό, ΟΧΙ merged, `mergeable: clean`, χωρίς σχόλια/reviews. Το μόνο check στο GitHub είναι το Vercel preview (✅ πράσινο)· δεν υπάρχει GitHub Actions workflow. Tests 787/787, lint, typecheck και build έτρεξαν τοπικά στη συνεδρία του agent, όχι σε CI. Χωρίς SQL, χωρίς env. Από πλευράς κώδικα είναι έτοιμο για merge· πριν το merge αξίζει μια ματιά στο preview (login, sidebar, signup).
+
+**2) Τι έχει γίνει (PR #48–#53):**
+- #48 (30/10): domain πλατφόρμας `kratisi.eu` (+ www) από το `PLATFORM_URL`, διόρθωση του 404 — merged.
+- #49 (02/11): στο δημόσιο site μενού «Είσοδος» και «Γλώσσα», ίδιο login με ανακατεύθυνση ανά ρόλο, κοινό μενού γλώσσας στο dashboard — merged.
+- #50 (04/11): συνεργάτες φάση 1 — «Οικονομικά», δικαιώματα «διαθεσιμότητα»/«κράτηση», όριο κωδικών έκπτωσης (SQL 39), φόρμα κράτησης συνεργάτη με τη ροή του προσωπικού — merged.
+- #51 (05/11): «Προμήθειες συνεργατών» για τον Διαχειριστή — ίδια ποσά με τα «Οικονομικά», φίλτρο ημερών, PDF με λογότυπο, πελάτης αντί για όχημα στις λίστες — merged.
+- #52 (09/11): εκπτωτικός κωδικός στο δημόσιο site + ανάθεση κωδικού σε συνεργάτη με μειωμένη προμήθεια (SQL 40) — merged.
+- #53 (13/11): μετονομασία σε «Kratisi» σε κάθε ορατό κείμενο/email/PDF, `PLATFORM_BASE_DOMAIN` (default `kratisi.eu`), δεσμευμένο slug `kratisi` — ανοιχτό.
+
+**3) Εκκρεμότητες.**
+- *Χειροκίνητα (Giannis):* (α) όνομα εταιρίας «Fleet-pro Car Rental» → Ρυθμίσεις εταιρίας στο dashboard· (β) Stripe dashboard: όνομα/statement descriptor/support email, Connect → Branding, ονόματα προϊόντων συνδρομής, Customer emails/Checkout branding· (γ) wildcard `*.kratisi.eu` στο Vercel + nameservers στο Namecheap ΜΟΝΟ αν θες subdomains εταιριών (πρώτα μεταφορά MX/SPF/DKIM του Resend στο Vercel DNS, αλλιώς σταματά το email)· (δ) απόφαση για `support@kratisi.eu` αντί `support@fleetpro.gr`/`superadmin@fleetpro.gr`· (ε) δοκιμαστικό email μέσω Resend, αν δεν έγινε ακόμη· (στ) επιβεβαίωση SQL 40 (βλ. 4).
+- *Κώδικας:* δεν υπάρχει «Ξέχασα τον κωδικό μου» (μόνο επαναφορά από Διαχειριστή/Super Admin, `/api/users/[id]/password`)· δεν υπάρχει αυτόματο `<slug>.kratisi.eu`· οι Όροι/Απόρρητο της πλατφόρμας είναι ΠΡΟΣΩΡΙΝΟ κείμενο (banner «draft»)· η εγγραφή εταιρίας είναι κλειστή (`SELF_SIGNUP_ENABLED` OFF)· οι συνδρομές (Stripe Billing) είναι μόνο test mode — χρειάζονται live price ids/webhook πριν χρεώσεις πραγματικά· αυτόματη αποστολή τιμολογίων (`invoiceSendMode = AUTO`), μεταφορά υπογραφών σε Storage, WebP λογότυπο στο PDF.
+- *Πριν την πώληση:* (§7) κωδικός Super Admin σε καθαρή μορφή σε 3 αρχεία (`SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`) και rotate κωδικού Supabase DB + `JWT_SECRET` (παλιές τιμές στο git history)· καθάρισμα demo εταιρίας/χρηστών/κρατήσεων· αδοκίμαστα στην παραγωγή: πραγματική παράδοση email σε πελάτες, φωτογραφίες Cloudinary, κάμερα σε πραγματικό iPhone· PCI DSS (εναλλαγή κλειδιού, πολιτική διαγραφής)· διαγραφή παλιού branch `claude/graphify-setup-install-hwt5im`.
+
+**4) SQL:** επόμενος ελεύθερος αριθμός **`41`**. Το PR #53 δεν έχει SQL. Δεν υπάρχει καταγραφή ότι έτρεξαν τα **39** και **40** (το #52 έγινε merge, άρα πιθανότατα ναι). Έλεγχος μόνο-ανάγνωσης στο Supabase SQL Editor: `SELECT column_name FROM information_schema.columns WHERE table_name = 'discounts' AND column_name IN ('createdById','partnerId');` → αναμένονται 2 γραμμές. Αν λείπει κάποια, τρέχει πρώτα το αντίστοιχο αρχείο (`39`, μετά `40`).

@@ -8,12 +8,16 @@
 // · Ζωντανή συνδρομή Stripe → 409 «Ακύρωσε πρώτα…». Το Stripe ΔΕΝ καλείται.
 // · Μετά το commit: φωτογραφίες Cloudinary fleetpro/<id>/ best effort με
 //   όριο χρόνου· αποτυχία = μόνο κωδικός στα logs.
+// · Μετά το commit: αρχεία Supabase Storage κάτω από "<id>/" (διπλώματα,
+//   ζημιές, φωτογραφίες συμβολαίων, λογότυπο) best effort (storageCleanup.ts).
 // · Log: μόνο id, όνομα εταιρίας, ημερομηνία.
 
 import { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { cloudinaryConfig, destroyCompanyFolder } from "./cloudinary";
 import { withTimeout } from "./withTimeout";
+import { listFolder, removeStrict, storageConfigured } from "./storage";
+import { removeTenantFiles } from "./storageCleanup";
 import { FOUNDING_PROGRAM_ID } from "./billing/founding";
 import {
   NAME_MISMATCH,
@@ -57,6 +61,13 @@ export async function tenantDeleteSummary(id: string): Promise<TenantDeleteSumma
 }
 
 const CLOUDINARY_TIMEOUT_MS = 15_000;
+const STORAGE_TIMEOUT_MS = 45_000;
+
+/** Όλα τα αρχεία κάτω από "<tenantId>/". Χωρίς ρυθμίσεις Storage → null (τίποτα να σβηστεί). */
+async function removeTenantStorage(tenantId: string): Promise<{ removed: number; failed: number } | null> {
+  if (!storageConfigured()) return null;
+  return removeTenantFiles(tenantId, { list: listFolder, remove: removeStrict });
+}
 
 export async function deleteTenant(
   id: string,
@@ -107,6 +118,15 @@ export async function deleteTenant(
       (e: unknown) => (e instanceof Error ? e.name : "error")
     );
     if (code) console.error(`[FleetPro] Διαγραφή εταιρίας ${result.id}: Cloudinary ${code}`);
+  }
+  // Αρχεία στο Supabase Storage (διπλώματα, ζημιές, φωτογραφίες συμβολαίων,
+  // λογότυπο): ΜΟΝΟ κάτω από "<id>/", best effort ΜΕΤΑ το commit· στα logs μόνο πλήθη.
+  const storage = await withTimeout(removeTenantStorage(result.id), STORAGE_TIMEOUT_MS, "storage").catch(
+    (e: unknown) => (e instanceof Error ? e.name : "error")
+  );
+  if (typeof storage === "string") console.error(`[FleetPro] Διαγραφή εταιρίας ${result.id}: Storage ${storage}`);
+  else if (storage) {
+    console.info(`[FleetPro] Διαγραφή εταιρίας ${result.id}: Storage αρχεία σβήστηκαν=${storage.removed} απέτυχαν=${storage.failed}`);
   }
   return result;
 }

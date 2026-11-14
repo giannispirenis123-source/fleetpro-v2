@@ -340,6 +340,39 @@ export async function removeObjects(paths: string[]): Promise<void> {
   }
 }
 
+/* ── Διαγραφή όλων των αρχείων μιας εταιρίας (tenantDelete.ts) ── */
+
+/** Τα περιεχόμενα ΕΝΟΣ φακέλου του bucket (πάντα με «/» στο τέλος: ποτέ «abc» → «abcd/…»). */
+export async function listFolder(folder: string, offset: number, limit: number): Promise<{ name: string; id: string | null }[]> {
+  const { url, key } = config();
+  const res = await fetch(`${url}/storage/v1/object/list/${STORAGE_BUCKET}`, {
+    method: "POST",
+    headers: { ...headers(key), "Content-Type": "application/json" },
+    body: JSON.stringify({ prefix: `${folder.replace(/\/+$/, "")}/`, limit, offset, sortBy: { column: "name", order: "asc" } }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(TIMEOUTS.storageRemove),
+  });
+  if (!res.ok) throw await responseError("list", res);
+  const rows = (await res.json()) as unknown;
+  return Array.isArray(rows)
+    ? rows.map((r) => ({ name: String((r as { name?: unknown }).name ?? ""), id: (r as { id?: unknown }).id == null ? null : String((r as { id: unknown }).id) }))
+    : [];
+}
+
+/** Όπως το removeObjects, αλλά λέει αν πέτυχε (true) — για τη μαζική διαγραφή εταιρίας. */
+export async function removeStrict(paths: string[]): Promise<boolean> {
+  const { url, key } = config();
+  const res = await fetch(`${url}/storage/v1/object/${STORAGE_BUCKET}`, {
+    method: "DELETE",
+    headers: { ...headers(key), "Content-Type": "application/json" },
+    body: JSON.stringify({ prefixes: paths }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(TIMEOUTS.storageRemove),
+  });
+  if (!res.ok) await responseError("remove", res);
+  return res.ok;
+}
+
 /**
  * Προσωρινά URLs για πολλές διαδρομές με ένα αίτημα. Ό,τι αποτύχει (ή αν
  * λείπουν τα env vars) δεν έχει URL — η σελίδα δείχνει «μη διαθέσιμη».

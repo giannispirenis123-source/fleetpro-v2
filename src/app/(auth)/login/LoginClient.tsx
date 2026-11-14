@@ -9,17 +9,6 @@ import { Eye, EyeOff, Zap, Car } from "lucide-react";
 import { t } from "@/lib/i18n";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locale";
 
-/**
- * Demo λογαριασμοί για γρήγορη συμπλήρωση του email.
- * ΠΟΤΕ κωδικοί εδώ — η σελίδα είναι client component και ό,τι μπει σε
- * αυτό το αρχείο ταξιδεύει στον browser κάθε επισκέπτη.
- */
-const DEMO_ACCOUNTS = [
-  { role: "Super Admin", email: "superadmin@fleetpro.gr" },
-  { role: "Company Admin", email: "admin@prentals.gr" },
-  { role: "Staff", email: "staff@prentals.gr" },
-] as const;
-
 export default function LoginClient({
   signupEnabled,
   callbackUrl = null,
@@ -208,24 +197,6 @@ export default function LoginClient({
             ) : (
               <a href="mailto:support@fleetpro.gr">{tr("auth.contactUs")}</a>
             )}
-          </div>
-
-          {/* Demo λογαριασμοί — ΜΟΝΟ email.
-              Κανένας κωδικός δεν φτάνει στο UI: η σελίδα είναι client
-              component, οπότε οτιδήποτε γράφεται εδώ καταλήγει στο
-              JavaScript bundle και είναι ορατό σε όποιον την ανοίξει. */}
-          <div className="login-demo">
-            <div className="login-demo-title">{tr("auth.demoAccounts")}</div>
-            {DEMO_ACCOUNTS.map((demo) => (
-              <button
-                key={demo.role}
-                className="login-demo-btn"
-                onClick={() => setEmail(demo.email)}
-              >
-                <span className="login-demo-role">{demo.role}</span>
-                <span className="login-demo-email">{demo.email}</span>
-              </button>
-            ))}
           </div>
         </div>
       </div>
@@ -484,39 +455,6 @@ const loginStyles = `
   }
   .login-hint a { color: var(--primary-soft); text-decoration: none; }
   .login-hint a:hover { text-decoration: underline; }
-
-  .login-demo {
-    margin-top: 24px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 14px;
-  }
-
-  .login-demo-title {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-4);
-    margin-bottom: 10px;
-  }
-
-  .login-demo-btn {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 8px 10px;
-    background: none;
-    border: none;
-    border-radius: 7px;
-    cursor: pointer;
-    transition: background 0.1s;
-  }
-  .login-demo-btn:hover { background: var(--hover); }
-  .login-demo-role { font-size: 11px; font-weight: 600; color: var(--text-3); }
-  .login-demo-email { font-size: 10px; color: var(--text-4); font-family: monospace; }
 
   @media (max-width: 900px) {
     .login-left { display: none; }

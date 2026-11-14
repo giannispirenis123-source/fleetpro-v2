@@ -75,8 +75,16 @@ export const LOGO_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
  * τη διαφάνεια), JPEG μένει JPEG. Όχι SVG (απορρίπτεται πριν φτάσει εδώ).
  * Αν ο browser δεν γράφει WebP, το canvas δίνει PNG — διάφανο κι αυτό.
  */
+/**
+ * Σε τι μορφή ανεβαίνει το λογότυπο: JPEG μένει JPEG· PNG ΚΑΙ WebP → PNG.
+ * Το pdf-lib (τιμολόγιο, συμβόλαιο, αναφορά προμηθειών) ενσωματώνει μόνο
+ * PNG/JPEG — ένα λογότυπο WebP δεν θα έμπαινε ποτέ στα PDF.
+ */
+export const logoOutputType = (fileType: string): "image/jpeg" | "image/png" =>
+  fileType === "image/jpeg" ? "image/jpeg" : "image/png";
+
 export async function compressLogo(file: File): Promise<Blob> {
-  const type = (LOGO_TYPES as readonly string[]).includes(file.type) ? file.type : "image/png";
+  const type = logoOutputType(file.type);
   const { img, w, h, close } = await decode(file);
   try {
     const scale = Math.min(1, LOGO_MAX_SIDE / Math.max(w, h));

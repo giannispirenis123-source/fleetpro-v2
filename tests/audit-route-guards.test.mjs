@@ -85,7 +85,7 @@ test("routes με [id]: σε όλα υπάρχει περιορισμός στη
   assert.deepEqual(unscoped, [], "routes με [id] χωρίς ορατό περιορισμό εταιρίας");
 });
 
-test("μυστικά: κανένα NEXT_PUBLIC_ στον κώδικα (το cloud name του Cloudinary διαβάζεται μόνο στον server)", () => {
+test("μυστικά: κανένα NEXT_PUBLIC_ στον κώδικα εκτός από το email υποστήριξης (το cloud name του Cloudinary διαβάζεται μόνο στον server)", () => {
   const files = [];
   const walk = (d) =>
     readdirSync(d).forEach((n) => {
@@ -96,7 +96,8 @@ test("μυστικά: κανένα NEXT_PUBLIC_ στον κώδικα (το clou
   walk(join(ROOT, "src"));
   const used = new Set();
   for (const f of files) for (const m of readFileSync(f, "utf8").matchAll(/process\.env\.(NEXT_PUBLIC_[A-Z0-9_]+)/g)) used.add(m[1]);
-  assert.deepEqual([...used], [], "process.env.NEXT_PUBLIC_* καταλήγει στον browser");
+  // Μόνη εξαίρεση: το email υποστήριξης — δημόσιο εκ κατασκευής (φαίνεται στο login).
+  assert.deepEqual([...used], ["NEXT_PUBLIC_SUPPORT_EMAIL"], "process.env.NEXT_PUBLIC_* καταλήγει στον browser");
 });
 
 test("raw SQL: μόνο tagged templates (καμία *Unsafe παραλλαγή)", () => {

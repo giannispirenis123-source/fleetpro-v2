@@ -3,6 +3,7 @@
 
 "use client";
 
+import { SUPPORT_EMAIL } from "@/lib/supportEmail";
 import { CARD_TRIAL_DAYS, FOUNDER_TRIAL_DAYS } from "@/lib/billing/core";
 import { DEFAULT_PLATFORM_BASE_DOMAIN } from "@/lib/storefront/domain";
 import { formatEuros, formatMoney } from "@/lib/public/money";
@@ -1727,7 +1728,7 @@ function PlatformSettingsView() {
         <h3>Στοιχεία Πλατφόρμας <span className="sa-readonly-tag">μόνο προβολή</span></h3>
         <div className="sa-form-grid">
           <label>Όνομα Πλατφόρμας<input value="Kratisi" readOnly tabIndex={-1} /></label>
-          <label>Email Επικοινωνίας<input value="support@fleetpro.gr" readOnly tabIndex={-1} /></label>
+          <label>Email Επικοινωνίας<input value={SUPPORT_EMAIL ?? "— δεν έχει οριστεί (NEXT_PUBLIC_SUPPORT_EMAIL) —"} readOnly tabIndex={-1} data-testid="sa-support-email" /></label>
           <label>URL Πλατφόρμας<input value={`https://${DEFAULT_PLATFORM_BASE_DOMAIN}`} readOnly tabIndex={-1} /></label>
         </div>
         <p className="sa-readonly-note">Οι τιμές ορίζονται στον κώδικα και στις μεταβλητές περιβάλλοντος (Vercel) — δεν αλλάζουν από εδώ.</p>

@@ -6,11 +6,17 @@ export const dynamic = "force-dynamic";
 // Απαιτείται ο τρέχων κωδικός: χωρίς αυτόν, όποιος βρει ανοιχτή συνεδρία
 // (κλεμμένο cookie, ξεκλείδωτος υπολογιστής) θα κλείδωνε τον λογαριασμό.
 // Διαθέσιμο σε κάθε συνδεδεμένο ρόλο, Super Admin συμπεριλαμβανομένου.
+//
+// Όριο: 5 προσπάθειες / 15΄ ανά χρήστη (passwordChangePerUser) → 429. Μετράει
+// ΚΑΘΕ προσπάθεια, πριν από τον έλεγχο του τρέχοντος κωδικού.
 
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
 import { withAuth, ok, badRequest, notFound, serverError, logError } from "@/lib/api";
+import { hitLimit, LIMITS } from "@/lib/public/rateLimit";
+import { dbCounterStore } from "@/lib/public/rateLimitStore";
 
 /** Ίδια rounds με το seed, το POST /api/users και το reset του Super Admin. */
 const BCRYPT_ROUNDS = 12;
@@ -30,6 +36,13 @@ export const PATCH = withAuth(async (req, session) => {
     }
 
     const { currentPassword, newPassword } = parsed.data;
+
+    if (!(await hitLimit(dbCounterStore, LIMITS.passwordChangePerUser, session.userId))) {
+      return NextResponse.json(
+        { success: false, message: "Πολλές προσπάθειες. Δοκιμάστε ξανά σε 15 λεπτά." },
+        { status: 429 }
+      );
+    }
 
     const user = await db.user.findUnique({
       where: { id: session.userId },

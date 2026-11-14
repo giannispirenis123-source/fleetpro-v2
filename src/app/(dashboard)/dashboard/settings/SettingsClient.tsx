@@ -31,6 +31,9 @@ const MODE_ICON = {
 const ISSUE_TRIGGERS = ["ON_COMPLETION", "ON_CONTRACT"] as const;
 const SEND_MODES = ["MANUAL", "AUTO"] as const;
 
+/** Η αυτόματη αποστολή δεν υπάρχει ακόμα: φαίνεται, αλλά δεν επιλέγεται (ο server την αρνείται). */
+const SEND_SOON: Record<string, boolean> = { MANUAL: false, AUTO: true };
+
 /** Η έκδοση με το συμβόλαιο αποθηκεύεται, αλλά δεν ενεργεί ακόμα. */
 const TRIGGER_SOON: Record<string, boolean> = {
   ON_COMPLETION: false,
@@ -527,14 +530,18 @@ export default function SettingsClient({
 
         <div className="dash-modes">
           {SEND_MODES.map((value) => {
-            const active = sendMode === value;
+            const soon = SEND_SOON[value];
+            // Παλιό αποθηκευμένο «AUTO» φαίνεται ως χειροκίνητο.
+            const active = !soon && (sendMode === value || sendMode === "AUTO");
             return (
               <button
                 key={value}
                 className={`dash-mode ${active ? "active" : ""}`}
-                onClick={() => saveInvoiceSetting("invoiceSendMode", value)}
-                disabled={Boolean(savingInvoice)}
+                onClick={() => !soon && saveInvoiceSetting("invoiceSendMode", value)}
+                disabled={soon || Boolean(savingInvoice)}
+                aria-disabled={soon || undefined}
                 aria-pressed={active}
+                data-testid={`send-mode-${value}`}
               >
                 <span className="dash-mode-icon">
                   <Send size={20} />
@@ -542,6 +549,7 @@ export default function SettingsClient({
                 <span className="dash-mode-text">
                   <span className="dash-mode-name">
                     {tr(`settings.send${value}`)}
+                    {soon && <span className="dash-soon">{tr("common.comingSoon")}</span>}
                   </span>
                   <span className="dash-mode-desc">
                     {tr(`settings.send${value}Help`)}

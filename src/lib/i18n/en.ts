@@ -334,7 +334,7 @@ export const en: Dictionary = {
     sendMANUAL: "Manually",
     sendMANUALHelp: "The invoice is issued and waits in the list for you to hand it over.",
     sendAUTO: "Automatically to the customer",
-    sendAUTOHelp: "The invoice will be emailed as soon as it is issued.",
+    sendAUTOHelp: "Not available yet. For now, invoices are sent with the “Send” button in the list.",
     invoiceEmailSoon:
       "Email sending arrives in a later step. Until then the choice is stored but nothing is sent.",
 

@@ -136,8 +136,8 @@ test("Stripe: κοινός client με όριο 10΄΄ + 1 επανάληψη· 
 
 test("Supabase Storage: όριο σε κάθε κλήση· αργή υπογραφή → σελίδα χωρίς εικόνα", () => {
   const s = src("src/lib/storage.ts");
-  assert.equal((s.match(/signal: AbortSignal\.timeout\(TIMEOUTS\.storage(Sign|Remove|Upload)\)/g) ?? []).length, 3);
-  assert.equal((s.match(/await fetch\(/g) ?? []).length, 3);
+  assert.equal((s.match(/signal: AbortSignal\.timeout\(TIMEOUTS\.storage(Sign|Remove|Upload)\)/g) ?? []).length, 5);
+  assert.equal((s.match(/await fetch\(/g) ?? []).length, 5);
 });
 
 /* ─────────────────────────────────────────────

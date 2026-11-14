@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { ok, badRequest, notFound, serverError, logError } from "@/lib/api";
 import { withPermission } from "@/lib/authz";
 import { MAX_PREP_MINUTES } from "@/lib/prepTime";
-import { INVOICE_ISSUE_TRIGGERS, INVOICE_SEND_MODES } from "@/lib/invoices";
+import { INVOICE_ISSUE_TRIGGERS, INVOICE_SEND_MODES_AVAILABLE, SEND_MODE_UNAVAILABLE, effectiveSendMode } from "@/lib/invoices";
 
 const RENTAL_MODES = ["BOOKING", "REQUEST"] as const;
 
@@ -33,9 +33,11 @@ const SELECT = {
 } as const;
 
 /** Decimal → number, ώστε ο client να μη λαμβάνει ποτέ ΦΠΑ ως κείμενο. */
-const toSettingsDTO = <T extends { vatRate: unknown }>(t: T) => ({
+const toSettingsDTO = <T extends { vatRate: unknown; invoiceSendMode?: unknown }>(t: T) => ({
   ...t,
   vatRate: Number(t.vatRate),
+  // Παλιό αποθηκευμένο AUTO → φαίνεται ως χειροκίνητο (δεν στέλνει τίποτα μόνο του).
+  ...("invoiceSendMode" in t ? { invoiceSendMode: effectiveSendMode(t.invoiceSendMode) } : {}),
 });
 
 /** Κείμενο ρύθμισης: κενό → null (σβήνει το πεδίο). */
@@ -65,7 +67,10 @@ const updateSettingsSchema = z
       .max(100, "Ο ΦΠΑ δεν μπορεί να ξεπερνά το 100%")
       .optional(),
     invoiceIssueTrigger: z.enum(INVOICE_ISSUE_TRIGGERS).optional(),
-    invoiceSendMode: z.enum(INVOICE_SEND_MODES).optional(),
+    // Μόνο «MANUAL»: το AUTO δεν στέλνει τίποτα ακόμα, άρα δεν αποθηκεύεται.
+    invoiceSendMode: z
+      .enum(INVOICE_SEND_MODES_AVAILABLE, { errorMap: () => ({ message: SEND_MODE_UNAVAILABLE }) })
+      .optional(),
     // Επωνυμία και email τα διαχειρίζεται ο Super Admin — όχι από εδώ.
     phone: optionalText(50),
     address: optionalText(300),
@@ -106,6 +111,8 @@ export const PATCH = withPermission(
       const parsed = updateSettingsSchema.safeParse(body);
 
       if (!parsed.success) {
+        // «Αυτόματα» (AUTO): σαφές μήνυμα, τίποτα δεν αποθηκεύεται.
+        if (parsed.error.errors.some((e) => e.path[0] === "invoiceSendMode")) return badRequest(SEND_MODE_UNAVAILABLE);
         return badRequest("Μη έγκυρα δεδομένα", parsed.error.errors);
       }
 

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { effectiveSendMode } from "@/lib/invoices";
 import { pageGuard } from "@/lib/authz";
 import { db } from "@/lib/db";
 import SettingsClient from "./SettingsClient";
@@ -50,7 +51,7 @@ export default async function SettingsPage() {
         initialRoundUp={tenant.roundUpTotal}
         initialVatRate={Number(tenant.vatRate)}
         initialIssueTrigger={tenant.invoiceIssueTrigger}
-        initialSendMode={tenant.invoiceSendMode}
+        initialSendMode={effectiveSendMode(tenant.invoiceSendMode)}
       />
       <CompanyContractSettings
         companyName={tenant.name}

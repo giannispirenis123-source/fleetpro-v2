@@ -13,10 +13,9 @@ ON CONFLICT ("slug") DO NOTHING;
 
 -- ── Χρήστες ──
 -- Οι κωδικοί είναι κρυπτογραφημένοι με bcrypt (cost 12), όπως τους περιμένει η εφαρμογή.
--- SUPER_ADMIN: superadmin@fleetpro.gr / FleetPro2025!
-INSERT INTO "users" ("id","tenantId","name","email","passwordHash","role","permissions","updatedAt")
-VALUES ('seed_user_superadmin', NULL, 'Super Administrator', 'superadmin@fleetpro.gr', '$2a$12$3QzexkSlmzZVczgKLVR8qeHflTBPAEP6osxiGkYc4zTx.t9DLg2ou', 'SUPER_ADMIN', '{}'::jsonb, CURRENT_TIMESTAMP)
-ON CONFLICT ("email") DO NOTHING;
+-- SUPER_ADMIN: ΔΕΝ δημιουργείται εδώ (πριν υπήρχε σταθερός κωδικός στο repo).
+-- Φτιάξ' τον με `npm run db:seed` (SUPER_ADMIN_EMAIL + SUPER_ADMIN_PASSWORD στο env)
+-- ή με INSERT δικό σου με δικό σου bcrypt hash.
 
 -- COMPANY_ADMIN: admin@prentals.gr / Admin2025!
 INSERT INTO "users" ("id","tenantId","name","email","passwordHash","role","permissions","updatedAt")

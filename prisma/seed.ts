@@ -10,8 +10,14 @@ async function main() {
   console.log("🌱 Ξεκινά το seeding...");
 
   // ── 1. Super Admin ─────────────────────
-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || "superadmin@fleetpro.gr";
-  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || "FleetPro2025!";
+  // Χωρίς προεπιλογές: ο Super Admin ΔΕΝ έχει σταθερό email/κωδικό στο repo.
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
+  if (!superAdminEmail || !superAdminPassword || superAdminPassword.length < 12) {
+    throw new Error(
+      "Όρισε SUPER_ADMIN_EMAIL και SUPER_ADMIN_PASSWORD (τουλάχιστον 12 χαρακτήρες) πριν το seed."
+    );
+  }
 
   const existingSuperAdmin = await prisma.user.findUnique({
     where: { email: superAdminEmail },

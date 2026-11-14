@@ -78,7 +78,7 @@ npm run dev
 ### 6. Σύνδεση
 
 Άνοιξε το URL του Replit και σύνδεσου με:
-- **Super Admin**: `superadmin@fleetpro.gr` / `FleetPro2025!`
+- **Super Admin**: το email και ο κωδικός που όρισες στο `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` πριν το seed
 - **Company Admin**: `admin@prentals.gr` / `Admin2025!`
 
 ---

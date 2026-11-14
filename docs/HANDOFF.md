@@ -1031,3 +1031,11 @@ npm test                # unit tests (node:test, χωρίς εξάρτηση)
 - *Πριν την πώληση:* (§7) κωδικός Super Admin σε καθαρή μορφή σε 3 αρχεία (`SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`) και rotate κωδικού Supabase DB + `JWT_SECRET` (παλιές τιμές στο git history)· καθάρισμα demo εταιρίας/χρηστών/κρατήσεων· αδοκίμαστα στην παραγωγή: πραγματική παράδοση email σε πελάτες, φωτογραφίες Cloudinary, κάμερα σε πραγματικό iPhone· PCI DSS (εναλλαγή κλειδιού, πολιτική διαγραφής)· διαγραφή παλιού branch `claude/graphify-setup-install-hwt5im`.
 
 **4) SQL:** επόμενος ελεύθερος αριθμός **`41`**. Το PR #53 δεν έχει SQL. Τα **39** και **40 έχουν τρέξει** (επιβεβαιώθηκε 13/11/2026 στο Supabase: υπάρχουν οι στήλες `discounts.createdById` και `discounts.partnerId`). Δεν ελέγχθηκε το `bad_partner_links = 0` του 40.
+
+## Ενημέρωση 14/11/2026: Super Admin και stripe
+
+- **PR #54:** διόρθωση πεδίου «Email Επικοινωνίας» που κοβόταν στις Ρυθμίσεις Πλατφόρμας (μόνο CSS). **PR #55:** αφαιρέθηκε το πλαίσιο «Demo λογαριασμοί» από τη σελίδα σύνδεσης. Και τα δύο merged.
+- **Super Admin:** ο κωδικός άλλαξε από την οθόνη «Ο κωδικός μου» και το email άλλαξε στη βάση (`UPDATE users SET email = … WHERE role = 'SUPER_ADMIN'`, όχι από το UI). Ο παλιός σταθερός κωδικός ΔΕΝ ισχύει πια. Το `superadmin@fleetpro.gr` δεν υπάρχει στη βάση.
+- **Repo (PR «remove-seed-credentials»):** αφαιρέθηκαν ο σταθερός κωδικός/email του Super Admin από `SETUP.md`, `.env.example`, `prisma/seed.ts` (τώρα απαιτεί `SUPER_ADMIN_EMAIL` + `SUPER_ADMIN_PASSWORD` ≥ 12 χαρακτήρες, αλλιώς σφάλμα) και `prisma/sql/02-seed.sql` (δεν δημιουργεί πια Super Admin). Οι demo κωδικοί της δοκιμαστικής εταιρίας (`admin@prentals.gr`, `staff@prentals.gr`, `partner@prentals.gr`) μένουν ως έχουν ΜΕΧΡΙ να σβηστεί η εταιρία δοκιμών. Στο git history οι παλιές τιμές μένουν.
+- **Stripe (ολοκληρώθηκε από τον Giannis):** public details, Connect → Branding, όνομα λογαριασμού και προϊόντα συνδρομής (sandbox) → «Kratisi». Μένει μόνο η επαλήθευση ταυτότητας (pending) και το ανέβασμα λογοτύπου/εικονιδίου.
+- **Εκκρεμεί:** rotate κωδικού Supabase DB και `JWT_SECRET` (παλιές τιμές στο git history), forgot password, κείμενα Όρων/Απορρήτου, `support@fleetpro.gr` στο login και στις Ρυθμίσεις Πλατφόρμας (οι «Στοιχεία Πλατφόρμας» δεν αποθηκεύονται), σβήσιμο εταιρίας δοκιμών. Επόμενος ελεύθερος αριθμός SQL: `41`.

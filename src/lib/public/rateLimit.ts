@@ -67,6 +67,12 @@ export const LIMITS = {
    */
   discountCodePerClient: { scope: "code-ip", max: 15, windowMinutes: 15 },
   discountCodePerTenant: { scope: "code-tenant", max: 200, windowMinutes: 60 },
+  /**
+   * Αλλαγή του ΔΙΚΟΥ ΜΑΣ κωδικού (PATCH /api/users/me/password): κάθε προσπάθεια
+   * μετράει (σωστός ή λάθος «τρέχων κωδικός») — ανοιχτή συνεδρία δεν γίνεται
+   * μηχανή δοκιμής κωδικών.
+   */
+  passwordChangePerUser: { scope: "pw-change", max: 5, windowMinutes: 15 },
   /** «Πες μας τη γνώμη σου» ανά χρήστη. */
   feedbackPerUser: { scope: "feedback-user", max: 5, windowMinutes: 60 },
 } as const satisfies Record<string, Limit>;

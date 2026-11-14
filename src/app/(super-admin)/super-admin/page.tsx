@@ -3053,10 +3053,14 @@ const superAdminStyles = `
     font-size: 11px;
     color: var(--text-4);
     font-weight: 500;
+    min-width: 0;
   }
 
   .sa-form-grid input,
   .sa-form-grid select {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     background: var(--hover);
     border: 1px solid var(--hover-2);
     border-radius: 8px;

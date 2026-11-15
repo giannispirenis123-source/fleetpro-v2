@@ -334,6 +334,9 @@ model User {
   // Admin / «Χρήστες» είναι επαληθευμένοι. ΜΟΝΟ η εγγραφή (/signup) γράφει null
   // — και τότε ούτε login ούτε dashboard μέχρι τον σύνδεσμο του email.
   emailVerifiedAt DateTime? @default(now())
+  // Πότε άλλαξε τελευταία ο κωδικός (SQL 41). Κάθε σύνδεση (JWT) που εκδόθηκε
+  // ΠΡΙΝ από αυτό απορρίπτεται (viewerCore.ts). NULL = δεν άλλαξε ποτέ από τότε.
+  passwordChangedAt DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -360,12 +363,30 @@ model User {
   // Οι κρατήσεις που καταχώρησε ο ίδιος, όποιος ρόλος κι αν είναι.
   createdBookings         Booking[]                @relation("CreatedBookings")
   emailVerificationTokens EmailVerificationToken[]
+  // «Ξέχασα τον κωδικό μου» (SQL 41): tokens επαναφοράς (μόνο hash).
+  passwordResetTokens     PasswordResetToken[]
   feedback                TenantFeedback[]
 
   @@map("users")
 }
 
 // Σύνδεσμος επαλήθευσης email (SQL 34): ΜΟΝΟ το hash του token, 24 ώρες, μίας χρήσης.
+// Token επαναφοράς κωδικού (SQL 41): στη βάση ΜΟΝΟ το sha256 hash, λήξη 1 ώρα,
+// μίας χρήσης (usedAt). Νέο αίτημα ακυρώνει τα παλιά του ίδιου χρήστη.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
 model EmailVerificationToken {
   id        String    @id @default(cuid())
   userId    String

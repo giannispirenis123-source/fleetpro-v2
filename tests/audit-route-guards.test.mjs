@@ -40,6 +40,8 @@ const NO_WRAPPER = {
   "/auth/signup": "αυτόματη εγγραφή (δημόσιο): SELF_SIGNUP_ENABLED, rate limits, ουδέτερη απάντηση",
   "/auth/verify-email": "επαλήθευση email (δημόσιο): SELF_SIGNUP_ENABLED, token μίας χρήσης, rate limit",
   "/auth/resend-verification": "νέος σύνδεσμος (δημόσιο): SELF_SIGNUP_ENABLED, rate limits, ουδέτερη απάντηση",
+  "/auth/forgot-password": "«Ξέχασα τον κωδικό» (δημόσιο): ουδέτερη απάντηση, όρια IP/email, σταθερός ελάχιστος χρόνος",
+  "/auth/reset-password": "νέος κωδικός με token μίας χρήσης (δημόσιο): μόνο hash στη βάση, όριο IP",
   "/billing/webhook": "υπογραφή Stripe (STRIPE_BILLING_WEBHOOK_SECRET) — ξεχωριστό από το Connect",
   "/public/founding-spots": "δημόσιο: ΜΟΝΟ ο αριθμός θέσεων ιδρυτών, SELF_SIGNUP_ENABLED, rate limit ανά IP",
 };

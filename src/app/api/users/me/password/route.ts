@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 // (κλεμμένο cookie, ξεκλείδωτος υπολογιστής) θα κλείδωνε τον λογαριασμό.
 // Διαθέσιμο σε κάθε συνδεδεμένο ρόλο, Super Admin συμπεριλαμβανομένου.
 
+import { passwordChangeStamp } from "@/lib/viewerCore";
+import { setSessionCookie } from "@/lib/sessionCookie";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
@@ -49,13 +51,25 @@ export const PATCH = withAuth(async (req, session) => {
       return badRequest("Ο νέος κωδικός είναι ίδιος με τον τρέχοντα");
     }
 
+    // passwordChangedAt (SQL 41): κάθε ΑΛΛΗ ανοιχτή σύνδεση του χρήστη παύει να ισχύει.
     await db.user.update({
       where: { id: user.id },
-      data: { passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS) },
+      data: { passwordHash: await bcrypt.hash(newPassword, BCRYPT_ROUNDS), passwordChangedAt: passwordChangeStamp() },
     });
 
+    // Η ΤΡΕΧΟΥΣΑ συσκευή μένει συνδεδεμένη: νέο cookie, εκδομένο μετά την αλλαγή.
     // Κανένας κωδικός ή hash στην απάντηση.
-    return ok({ changed: true });
+    const response = ok({ changed: true });
+    await setSessionCookie(response, {
+      userId: session.userId,
+      email: session.email,
+      role: session.role,
+      tenantId: session.tenantId,
+      tenantSlug: session.tenantSlug,
+      name: session.name,
+      locale: session.locale,
+    });
+    return response;
   } catch (error) {
     // Σκόπιμα δεν περνάμε το body στο log.
     logError("Own password change failed", error);

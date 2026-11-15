@@ -28,6 +28,7 @@ export async function loadViewer(session: JWTPayload): Promise<Viewer | null> {
       tenantId: true,
       isActive: true,
       emailVerifiedAt: true,
+      passwordChangedAt: true,
       permissions: true,
       tenant: {
         select: { status: true, billingStatus: true, trialEndsAt: true, pastDueSince: true, stripeTestClockId: true, billingClockAt: true },

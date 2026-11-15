@@ -367,6 +367,8 @@ test("κάθε αποστολή προς πελάτη περνά από τον �
     "src/lib/contractPdf.ts": ["src/lib/contractPdf.ts", /throw new AmountIntegrityError/],
     // Email εγγραφής: ΚΑΝΕΝΑ ποσό (ελέγχεται παρακάτω).
     "src/lib/signup/mailer.ts": ["src/lib/signup/signup.ts", /verificationEmail/],
+    // Email επαναφοράς κωδικού (SQL 41): ΚΑΝΕΝΑ ποσό (ελέγχεται στο tests/password-reset.test.mjs).
+    "src/lib/passwordResetServer.ts": ["src/lib/passwordReset.ts", /export function resetEmail/],
   };
   assert.deepEqual(senders.filter((s) => !(s in GUARD)), [], "νέος αποστολέας χωρίς έλεγχο ποσών");
   for (const [sender, [file, re]] of Object.entries(GUARD)) {

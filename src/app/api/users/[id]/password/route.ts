@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 // καθαρή μορφή — μόνο το bcrypt hash, με τα ίδια rounds (12) που χρησιμοποιούν
 // το seed και η δημιουργία χρήστη, ώστε το login να τον δέχεται αυτούσια.
 
+import { passwordChangeStamp } from "@/lib/viewerCore";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
@@ -53,7 +54,8 @@ export const PATCH = withAuth(
 
       await db.user.update({
         where: { id: user.id },
-        data: { passwordHash: await bcrypt.hash(parsed.data.password, BCRYPT_ROUNDS) },
+        // passwordChangedAt (SQL 41): οι ανοιχτές συνδέσεις του χρήστη παύουν να ισχύουν.
+        data: { passwordHash: await bcrypt.hash(parsed.data.password, BCRYPT_ROUNDS), passwordChangedAt: passwordChangeStamp() },
       });
 
       // Καμία επιστροφή κωδικού ή hash.

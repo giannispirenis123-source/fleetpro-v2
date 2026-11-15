@@ -29,11 +29,15 @@ export interface JWTPayload {
   tenantSlug: string | null;
   name: string;
   locale: Locale;
+  /** Πότε εκδόθηκε το token (δευτερόλεπτα, από το JWT) — για την ακύρωση μετά από αλλαγή κωδικού. */
+  iat?: number;
 }
 
 // Δημιουργία JWT token
 export async function signToken(payload: JWTPayload): Promise<string> {
-  return await new SignJWT({ ...payload })
+  // Το iat το βάζει ΠΑΝΤΑ το setIssuedAt (τώρα) — ποτέ από παλιό payload.
+  const { iat: _iat, ...claims } = payload;
+  return await new SignJWT({ ...claims })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")

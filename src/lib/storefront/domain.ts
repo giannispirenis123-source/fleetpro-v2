@@ -224,7 +224,7 @@ export function routeCustomDomain(pathname: string): DomainRoute {
   }
   if (first === "_next") return { kind: "pass" };
   // Εγγραφή/επαλήθευση/νομικά της ΠΛΑΤΦΟΡΜΑΣ: ποτέ στο domain εταιρίας.
-  if (/^(api|c|pay|print|super-admin|signup|verify-email|legal)$/.test(first)) return { kind: "notFound" };
+  if (/^(api|c|pay|print|super-admin|signup|verify-email|legal|forgot-password|reset-password)$/.test(first)) return { kind: "notFound" };
   return { kind: "rewrite", path: `/s/${DOMAIN_SLUG}${pathname}` };
 }
 

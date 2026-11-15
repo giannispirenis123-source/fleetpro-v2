@@ -96,7 +96,7 @@ export interface SignupEmail {
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 
-function wrap(paragraphs: string[], link?: { href: string; label: string }): string {
+export function wrap(paragraphs: string[], link?: { href: string; label: string }): string {
   const ps = paragraphs.map((p) => `<p style="margin:0 0 14px">${escapeHtml(p)}</p>`).join("");
   const btn = link
     ? `<p style="margin:20px 0"><a href="${escapeHtml(link.href)}" style="background:#2563eb;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600">${escapeHtml(link.label)}</a></p><p style="margin:0 0 14px;font-size:12px;color:#64748b;word-break:break-all">${escapeHtml(link.href)}</p>`

@@ -1,3 +1,5 @@
+> **15/11/2026 — Φάση 2Α (PR #57–#66 ανοιχτά, κανένα merged):** δες §«Φάση 2Α (15/11/2026)» στο τέλος για τη σειρά merge. **Το #66 θέλει πρώτα το SQL `41`.** Επόμενος ελεύθερος αριθμός SQL: **`42`**.
+
 > **13/11/2026 — Πού βρισκόμαστε:** PR #53 (μετονομασία σε Kratisi) ανοιχτό, mergeable, χωρίς SQL/env. Επόμενος ελεύθερος αριθμός SQL: **`41`** (τελευταίο αρχείο το `40-discount-partner.sql`). Δες §«Πού βρισκόμαστε (13/11/2026)» στο τέλος.
 
 > **28/10/2026 — PR #45 ακεραιότητας ποσών MERGED** (το SQL 38 έχει τρέξει· το #44 έγινε rebase πάνω του). Ιστορικό: (branch `claude/price-integrity`, από main, ανεξάρτητο από το #44). Θέλει **SQL `38`** ΠΡΙΝ το preview και πριν το merge (τα 36/37 ανήκουν στο #44· η σειρά δεν έχει σημασία). Χωρίς env. Επόμενος ελεύθερος αριθμός SQL: `39`.
@@ -1039,3 +1041,29 @@ npm test                # unit tests (node:test, χωρίς εξάρτηση)
 - **Repo (PR «remove-seed-credentials»):** αφαιρέθηκαν ο σταθερός κωδικός/email του Super Admin από `SETUP.md`, `.env.example`, `prisma/seed.ts` (τώρα απαιτεί `SUPER_ADMIN_EMAIL` + `SUPER_ADMIN_PASSWORD` ≥ 12 χαρακτήρες, αλλιώς σφάλμα) και `prisma/sql/02-seed.sql` (δεν δημιουργεί πια Super Admin). Οι demo κωδικοί της δοκιμαστικής εταιρίας (`admin@prentals.gr`, `staff@prentals.gr`, `partner@prentals.gr`) μένουν ως έχουν ΜΕΧΡΙ να σβηστεί η εταιρία δοκιμών. Στο git history οι παλιές τιμές μένουν.
 - **Stripe (ολοκληρώθηκε από τον Giannis):** public details, Connect → Branding, όνομα λογαριασμού και προϊόντα συνδρομής (sandbox) → «Kratisi». Μένει μόνο η επαλήθευση ταυτότητας (pending) και το ανέβασμα λογοτύπου/εικονιδίου.
 - **Εκκρεμεί:** rotate κωδικού Supabase DB και `JWT_SECRET` (παλιές τιμές στο git history), forgot password, κείμενα Όρων/Απορρήτου, `support@fleetpro.gr` στο login και στις Ρυθμίσεις Πλατφόρμας (οι «Στοιχεία Πλατφόρμας» δεν αποθηκεύονται), σβήσιμο εταιρίας δοκιμών. Επόμενος ελεύθερος αριθμός SQL: `41`.
+
+
+## Φάση 2Α (15/11/2026): διορθώσεις χωρίς SQL/env/απόφαση + προετοιμασία forgot password
+
+Μετά τον έλεγχο της Φάσης 1 (14/11), ένα PR ανά θέμα, όλα από το `main`, **κανένα merged**. Σε κάθε PR έτρεξαν τοπικά typecheck, lint, `npm test` και build.
+
+| PR | Branch | Τι κάνει | Θέλει |
+|---|---|---|---|
+| #57 | `claude/remove-demo-passwords` | Κωδικοί και bcrypt hash των demo χρηστών έξω από `SETUP.md`, `prisma/seed.ts`, `prisma/sql/02-seed.sql`. Το seed φτιάχνει demo χρήστες μόνο με `DEMO_PASSWORD` (≥ 12)· δεν τυπώνει κωδικούς. | — (οι κωδικοί στη βάση/ιστορικό μένουν: αλλαγή από UI ή σβήσιμο εταιρίας δοκιμών) |
+| #58 | `claude/tenant-delete-storage` | Η διαγραφή εταιρίας σβήνει και τα αρχεία της στο Supabase Storage, μόνο κάτω από `<tenantId>/` (`storageCleanup.ts`, `listFolder`/`removeStrict`). | — (αδοκίμαστο με πραγματικό bucket) |
+| #59 | `claude/password-change-rate-limit` | `PATCH /api/users/me/password`: 5 προσπάθειες / 15΄ ανά χρήστη → 429 (`LIMITS.passwordChangePerUser`). | — |
+| #60 | `claude/invoice-auto-send-soon` | «Αποστολή τιμολογίου: Αυτόματα» → disabled «σύντομα»· ο server δέχεται μόνο `MANUAL`· παλιό `AUTO` φαίνεται ως χειροκίνητο (`effectiveSendMode`). | — |
+| #61 | `claude/super-admin-settings-readonly` | Super Admin → Ρυθμίσεις: οι 3 κάρτες «μόνο προβολή», χωρίς κουμπιά· η δοκιμαστική περίοδος δείχνει `CARD_TRIAL_DAYS`/`FOUNDER_TRIAL_DAYS`. | — |
+| #62 | `claude/support-email-env` | Email υποστήριξης μόνο από `NEXT_PUBLIC_SUPPORT_EMAIL` (`src/lib/supportEmail.ts`)· χωρίς αυτό ο σύνδεσμος «Επικοινωνία» κρύβεται. Και `.env.example`: `NEXT_PUBLIC_APP_NAME="Kratisi"`. **Πατάει πάνω στο #61 → merge μετά το #61.** | env `NEXT_PUBLIC_SUPPORT_EMAIL` + Redeploy |
+| #63 | `claude/logo-webp-to-png` | Λογότυπο WebP → PNG στον browser πριν το ανέβασμα (`logoOutputType`), ώστε να μπαίνει στα PDF. Τα ήδη ανεβασμένα WebP θέλουν ξανανέβασμα. | — |
+| #64 | `claude/ci-workflow` | `.github/workflows/ci.yml`: install, prisma generate, typecheck, lint, test, build σε κάθε PR. Χωρίς secrets. | Actions ενεργό στο repo |
+| #65 | `claude/npm-audit-fix` | `npm audit fix` χωρίς `--force` (μόνο lockfile): κλείνουν `postcss-selector-parser`, `qs`, `source-map-js`. Μένουν `next` 14 (critical), `postcss` μέσα στο next, `zod` 3 — θέλουν major. | — |
+| #66 (draft) | `claude/forgot-password` | «Ξέχασα τον κωδικό μου» (`/forgot-password`, `/reset-password`, `/api/auth/forgot-password`, `/api/auth/reset-password`, `passwordReset.ts`, `passwordResetServer.ts`) + ακύρωση συνδέσεων με `users.passwordChangedAt` (`viewerCore.ts`). | **SQL `41` ΠΡΙΝ το merge** · Resend που στέλνει σε πραγματικούς παραλήπτες |
+
+**Σειρά merge:** #57 → #58 → #59 → #60 → #61 → #62 → #63 → #64 → #65 (ανεξάρτητα μεταξύ τους, εκτός από #62 μετά το #61). Το **#66 τελευταίο**: 1) SQL 41 στο Supabase, 2) merge, 3) έλεγχος. Ο νέος κώδικας του #66 διαβάζει τη στήλη σε κάθε αίτημα· merge πριν το SQL = κανείς δεν μπαίνει στο dashboard. Το preview του #66 δεν συνδέεται μέχρι να τρέξει το SQL (κοινή βάση).
+
+**SQL:** `41-password-reset.sql` (στήλη `users."passwordChangedAt"` nullable + πίνακας `password_reset_tokens`, μόνο προσθήκη, idempotent, verification). **Επόμενος ελεύθερος αριθμός: `42`.**
+
+**Νέα env:** `NEXT_PUBLIC_SUPPORT_EMAIL` (δημόσιο, μπαίνει στο build → θέλει Redeploy)· `DEMO_PASSWORD` (μόνο για το seed, τοπικά).
+
+**Τι ΔΕΝ έγινε (θέλει SQL, env, live Stripe ή απόφαση) — λίστα «κάνουμε μαζί»:** rotate κωδικού Supabase DB και `JWT_SECRET`· **έλεγχος Row Level Security στους πίνακες του Supabase** (κανένα αρχείο `prisma/sql` δεν το ενεργοποιεί — αν είναι κλειστό, οι πίνακες διαβάζονται με το anon key μέσω του Data API)· Billing σε live (φραγμός `sk_test_` στο `billing/core.ts`, live price ids/webhook, ΦΠΑ/ΑΦΜ)· Όροι/Απόρρητο/DPA· emails νέας κράτησης (εταιρία + πελάτης)· πρόσκληση με email σε νέα εταιρία από Super Admin· αλλαγή email στο «Ο λογαριασμός μου» και για τον Super Admin· Sentry· PCI (εναλλαγή κλειδιού, διαγραφή αριθμών κάρτας)· 2FA· αναβάθμιση Next 14 → 15 και zod 3 → 4· μετατροπή των ήδη ανεβασμένων WebP λογοτύπων (θέλει `sharp`)· υπογραφές σε Storage· αυτόματη αποστολή τιμολογίων (πραγματική υλοποίηση)· myDATA· διαγραφή εταιρίας δοκιμών· επαλήθευση domain στο Resend.

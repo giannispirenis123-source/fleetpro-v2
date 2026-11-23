@@ -79,7 +79,7 @@ npm run dev
 
 Άνοιξε το URL του Replit και σύνδεσου με:
 - **Super Admin**: το email και ο κωδικός που όρισες στο `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` πριν το seed
-- **Company Admin**: `admin@prentals.gr` / `Admin2025!`
+- **Demo χρήστες** (`admin@` / `staff@` / `partner@prentals.gr`): δημιουργούνται ΜΟΝΟ αν ορίσεις `DEMO_PASSWORD` (τουλάχιστον 12 χαρακτήρες) πριν το seed· ο κωδικός τους είναι αυτός
 
 ---
 

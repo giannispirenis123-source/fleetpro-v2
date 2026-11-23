@@ -4,6 +4,7 @@
 
 "use client";
 
+import { SUPPORT_EMAIL } from "@/lib/supportEmail";
 import { useState } from "react";
 import { Eye, EyeOff, Zap, Car } from "lucide-react";
 import { t } from "@/lib/i18n";
@@ -194,14 +195,17 @@ export default function LoginClient({
             </button>
           </div>
 
-          <div className="login-hint">
-            <p>{tr("auth.noAccount")}</p>
-            {signupEnabled ? (
-              <a href={`/signup?lang=${locale}`}>{tr("signup.create")}</a>
-            ) : (
-              <a href="mailto:support@fleetpro.gr">{tr("auth.contactUs")}</a>
-            )}
-          </div>
+          {/* Χωρίς εγγραφή ΚΑΙ χωρίς email υποστήριξης (NEXT_PUBLIC_SUPPORT_EMAIL): τίποτα. */}
+          {(signupEnabled || SUPPORT_EMAIL) && (
+            <div className="login-hint">
+              <p>{tr("auth.noAccount")}</p>
+              {signupEnabled ? (
+                <a href={`/signup?lang=${locale}`}>{tr("signup.create")}</a>
+              ) : (
+                <a href={`mailto:${SUPPORT_EMAIL}`} data-testid="login-contact">{tr("auth.contactUs")}</a>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

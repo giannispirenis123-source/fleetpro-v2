@@ -68,6 +68,12 @@ export const LIMITS = {
   discountCodePerClient: { scope: "code-ip", max: 15, windowMinutes: 15 },
   discountCodePerTenant: { scope: "code-tenant", max: 200, windowMinutes: 60 },
   /**
+   * Αλλαγή του ΔΙΚΟΥ ΜΑΣ κωδικού (PATCH /api/users/me/password): κάθε προσπάθεια
+   * μετράει (σωστός ή λάθος «τρέχων κωδικός») — ανοιχτή συνεδρία δεν γίνεται
+   * μηχανή δοκιμής κωδικών.
+   */
+  passwordChangePerUser: { scope: "pw-change", max: 5, windowMinutes: 15 },
+  /**
    * «Ξέχασα τον κωδικό μου» (SQL 41): αίτημα συνδέσμου ανά IP και ανά email
    * (hash), και δοκιμές συνδέσμου επαναφοράς ανά IP. Το όριο ανά email ΔΕΝ
    * αλλάζει την απάντηση (πάντα ουδέτερη) — απλώς δεν φεύγει άλλο email.

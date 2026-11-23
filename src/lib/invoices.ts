@@ -11,6 +11,16 @@ export type InvoiceStatusValue = (typeof INVOICE_STATUSES)[number];
 export const INVOICE_ISSUE_TRIGGERS = ["ON_COMPLETION", "ON_CONTRACT"] as const;
 export const INVOICE_SEND_MODES = ["AUTO", "MANUAL"] as const;
 
+/**
+ * Η αυτόματη αποστολή (AUTO) ΔΕΝ υπάρχει ακόμα: τίποτα δεν στέλνει μόνο του.
+ * Μέχρι να υλοποιηθεί, ο server δέχεται ΜΟΝΟ «MANUAL» και κάθε αποθηκευμένο
+ * AUTO (παλιές ρυθμίσεις) διαβάζεται ως χειροκίνητο — η οθόνη δεν υπόσχεται
+ * κάτι που δεν γίνεται.
+ */
+export const INVOICE_SEND_MODES_AVAILABLE = ["MANUAL"] as const;
+export const effectiveSendMode = (_stored: unknown): "MANUAL" => "MANUAL";
+export const SEND_MODE_UNAVAILABLE = "Η αυτόματη αποστολή τιμολογίων δεν είναι ακόμα διαθέσιμη.";
+
 /** Χρώμα pill ανά κατάσταση — κλάσεις που υπάρχουν ήδη στο dashboard.css. */
 export const INVOICE_STATUS_CLASS: Record<string, string> = {
   PAID: "ok",

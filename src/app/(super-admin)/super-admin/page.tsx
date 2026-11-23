@@ -3,6 +3,7 @@
 
 "use client";
 
+import { CARD_TRIAL_DAYS, FOUNDER_TRIAL_DAYS } from "@/lib/billing/core";
 import { DEFAULT_PLATFORM_BASE_DOMAIN } from "@/lib/storefront/domain";
 import { formatEuros, formatMoney } from "@/lib/public/money";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -1720,20 +1721,20 @@ function PlatformSettingsView() {
     <div className="sa-settings-grid">
       <MyPasswordCard />
 
-      <div className="sa-settings-card">
-        <h3>Στοιχεία Πλατφόρμας</h3>
+      {/* Οι τρεις κάρτες είναι ΜΟΝΟ προβολή: καμία δεν αποθηκεύει (δεν υπάρχει
+          πίνακας ρυθμίσεων πλατφόρμας). Χωρίς κουμπιά, πεδία readOnly. */}
+      <div className="sa-settings-card" data-testid="sa-readonly-platform">
+        <h3>Στοιχεία Πλατφόρμας <span className="sa-readonly-tag">μόνο προβολή</span></h3>
         <div className="sa-form-grid">
-          <label>Όνομα Πλατφόρμας<input defaultValue="Kratisi" /></label>
-          <label>Email Επικοινωνίας<input defaultValue="support@fleetpro.gr" /></label>
-          <label>URL Πλατφόρμας<input defaultValue={`https://${DEFAULT_PLATFORM_BASE_DOMAIN}`} /></label>
+          <label>Όνομα Πλατφόρμας<input value="Kratisi" readOnly tabIndex={-1} /></label>
+          <label>Email Επικοινωνίας<input value="support@fleetpro.gr" readOnly tabIndex={-1} /></label>
+          <label>URL Πλατφόρμας<input value={`https://${DEFAULT_PLATFORM_BASE_DOMAIN}`} readOnly tabIndex={-1} /></label>
         </div>
-        <button className="sa-btn-primary" style={{ marginTop: 16 }}>
-          Αποθήκευση
-        </button>
+        <p className="sa-readonly-note">Οι τιμές ορίζονται στον κώδικα και στις μεταβλητές περιβάλλοντος (Vercel) — δεν αλλάζουν από εδώ.</p>
       </div>
 
-      <div className="sa-settings-card">
-        <h3>Τιμές Συνδρομών</h3>
+      <div className="sa-settings-card" data-testid="sa-readonly-prices">
+        <h3>Τιμές Συνδρομών <span className="sa-readonly-tag">μόνο προβολή</span></h3>
         {(["STARTER", "PRO", "ENTERPRISE"] as SubscriptionPlan[]).map(
           (plan) => (
             <div key={plan} className="sa-price-row">
@@ -1742,31 +1743,29 @@ function PlatformSettingsView() {
               </span>
               <input
                 type="number"
-                defaultValue={PLAN_PRICES[plan]}
+                value={PLAN_PRICES[plan]}
+                readOnly
+                tabIndex={-1}
                 className="sa-price-input"
               />
               <span>€/μήνα</span>
             </div>
           )
         )}
-        <button className="sa-btn-primary" style={{ marginTop: 16 }}>
-          Ενημέρωση Τιμών
-        </button>
+        <p className="sa-readonly-note">Οι τιμές ορίζονται στο Stripe (προϊόντα συνδρομής) και στον κώδικα — δεν αλλάζουν από εδώ.</p>
       </div>
 
-      <div className="sa-settings-card">
-        <h3>Δοκιμαστική Περίοδος</h3>
+      <div className="sa-settings-card" data-testid="sa-readonly-trial">
+        <h3>Δοκιμαστική Περίοδος <span className="sa-readonly-tag">μόνο προβολή</span></h3>
         <label className="sa-label">
-          Διάρκεια Trial (ημέρες)
-          <input type="number" defaultValue={14} />
+          Δοκιμή με κάρτα (ημέρες)
+          <input type="number" value={CARD_TRIAL_DAYS} readOnly tabIndex={-1} />
         </label>
         <label className="sa-label">
-          Μέγιστα Οχήματα σε Trial
-          <input type="number" defaultValue={5} />
+          Δοκιμή ιδρυτή, χωρίς κάρτα (ημέρες)
+          <input type="number" value={FOUNDER_TRIAL_DAYS} readOnly tabIndex={-1} />
         </label>
-        <button className="sa-btn-primary" style={{ marginTop: 16 }}>
-          Αποθήκευση
-        </button>
+        <p className="sa-readonly-note">Οι τιμές ορίζονται στον κώδικα (συνδρομές) — δεν αλλάζουν από εδώ. Το όριο οχημάτων βγαίνει από το πακέτο της εταιρίας.</p>
       </div>
     </div>
   );
@@ -2976,6 +2975,9 @@ const superAdminStyles = `
   .sa-settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
   .sa-settings-card h3 { font-size: 13px; font-weight: 600; color: var(--text-3); margin-bottom: 16px; }
   .sa-price-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .sa-readonly-tag { margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; background: var(--surface-2, rgba(148,163,184,.18)); color: var(--text-4); text-transform: none; letter-spacing: 0; }
+  .sa-readonly-note { margin-top: 12px; font-size: 11px; line-height: 1.5; color: var(--text-4); }
+  .sa-settings-card input[readonly] { cursor: default; opacity: .8; }
   .sa-price-input { width: 80px; }
   .sa-label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; color: var(--text-4); font-size: 11px; }
 

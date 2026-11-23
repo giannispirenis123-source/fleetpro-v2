@@ -19,6 +19,11 @@ async function main() {
     );
   }
 
+  // Κωδικός των demo χρηστών: μόνο από το env, ποτέ σταθερός.
+  const rawDemo = process.env.DEMO_PASSWORD ?? "";
+  const demoPassword = rawDemo.length >= 12 ? rawDemo : null;
+  if (rawDemo && !demoPassword) throw new Error("DEMO_PASSWORD: τουλάχιστον 12 χαρακτήρες.");
+
   const existingSuperAdmin = await prisma.user.findUnique({
     where: { email: superAdminEmail },
   });
@@ -58,13 +63,16 @@ async function main() {
       },
     });
 
+    // Demo χρήστες: ΜΟΝΟ με DEMO_PASSWORD (≥ 12 χαρακτήρες) στο env — κανένας
+    // σταθερός κωδικός στο repo. Χωρίς αυτό η demo εταιρία φτιάχνεται χωρίς χρήστες.
+    if (demoPassword) {
     // Company Admin
     await prisma.user.create({
       data: {
         tenantId: tenant.id,
         name: "Παναγιώτης Κ.",
         email: "admin@prentals.gr",
-        passwordHash: await bcrypt.hash("Admin2025!", 12),
+        passwordHash: await bcrypt.hash(demoPassword, 12),
         role: "COMPANY_ADMIN",
         permissions: {},
       },
@@ -76,7 +84,7 @@ async function main() {
         tenantId: tenant.id,
         name: "Μαρία Π.",
         email: "staff@prentals.gr",
-        passwordHash: await bcrypt.hash("Staff2025!", 12),
+        passwordHash: await bcrypt.hash(demoPassword, 12),
         role: "STAFF",
         permissions: {
           viewBookings: true,
@@ -106,7 +114,7 @@ async function main() {
         tenantId: tenant.id,
         name: "Αλέξης Σ.",
         email: "partner@prentals.gr",
-        passwordHash: await bcrypt.hash("Partner2025!", 12),
+        passwordHash: await bcrypt.hash(demoPassword, 12),
         role: "PARTNER",
         permissions: {
           viewBookings: true,
@@ -115,6 +123,7 @@ async function main() {
         },
       },
     });
+    }
 
     // Default Contract Template
     await prisma.contractTemplate.create({
@@ -191,9 +200,11 @@ async function main() {
     });
 
     console.log(`✅ Demo Tenant: Fleet-Pro Car Rental (${tenant.id})`);
-    console.log(`   👤 Admin: admin@prentals.gr / Admin2025!`);
-    console.log(`   👤 Staff: staff@prentals.gr / Staff2025!`);
-    console.log(`   👤 Partner: partner@prentals.gr / Partner2025!`);
+    console.log(
+      demoPassword
+        ? "   👤 Demo χρήστες: admin@ / staff@ / partner@prentals.gr (κωδικός: DEMO_PASSWORD)"
+        : "   👤 Demo χρήστες: ΠΑΡΑΛΕΙΦΘΗΚΑΝ (όρισε DEMO_PASSWORD, τουλάχιστον 12 χαρακτήρες)"
+    );
     console.log(`   🚗 ${vehicles.length} οχήματα`);
     console.log(`   🏷️  3 εκπτώσεις`);
   } else {
@@ -201,11 +212,7 @@ async function main() {
   }
 
   console.log("\n🎉 Seeding ολοκληρώθηκε!");
-  console.log("\n📋 Λογαριασμοί:");
-  console.log(`   Super Admin: ${superAdminEmail} / ${superAdminPassword}`);
-  console.log(`   Company Admin: admin@prentals.gr / Admin2025!`);
-  console.log(`   Staff: staff@prentals.gr / Staff2025!`);
-  console.log(`   Partner: partner@prentals.gr / Partner2025!`);
+  console.log(`\n📋 Super Admin: ${superAdminEmail} (κωδικός: SUPER_ADMIN_PASSWORD — δεν τυπώνεται)`);
 }
 
 function getDefaultTemplate(): string {

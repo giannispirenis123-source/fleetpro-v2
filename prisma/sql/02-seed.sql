@@ -17,20 +17,10 @@ ON CONFLICT ("slug") DO NOTHING;
 -- Φτιάξ' τον με `npm run db:seed` (SUPER_ADMIN_EMAIL + SUPER_ADMIN_PASSWORD στο env)
 -- ή με INSERT δικό σου με δικό σου bcrypt hash.
 
--- COMPANY_ADMIN: admin@prentals.gr / Admin2025!
-INSERT INTO "users" ("id","tenantId","name","email","passwordHash","role","permissions","updatedAt")
-VALUES ('seed_user_admin', 'seed_tenant_prentals', 'Παναγιώτης Κ.', 'admin@prentals.gr', '$2a$12$4d764Wrsi5lne2CVGw5sqOCvEOqCgYgPmWhnkaOe8Gd8XgDd5uXLy', 'COMPANY_ADMIN', '{}'::jsonb, CURRENT_TIMESTAMP)
-ON CONFLICT ("email") DO NOTHING;
-
--- STAFF: staff@prentals.gr / Staff2025!
-INSERT INTO "users" ("id","tenantId","name","email","passwordHash","role","permissions","updatedAt")
-VALUES ('seed_user_staff', 'seed_tenant_prentals', 'Μαρία Π.', 'staff@prentals.gr', '$2a$12$SueFOKt7tvwEioHVYQRGkOm0vRzOQ4l2QMPtbOA.VNzry5B8t6FEu', 'STAFF', '{"dashboard.view":true,"calendar.view":true,"bookings.view":true,"bookings.create":true,"bookings.edit":true,"bookings.cancel":true,"bookings.status":true,"fleet.view":true,"extras.view":true,"customers.view":true,"customers.create":true,"customers.edit":true,"customers.delete":true,"invoices.view":true,"invoices.issue":true,"invoices.markpaid":true,"invoices.print":true,"commission.view":true,"service.view":true,"service.create":true,"service.edit":true,"service.delete":true,"damages.view":true,"damages.create":true,"damages.edit":true,"damages.delete":true}'::jsonb, CURRENT_TIMESTAMP)
-ON CONFLICT ("email") DO NOTHING;
-
--- PARTNER: partner@prentals.gr / Partner2025!
-INSERT INTO "users" ("id","tenantId","name","email","passwordHash","role","permissions","updatedAt")
-VALUES ('seed_user_partner', 'seed_tenant_prentals', 'Αλέξης Σ.', 'partner@prentals.gr', '$2a$12$f67A.kO/HOct0RfQkUBGIO6tj06iWfOUimgmBuQz6OH.jZR9./9Yu', 'PARTNER', '{"dashboard.view":true,"calendar.view":true,"bookings.view":true,"fleet.view":true,"extras.view":true,"commission.view":true}'::jsonb, CURRENT_TIMESTAMP)
-ON CONFLICT ("email") DO NOTHING;
+-- Demo χρήστες (Διαχειριστής / Προσωπικό / Συνεργάτης): ΔΕΝ δημιουργούνται εδώ.
+-- Πριν υπήρχαν σταθεροί κωδικοί (και τα bcrypt hash τους) στο repo.
+-- Φτιάξ' τους με `npm run db:seed` και DEMO_PASSWORD (τουλάχιστον 12 χαρακτήρες) στο env,
+-- ή από το Super Admin → «Νέα εταιρία» / «Χρήστες» της εφαρμογής.
 
 -- ── Πρότυπο συμβολαίου ──
 INSERT INTO "contract_templates" ("id","tenantId","name","content","isDefault","language","updatedAt")

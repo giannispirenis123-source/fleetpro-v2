@@ -73,6 +73,14 @@ export const LIMITS = {
    * μηχανή δοκιμής κωδικών.
    */
   passwordChangePerUser: { scope: "pw-change", max: 5, windowMinutes: 15 },
+  /**
+   * «Ξέχασα τον κωδικό μου» (SQL 41): αίτημα συνδέσμου ανά IP και ανά email
+   * (hash), και δοκιμές συνδέσμου επαναφοράς ανά IP. Το όριο ανά email ΔΕΝ
+   * αλλάζει την απάντηση (πάντα ουδέτερη) — απλώς δεν φεύγει άλλο email.
+   */
+  passwordForgotPerIp: { scope: "pw-forgot-ip", max: 5, windowMinutes: 15 },
+  passwordForgotPerEmail: { scope: "pw-forgot-email", max: 3, windowMinutes: 60 },
+  passwordResetPerIp: { scope: "pw-reset-ip", max: 10, windowMinutes: 15 },
   /** «Πες μας τη γνώμη σου» ανά χρήστη. */
   feedbackPerUser: { scope: "feedback-user", max: 5, windowMinutes: 60 },
 } as const satisfies Record<string, Limit>;

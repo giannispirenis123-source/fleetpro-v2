@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
 //     και μόνο διαχειριστής αγγίζει λογαριασμό διαχειριστή (στοιχεία,
 //     κωδικό, απενεργοποίηση). Κανόνες: src/lib/adminRole.ts.
 
+import { setSessionCookie } from "@/lib/sessionCookie";
+import { passwordChangeStamp } from "@/lib/viewerCore";
 import { deactivatePartnerCodes } from "@/lib/discounts";
 import { GRANT_MSG, canSetOthersPassword, permissionsBeyondActor } from "@/lib/adminRole";
 import { z } from "zod";
@@ -220,7 +222,8 @@ export const PATCH = withPermission(
             commissionOnInsurance: data.commissionOnInsurance,
           }),
           ...(nextPermissions !== undefined && { permissions: nextPermissions }),
-          ...(passwordHash !== undefined && { passwordHash }),
+          // Νέος κωδικός από τον Διαχειριστή → οι ανοιχτές συνδέσεις του χρήστη παύουν (SQL 41).
+          ...(passwordHash !== undefined && { passwordHash, passwordChangedAt: passwordChangeStamp() }),
         },
         select: USER_SELECT,
           });
@@ -230,7 +233,20 @@ export const PATCH = withPermission(
         throw error;
       }
 
-      return ok({ user: toUserDTO(user) });
+      const response = ok({ user: toUserDTO(user) });
+      // Άλλαξε τον ΔΙΚΟ του κωδικό από εδώ: η τρέχουσα συσκευή μένει συνδεδεμένη (νέο cookie).
+      if (isSelf && passwordHash !== undefined) {
+        await setSessionCookie(response, {
+          userId: session.userId,
+          email: user.email,
+          role: session.role,
+          tenantId: session.tenantId,
+          tenantSlug: session.tenantSlug,
+          name: user.name,
+          locale: session.locale,
+        });
+      }
+      return response;
     } catch (error) {
       logError("Ενημέρωση χρήστη", error);
       return serverError();

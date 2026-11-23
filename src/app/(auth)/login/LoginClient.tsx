@@ -166,6 +166,10 @@ export default function LoginClient({
               </div>
             </label>
 
+            <a className="login-forgot" href={`/forgot-password?lang=${locale}`} data-testid="login-forgot">
+              {tr("reset.loginLink")}
+            </a>
+
             {error && (
               <div className="login-error">
                 {error}
@@ -409,6 +413,8 @@ const loginStyles = `
   }
   .login-eye:hover { color: var(--text-3); }
 
+  .login-forgot { align-self: flex-end; margin-top: -4px; font-size: 12px; color: var(--primary-soft, #818cf8); text-decoration: none; }
+  .login-forgot:hover { text-decoration: underline; }
   .login-error a { color: inherit; font-weight: 600; }
   .login-error {
     background: var(--bad-bg);

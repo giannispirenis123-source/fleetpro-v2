@@ -24,6 +24,10 @@ const PUBLIC_ROUTES = ["/login", "/api/auth/login"];
 // διακόπτης SELF_SIGNUP_ENABLED είναι OFF, οι ίδιες οι σελίδες δίνουν 404.
 const SIGNUP_ROUTE_RE = /^\/(signup|verify-email|legal\/(terms|privacy))\/?$/;
 
+// «Ξέχασα τον κωδικό μου» (SQL 41): δημόσιες σελίδες, πάντα ανοιχτές. Ίδιοι
+// headers με την εγγραφή (noindex, no-store, no-referrer — το token είναι στο URL).
+const PASSWORD_RESET_ROUTE_RE = /^\/(forgot-password|reset-password)\/?$/;
+
 // Routes μόνο για Super Admin
 const SUPER_ADMIN_ROUTES = ["/super-admin"];
 
@@ -145,7 +149,7 @@ export async function middleware(req: NextRequest) {
     return withSiteHeaders(res, pathname);
   }
 
-  if (SIGNUP_ROUTE_RE.test(pathname)) {
+  if (SIGNUP_ROUTE_RE.test(pathname) || PASSWORD_RESET_ROUTE_RE.test(pathname)) {
     const res = NextResponse.next();
     res.headers.set("X-Robots-Tag", "noindex, nofollow");
     res.headers.set("Cache-Control", "no-store, max-age=0");

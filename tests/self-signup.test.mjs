@@ -286,7 +286,7 @@ test("διακόπτης OFF: σελίδες notFound() και endpoints 404 Π�
   }
   // Ο σύνδεσμος στο login μόνο με τον διακόπτη
   assert.match(read("src/app/(auth)/login/page.tsx"), /signupEnabled=\{selfSignupEnabled\(\)\}/);
-  assert.match(read("src/app/(auth)/login/LoginClient.tsx"), /\{signupEnabled \? \(\s*<a href=\{`\/signup/);
+  assert.match(read("src/app/(auth)/login/LoginClient.tsx"), /\{signupEnabled && \([\s\S]*?href=\{`\/signup\?lang=\$\{locale\}`\}/);
 });
 
 test("ΕΝΑΣ μηχανισμός δημιουργίας εταιρίας: Super Admin και εγγραφή μέσω createTenantWithAdmin", () => {

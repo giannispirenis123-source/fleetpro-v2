@@ -4,6 +4,7 @@
 "use client";
 
 import { SUPPORT_EMAIL } from "@/lib/supportEmail";
+import SupportEmailCopy, { SUPPORT_EMAIL_STYLES } from "@/components/SupportEmailCopy";
 import { CARD_TRIAL_DAYS, FOUNDER_TRIAL_DAYS } from "@/lib/billing/core";
 import { DEFAULT_PLATFORM_BASE_DOMAIN } from "@/lib/storefront/domain";
 import { formatEuros, formatMoney } from "@/lib/public/money";
@@ -678,7 +679,7 @@ export default function SuperAdminDashboard() {
         />
       )}
 
-      <style dangerouslySetInnerHTML={{ __html: superAdminStyles }} />
+      <style dangerouslySetInnerHTML={{ __html: superAdminStyles + SUPPORT_EMAIL_STYLES }} />
     </div>
   );
 }
@@ -1718,6 +1719,7 @@ function FeedbackAdminView() {
 // ─── Platform Settings View ───────────────
 
 function PlatformSettingsView() {
+  const tr = useT();
   return (
     <div className="sa-settings-grid">
       <MyPasswordCard />
@@ -1728,7 +1730,15 @@ function PlatformSettingsView() {
         <h3>Στοιχεία Πλατφόρμας <span className="sa-readonly-tag">μόνο προβολή</span></h3>
         <div className="sa-form-grid">
           <label>Όνομα Πλατφόρμας<input value="Kratisi" readOnly tabIndex={-1} /></label>
-          <label>Email Επικοινωνίας<input value={SUPPORT_EMAIL ?? "— δεν έχει οριστεί (NEXT_PUBLIC_SUPPORT_EMAIL) —"} readOnly tabIndex={-1} data-testid="sa-support-email" /></label>
+          {/* Ορατή, επιλέξιμη διεύθυνση (mailto) + «Αντιγραφή» — ή «δεν έχει οριστεί». */}
+          <div className="sa-support-field" data-testid="sa-support-email">
+            <span className="sa-support-label">Email Επικοινωνίας</span>
+            {SUPPORT_EMAIL ? (
+              <SupportEmailCopy email={SUPPORT_EMAIL} labels={{ copy: tr("auth.copyEmail"), copied: tr("auth.emailCopied") }} testIdPrefix="sa-support" className="sa-support-value" />
+            ) : (
+              <span className="sa-support-value sa-support-missing">— δεν έχει οριστεί (NEXT_PUBLIC_SUPPORT_EMAIL) —</span>
+            )}
+          </div>
           <label>URL Πλατφόρμας<input value={`https://${DEFAULT_PLATFORM_BASE_DOMAIN}`} readOnly tabIndex={-1} /></label>
         </div>
         <p className="sa-readonly-note">Οι τιμές ορίζονται στον κώδικα και στις μεταβλητές περιβάλλοντος (Vercel) — δεν αλλάζουν από εδώ.</p>
@@ -2978,6 +2988,11 @@ const superAdminStyles = `
   .sa-price-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .sa-readonly-tag { margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; background: var(--surface-2, rgba(148,163,184,.18)); color: var(--text-4); text-transform: none; letter-spacing: 0; }
   .sa-readonly-note { margin-top: 12px; font-size: 11px; line-height: 1.5; color: var(--text-4); }
+  .sa-support-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .sa-support-label { font-size: 11px; color: var(--text-4); font-weight: 500; }
+  .sa-support-value { padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2, transparent); font-size: 13px; color: var(--text); min-width: 0; }
+  .sa-support-value .support-email-addr { color: var(--primary-soft); text-decoration: none; }
+  .sa-support-missing { color: var(--text-4); font-style: italic; }
   .sa-settings-card input[readonly] { cursor: default; opacity: .8; }
   .sa-price-input { width: 80px; }
   .sa-label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; color: var(--text-4); font-size: 11px; }

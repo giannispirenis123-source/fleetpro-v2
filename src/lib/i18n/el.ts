@@ -36,6 +36,8 @@ export const el = {
     signIn: "Σύνδεση",
     noAccount: "Δεν έχετε λογαριασμό;",
     contactUs: "Επικοινωνήστε μαζί μας",
+    copyEmail: "Αντιγραφή",
+    emailCopied: "Αντιγράφηκε",
     demoAccounts: "Demo λογαριασμοί",
     errorMissingFields: "Συμπληρώστε email και κωδικό",
     errorGeneric: "Σφάλμα σύνδεσης. Δοκιμάστε ξανά.",

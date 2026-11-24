@@ -37,6 +37,8 @@ export const en: Dictionary = {
     signIn: "Sign in",
     noAccount: "Don't have an account?",
     contactUs: "Get in touch",
+    copyEmail: "Copy",
+    emailCopied: "Copied",
     demoAccounts: "Demo accounts",
     errorMissingFields: "Please enter your email and password",
     errorGeneric: "Sign-in failed. Please try again.",

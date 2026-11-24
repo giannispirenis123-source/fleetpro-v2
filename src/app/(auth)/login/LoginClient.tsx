@@ -5,6 +5,7 @@
 "use client";
 
 import { SUPPORT_EMAIL } from "@/lib/supportEmail";
+import SupportEmailCopy, { SUPPORT_EMAIL_STYLES } from "@/components/SupportEmailCopy";
 import { useState } from "react";
 import { Eye, EyeOff, Zap, Car } from "lucide-react";
 import { t } from "@/lib/i18n";
@@ -206,10 +207,20 @@ export default function LoginClient({
               )}
             </div>
           )}
+          {/* Η διεύθυνση ΚΑΙ ως ορατό κείμενο: χωρίς πρόγραμμα email το mailto δεν κάνει τίποτα. */}
+          {!signupEnabled && SUPPORT_EMAIL && (
+            <div className="login-support" data-testid="login-support">
+              <SupportEmailCopy
+                email={SUPPORT_EMAIL}
+                labels={{ copy: tr("auth.copyEmail"), copied: tr("auth.emailCopied") }}
+                testIdPrefix="login-support"
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: loginStyles }} />
+      <style dangerouslySetInnerHTML={{ __html: loginStyles + SUPPORT_EMAIL_STYLES }} />
     </div>
   );
 }
@@ -464,6 +475,9 @@ const loginStyles = `
     gap: 6px;
   }
   .login-hint a { color: var(--primary-soft); text-decoration: none; }
+  .login-support { margin-top: 8px; display: flex; justify-content: center; font-size: 12px; color: var(--text-3, var(--text-4)); }
+  .login-support .support-email-addr { color: var(--primary-soft); text-decoration: none; }
+  .login-support .support-email-addr:hover { text-decoration: underline; }
   .login-hint a:hover { text-decoration: underline; }
 
   @media (max-width: 900px) {

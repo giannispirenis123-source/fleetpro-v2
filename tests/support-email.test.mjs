@@ -50,5 +50,6 @@ test("login: ο σύνδεσμος «Επικοινωνία» υπάρχει Μ�
   assert.match(login, /\{\(signupEnabled \|\| SUPPORT_EMAIL\) && \(/);
   assert.match(login, /href=\{`mailto:\$\{SUPPORT_EMAIL\}`\}/);
   const sa = read("src/app/(super-admin)/super-admin/page.tsx");
-  assert.match(sa, /value=\{SUPPORT_EMAIL \?\? "— δεν έχει οριστεί \(NEXT_PUBLIC_SUPPORT_EMAIL\) —"\}/);
+  assert.match(sa, /\{SUPPORT_EMAIL \? \(\s*<SupportEmailCopy email=\{SUPPORT_EMAIL\}/);
+  assert.match(sa, /— δεν έχει οριστεί \(NEXT_PUBLIC_SUPPORT_EMAIL\) —/);
 });

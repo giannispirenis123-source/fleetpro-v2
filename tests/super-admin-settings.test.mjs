@@ -16,7 +16,7 @@ test("οι τρεις κάρτες υπάρχουν, είναι μόνο προ�
   assert.doesNotMatch(view, /<button/, "κανένα κουμπί που δεν κάνει τίποτα");
   assert.doesNotMatch(view, /defaultValue=/, "κανένα πεδίο που μοιάζει επεξεργάσιμο");
   const inputs = view.match(/<input[\s\S]*?\/>/g) ?? [];
-  assert.equal(inputs.length, 6);
+  assert.equal(inputs.length, 5, "το email υποστήριξης είναι πια κείμενο + «Αντιγραφή», όχι πεδίο");
   for (const i of inputs) assert.match(i, /readOnly/, i);
   assert.equal((view.match(/μόνο προβολή/g) ?? []).length, 3);
   assert.match(view, /Οι τιμές ορίζονται στο Stripe/);

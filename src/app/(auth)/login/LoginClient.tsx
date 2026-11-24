@@ -196,20 +196,28 @@ export default function LoginClient({
             </button>
           </div>
 
-          {/* Χωρίς εγγραφή ΚΑΙ χωρίς email υποστήριξης (NEXT_PUBLIC_SUPPORT_EMAIL): τίποτα. */}
-          {(signupEnabled || SUPPORT_EMAIL) && (
-            <div className="login-hint">
-              <p>{tr("auth.noAccount")}</p>
-              {signupEnabled ? (
-                <a href={`/signup?lang=${locale}`}>{tr("signup.create")}</a>
-              ) : (
-                <a href={`mailto:${SUPPORT_EMAIL}`} data-testid="login-contact">{tr("auth.contactUs")}</a>
-              )}
+          {/* Δύο ΑΝΕΞΑΡΤΗΤΑ μπλοκ: δημιουργία λογαριασμού (μόνο με ανοιχτή εγγραφή,
+              SELF_SIGNUP_ENABLED) και βοήθεια (μόνο με NEXT_PUBLIC_SUPPORT_EMAIL).
+              Λείπουν και τα δύο → τίποτα. */}
+          {signupEnabled && (
+            <div className="login-signup" data-testid="login-signup">
+              <div className="login-or" role="separator" aria-label={tr("auth.orDivider")}>
+                <span aria-hidden="true">{tr("auth.orDivider")}</span>
+              </div>
+              <a className="login-btn-secondary" href={`/signup?lang=${locale}`} data-testid="login-create-account">
+                {tr("auth.createAccount")}
+              </a>
+              <p className="login-signup-sub">{tr("auth.createAccountHint")}</p>
             </div>
           )}
-          {/* Η διεύθυνση ΚΑΙ ως ορατό κείμενο: χωρίς πρόγραμμα email το mailto δεν κάνει τίποτα. */}
-          {!signupEnabled && SUPPORT_EMAIL && (
-            <div className="login-support" data-testid="login-support">
+
+          {SUPPORT_EMAIL && (
+            <div className="login-help" data-testid="login-support">
+              <p className="login-help-text">
+                {tr("auth.needHelp")}{" "}
+                <a href={`mailto:${SUPPORT_EMAIL}`} data-testid="login-contact">{tr("auth.contactUs")}</a>
+              </p>
+              {/* Η διεύθυνση ΚΑΙ ως ορατό κείμενο: χωρίς πρόγραμμα email το mailto δεν κάνει τίποτα. */}
               <SupportEmailCopy
                 email={SUPPORT_EMAIL}
                 labels={{ copy: tr("auth.copyEmail"), copied: tr("auth.emailCopied") }}
@@ -464,21 +472,39 @@ const loginStyles = `
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .login-hint {
-    margin-top: 20px;
-    text-align: center;
-    font-size: 12px;
-    color: var(--text-4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+  /* ── Δημιουργία λογαριασμού: δευτερεύον κουμπί, ίδιο ύψος με το «Σύνδεση» ── */
+  .login-signup { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .login-or {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px; color: var(--text-4); text-transform: lowercase;
   }
-  .login-hint a { color: var(--primary-soft); text-decoration: none; }
-  .login-support { margin-top: 8px; display: flex; justify-content: center; font-size: 12px; color: var(--text-3, var(--text-4)); }
-  .login-support .support-email-addr { color: var(--primary-soft); text-decoration: none; }
-  .login-support .support-email-addr:hover { text-decoration: underline; }
-  .login-hint a:hover { text-decoration: underline; }
+  .login-or::before, .login-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .login-btn-secondary {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 46px; padding: 12px; border-radius: 10px; box-sizing: border-box; width: 100%;
+    border: 1.5px solid var(--primary); background: var(--surface); color: var(--primary-soft);
+    font-size: 14px; font-weight: 700; text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  }
+  .login-btn-secondary:hover { background: var(--primary-bg); border-color: var(--primary-hover); transform: translateY(-1px); }
+  .login-signup-sub { margin: -4px 0 0; text-align: center; font-size: 12px; color: var(--text-4); }
+
+  /* ── Βοήθεια: διακριτικό, μικρότερο, πιο απαλό ── */
+  .login-help {
+    margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-4); text-align: center;
+  }
+  .login-help-text { margin: 0; }
+  .login-help a { color: var(--primary-soft); text-decoration: none; }
+  .login-help a:hover { text-decoration: underline; }
+  .login-help .support-email-addr { font-weight: 600; }
+
+  /* Πληκτρολόγιο: ορατό focus σε κουμπιά και συνδέσμους */
+  .login-btn:focus-visible, .login-btn-secondary:focus-visible,
+  .login-help a:focus-visible, .login-forgot:focus-visible {
+    outline: 2px solid var(--primary); outline-offset: 2px;
+  }
 
   @media (max-width: 900px) {
     .login-left { display: none; }

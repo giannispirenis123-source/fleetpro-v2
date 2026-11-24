@@ -47,7 +47,7 @@ test("καμία σκληρογραμμένη διεύθυνση υποστήρ�
 
 test("login: ο σύνδεσμος «Επικοινωνία» υπάρχει ΜΟΝΟ με email· Super Admin: δείχνει το env ή «δεν έχει οριστεί»", () => {
   const login = read("src/app/(auth)/login/LoginClient.tsx");
-  assert.match(login, /\{\(signupEnabled \|\| SUPPORT_EMAIL\) && \(/);
+  assert.match(login, /\{SUPPORT_EMAIL && \(\s*<div className="login-help"/);
   assert.match(login, /href=\{`mailto:\$\{SUPPORT_EMAIL\}`\}/);
   const sa = read("src/app/(super-admin)/super-admin/page.tsx");
   assert.match(sa, /\{SUPPORT_EMAIL \? \(\s*<SupportEmailCopy email=\{SUPPORT_EMAIL\}/);

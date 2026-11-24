@@ -24,10 +24,10 @@ test("component: ορατή διεύθυνση ως mailto, κουμπί «Αν�
   assert.doesNotMatch(comp, /[\w.+-]+@[\w-]+\.[a-z]{2,}/i, "καμία σκληρογραμμένη διεύθυνση");
 });
 
-test("login: σύνδεσμος «Επικοινωνήστε» + ορατή διεύθυνση με «Αντιγραφή» ΜΟΝΟ με SUPPORT_EMAIL", () => {
-  assert.match(login, /<p>\{tr\("auth\.noAccount"\)\}<\/p>/);
+test("login: «Χρειάζεστε βοήθεια; Επικοινωνήστε» + ορατή διεύθυνση με «Αντιγραφή» ΜΟΝΟ με SUPPORT_EMAIL", () => {
+  assert.match(login, /\{tr\("auth\.needHelp"\)\}/);
   assert.match(login, /href=\{`mailto:\$\{SUPPORT_EMAIL\}`\} data-testid="login-contact">\{tr\("auth\.contactUs"\)\}/);
-  assert.match(login, /\{!signupEnabled && SUPPORT_EMAIL && \(\s*<div className="login-support"/);
+  assert.match(login, /\{SUPPORT_EMAIL && \(\s*<div className="login-help" data-testid="login-support">/);
   assert.match(login, /labels=\{\{ copy: tr\("auth\.copyEmail"\), copied: tr\("auth\.emailCopied"\) \}\}/);
   assert.match(login, /__html: loginStyles \+ SUPPORT_EMAIL_STYLES/);
 });

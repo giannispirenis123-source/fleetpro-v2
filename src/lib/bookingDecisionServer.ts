@@ -13,6 +13,7 @@ import { loadBlockingBookings } from "./public/availability";
 import { nowLocal } from "./public/search";
 import { similarModelName } from "./public/catalog";
 import { readLocalized, textFor } from "./public/text";
+import { hidesAssignedVehicle, requestGroupName } from "./public/requestPrivacy";
 import { normalizeStorefrontSettings } from "./storefront/settings";
 import { storedInsurance } from "./pricingBridge";
 import { storedTotalCents } from "./public/money";
@@ -186,9 +187,9 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
       paymentMethod: true,
       payments: { where: { purpose: "BOOKING", status: { in: ["PAID", "PARTIALLY_REFUNDED", "REFUNDED"] } }, select: { amountCents: true, refundedCents: true, retainedCents: true } },
       customer: { select: { firstName: true, email: true, phone: true } },
-      rentalGroup: { select: { name: true, similarModels: true } },
-      vehicle: { select: { brand: true, model: true, rentalGroup: { select: { name: true, similarModels: true } } } },
-      tenant: { select: { name: true, phone: true, email: true, storefrontSlug: true, storefrontSettings: true, customDomain: true, customDomainStatus: true } },
+      rentalGroup: { select: { code: true, name: true, similarModels: true } },
+      vehicle: { select: { brand: true, model: true, rentalGroup: { select: { code: true, name: true, similarModels: true } } } },
+      tenant: { select: { name: true, phone: true, email: true, storefrontSlug: true, storefrontSettings: true, customDomain: true, customDomainStatus: true, rentalMode: true } },
     },
   });
   if (!b) return null;
@@ -196,7 +197,13 @@ export async function loadMessageContext(tenantId: string, bookingId: string, or
   const lang = messageLang(b.siteLang, normalizeStorefrontSettings(b.tenant.storefrontSettings).defaultLanguage);
   // Κράτηση του site: η ομάδα που διάλεξε («… ή παρόμοιο»). Αλλιώς το ίδιο το όχημα.
   const g = b.rentalGroup ?? (b.source === "site" ? b.vehicle.rentalGroup : null);
-  const groupName = g ? textFor(readLocalized(g.name), lang) || `${b.vehicle.brand} ${b.vehicle.model}` : `${b.vehicle.brand} ${b.vehicle.model}`;
+  // REQUEST + κατηγορία: ποτέ μάρκα/μοντέλο του οχήματος που ανατέθηκε
+  // προσωρινά — όνομα ομάδας, αλλιώς ο κωδικός της (requestPrivacy.ts).
+  const groupName = g
+    ? hidesAssignedVehicle(b.tenant.rentalMode, true)
+      ? requestGroupName(g, lang)
+      : textFor(readLocalized(g.name), lang) || `${b.vehicle.brand} ${b.vehicle.model}`
+    : `${b.vehicle.brand} ${b.vehicle.model}`;
   const similar = g ? similarModelName(textFor(readLocalized(g.similarModels), lang)) : "";
 
   // Τα σημεία αποθηκεύονται με το ελληνικό τους όνομα → στη γλώσσα του πελάτη.

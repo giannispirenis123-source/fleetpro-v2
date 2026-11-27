@@ -443,7 +443,7 @@ test("ταξινόμηση: φθηνότερη πρώτα / «Τιμή ↓», μ
 test("DTO κάρτας: ΚΑΝΕΝΑ ιδιωτικό πεδίο (ids ομάδων, εταιρίας, πινακίδες)", () => {
   const cards = buildCards(GROUPS, VEHICLES, "el");
   for (const c of cards) {
-    assert.deepEqual(Object.keys(c).sort(), ["key", "name", "photoUrl", "similar", "sortOrder", "specs", "type"]);
+    assert.deepEqual(Object.keys(c).sort(), ["key", "name", "photoUrl", "photos", "similar", "sortOrder", "specs", "type"]);
     assert.deepEqual(Object.keys(c.specs).sort(), ["ac", "bagsLarge", "bagsSmall", "doors", "engineCc", "fuel", "seats", "transmission"]);
   }
   const json = JSON.stringify(cards);

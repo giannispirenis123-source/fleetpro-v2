@@ -77,7 +77,8 @@ async function loadCatalog(companyId: string): Promise<SiteCatalog | null> {
     // Τα οχήματα του site — ΜΟΝΟ τα πεδία που χρειάζονται (καμία πινακίδα/χλμ/σημείωση).
     db.vehicle.findMany({
       where: { tenantId: companyId, isActive: true, publicVisible: true },
-      orderBy: [{ brand: "asc" }, { model: "asc" }],
+      // Σταθερή σειρά (και για τις φωτογραφίες του καρουζέλ): μάρκα, μοντέλο, id.
+      orderBy: [{ brand: "asc" }, { model: "asc" }, { id: "asc" }],
       select: {
         id: true, tenantId: true, rentalGroupId: true, brand: true, model: true, vehicleType: true, seats: true,
         doors: true, transmission: true, fuel: true, ac: true, photos: true, status: true, isActive: true,
@@ -121,6 +122,7 @@ async function loadCatalog(companyId: string): Promise<SiteCatalog | null> {
       airCondition: g.airCondition,
       engineCc: g.engineCc,
       photoUrl: readVehiclePhotos(g.photos)[0]?.url ?? null,
+      photoUrls: readVehiclePhotos(g.photos).map((p) => p.url),
       sortOrder: g.sortOrder,
     })),
     // REQUEST: μόνο οχήματα με ομάδα → μόνο κάρτες κατηγορίας (siteVehiclesForMode).
@@ -137,6 +139,7 @@ async function loadCatalog(companyId: string): Promise<SiteCatalog | null> {
       fuel: v.fuel,
       ac: v.ac,
       photoUrl: readVehiclePhotos(v.photos)[0]?.url ?? null,
+      photoUrls: readVehiclePhotos(v.photos).map((p) => p.url),
       status: v.status,
       isActive: v.isActive,
     })),

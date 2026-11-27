@@ -513,3 +513,30 @@
 .sf-pay-status strong { font-size: 16px; }
 .sf-pay-status p { margin: 0; }
 .sf-pay-status.is-info { background: #eff6ff; border-color: #93c5fd; }
+
+/* ── Καρουζέλ φωτογραφιών κάρτας (CardCarousel) ── */
+.sf-car { position: relative; width: 100%; height: 100%; }
+.sf-car-track {
+  display: flex; width: 100%; height: 100%; overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.sf-car-track::-webkit-scrollbar { display: none; }
+.sf-car-slide { flex: 0 0 100%; width: 100%; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; background: var(--sf-bg-2); }
+.sf-car-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sf-car-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; border-radius: 999px;
+  border: 0; background: rgba(255, 255, 255, .92); color: var(--sf-text); display: none; place-items: center;
+  cursor: pointer; box-shadow: 0 1px 6px rgba(0, 0, 0, .2); opacity: 0; transition: opacity .15s;
+}
+.sf-car-arrow--prev { left: 8px; }
+.sf-car-arrow--next { right: 8px; }
+/* Βελάκια μόνο σε συσκευές με ποντίκι· στο κινητό swipe. */
+@media (hover: hover) and (pointer: fine) {
+  .sf-car-arrow { display: grid; }
+  .sf-car:hover .sf-car-arrow, .sf-car:focus-within .sf-car-arrow { opacity: 1; }
+}
+.sf-car-dots { position: absolute; left: 0; right: 0; bottom: 8px; display: flex; justify-content: center; gap: 2px; pointer-events: none; }
+.sf-car-dot { pointer-events: auto; width: 18px; height: 18px; border: 0; padding: 0; background: transparent; cursor: pointer; display: grid; place-items: center; }
+.sf-car-dot::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: rgba(255, 255, 255, .6); box-shadow: 0 0 2px rgba(0, 0, 0, .5); }
+.sf-car-dot[aria-current="true"]::before { background: #fff; width: 9px; height: 9px; }
+@media (prefers-reduced-motion: reduce) { .sf-car-track { scroll-behavior: auto; } .sf-car-arrow { transition: none; } }

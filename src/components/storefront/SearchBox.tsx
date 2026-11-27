@@ -25,6 +25,7 @@ import {
 } from "@/lib/public/search";
 import type { VehicleType } from "@/lib/public/pricing";
 import DateRangePicker from "./DateRangePicker";
+import { TYPE_EVENT } from "./TypeTabs";
 
 export interface SearchLocationOption {
   slug: string;
@@ -89,6 +90,13 @@ export default function SearchBox({ action, initial, rules, locations, ages, tod
     };
     window.addEventListener(PREFILL_EVENT, onPrefill);
     return () => window.removeEventListener(PREFILL_EVENT, onPrefill);
+  }, []);
+
+  // Καρτέλα τύπου (TypeTabs): η αναζήτηση κρατά τον τύπο που διάλεξε ο πελάτης.
+  useEffect(() => {
+    const onType = (e: Event) => setType((e as CustomEvent<{ type: VehicleType | null }>).detail?.type ?? null);
+    window.addEventListener(TYPE_EVENT, onType);
+    return () => window.removeEventListener(TYPE_EVENT, onType);
   }, []);
 
   useEffect(() => setBusy(false), [initial.from, initial.to, initial.pl, initial.dl, initial.age]);

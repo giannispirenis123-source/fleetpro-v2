@@ -205,6 +205,18 @@ export function typeTabs(cards: Pick<PublicCard, "type">[]): VehicleType[] {
   return present.length > 1 ? present : [];
 }
 
+/**
+ * Η ενεργή καρτέλα: ό,τι ζητά το URL (?type=) αν έχει κάρτες· αλλιώς η
+ * προεπιλογή — Αυτοκίνητα αν υπάρχουν, αλλιώς ο πρώτος τύπος με κάρτες.
+ * Χωρίς καρτέλες (ένας τύπος ή κανένας) → null = όλες οι κάρτες.
+ */
+export function activeType(cards: Pick<PublicCard, "type">[], requested: VehicleType | null): VehicleType | null {
+  const tabs = typeTabs(cards);
+  if (tabs.length === 0) return null;
+  if (requested && tabs.includes(requested)) return requested;
+  return tabs.includes("car") ? "car" : tabs[0];
+}
+
 /** Φίλτρο τύπου· τύπος χωρίς κάρτες (ή κρυμμένη καρτέλα) = όλες. */
 export function filterByType<T extends Pick<PublicCard, "type">>(cards: T[], type: VehicleType | null): T[] {
   if (!type || !typeTabs(cards).includes(type)) return cards;

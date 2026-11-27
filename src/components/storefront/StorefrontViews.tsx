@@ -22,7 +22,7 @@ import {
 import { cloudinaryThumb } from "@/lib/vehiclePhotos";
 import { formatCents } from "@/lib/public/money";
 import { textFor } from "@/lib/public/text";
-import type { ResultCard, SortOrder } from "@/lib/public/catalog";
+import { activeType, typeTabs, type ResultCard, type SortOrder } from "@/lib/public/catalog";
 import type { VehicleType } from "@/lib/public/pricing";
 import type { SearchCriteria, SearchProblem, SearchRules } from "@/lib/public/search";
 import SearchBox, { type SearchAgeOption, type SearchLocationOption } from "./SearchBox";
@@ -39,6 +39,7 @@ import { formatLegalDate, type LegalDoc } from "@/lib/legal/legal";
 import { bookingTexts, type ConfirmationDTO } from "@/lib/public/bookingRequest";
 import type { PublicExtraOption, PublicInsuranceOption, PublicQuote } from "@/lib/public/bookingView";
 import Results, { GroupCard } from "./Results";
+import TypeTabs from "./TypeTabs";
 import "./storefront.css";
 
 interface Ctx {
@@ -297,6 +298,9 @@ export function StorefrontHome({
   const { title, subtitle } = heroTexts(company, lang, d);
   const about = pickText(settings.about, lang, settings.defaultLanguage);
   const hero = settings.theme.heroImage?.url ?? null;
+  // Καρτέλες τύπου: μόνο τύποι με κάρτες, προεπιλογή Αυτοκίνητα (activeType).
+  const tabs = typeTabs(cards);
+  const type = activeType(cards, initialType);
 
   return (
     <Shell ctx={ctx} langHref={(code) => sitePath(company, code)}>
@@ -321,7 +325,8 @@ export function StorefrontHome({
             <h1 className="sf-h1">{title}</h1>
             {subtitle && <p className="sf-tagline">{subtitle}</p>}
           </div>
-          <SearchBox {...search} lang={lang} d={d} />
+          <TypeTabs tabs={tabs} initial={type} d={d} />
+          <SearchBox {...search} initial={{ ...search.initial, type }} lang={lang} d={d} />
         </div>
       </section>
 
@@ -346,7 +351,7 @@ export function StorefrontHome({
         ) : (
           <Results
             cards={cards}
-            initialType={initialType}
+            initialType={type}
             initialSort={initialSort}
             mode="home"
             rentalMode={company.rentalMode}
@@ -480,47 +485,45 @@ export function StorefrontSearch({
 }) {
   const d = storefrontDictionary(lang);
   const ctx: Ctx = { company, lang, d };
-  const anyAvailable = cards.some((c) => c.bookHref);
+  // Καρτέλες τύπου: μόνο τύποι με κάρτες, προεπιλογή Αυτοκίνητα (activeType).
+  const tabs = typeTabs(cards);
+  const type = activeType(cards, search.initial.type);
+  // «Δεν βρέθηκαν» — ΑΝΑ καρτέλα: το δείχνει το Results όταν η ενεργή καρτέλα
+  // δεν έχει κανένα διαθέσιμο όχημα για τις ημερομηνίες.
+  const empty = (
+    <div className="sf-empty" role="status">
+      <h2 className="sf-h2">{d.noResultsTitle}</h2>
+      <p className="sf-muted">{d.noResultsText}</p>
+      <ContactButtons ctx={ctx} />
+    </div>
+  );
 
   return (
     <Shell ctx={ctx} langHref={(code) => sitePath(company, code, "search", query)}>
       <section className="sf-search-band">
         <div className="sf-wrap">
           <h1 className="sf-h1 sf-h1--dark sf-h1--sm">{d.searchTitle}</h1>
-          <SearchBox {...search} lang={lang} d={d} serverProblems={problems} compact />
+          <TypeTabs tabs={tabs} initial={type} d={d} />
+          <SearchBox {...search} initial={{ ...search.initial, type }} lang={lang} d={d} serverProblems={problems} compact />
         </div>
       </section>
 
       <div className="sf-wrap sf-section">
-        {problems.length > 0 ? null : !anyAvailable ? (
-          <div className="sf-empty" role="status">
-            <h2 className="sf-h2">{d.noResultsTitle}</h2>
-            <p className="sf-muted">{d.noResultsText}</p>
-            <ContactButtons ctx={ctx} />
-            {cards.length > 0 && (
-              <Results
-                cards={cards}
-                initialType={search.initial.type}
-                initialSort={initialSort}
-                mode="search"
-                rentalMode={company.rentalMode}
-                lang={lang}
-                d={d}
-                title={d.ourVehicles}
-              />
-            )}
-          </div>
+        {problems.length > 0 ? null : cards.length === 0 ? (
+          empty
         ) : (
           <>
             <Results
               cards={cards}
-              initialType={search.initial.type}
+              initialType={type}
               initialSort={initialSort}
               mode="search"
               rentalMode={company.rentalMode}
               lang={lang}
               d={d}
               title={d.resultsTitle}
+              empty={empty}
+              emptyTitle={d.ourVehicles}
             />
             {/* Οι τιμές των καρτών είναι ΠΑΝΤΑ χωρίς ασφάλεια. */}
             <p className="sf-muted sf-small sf-ins-note">{d.insuranceNextStep}</p>

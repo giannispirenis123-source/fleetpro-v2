@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { openStorefront } from "./page";
 import { loadPublicVehicle } from "./resolve";
+import { vehiclePageVisible } from "../public/requestPrivacy";
 import { sitePath } from "./slug";
 import { storefrontDictionary } from "./i18n";
 import { headers } from "next/headers";
@@ -329,6 +330,8 @@ export async function StorefrontConfirmationPage({
 
 export async function storefrontVehicleMetadata(p: StorefrontParams): Promise<Metadata> {
   const { company, companyId } = await openStorefront(p.slug, p.lang, { vehicleId: p.vehicleId ?? "" });
+  // REQUEST: καμία σελίδα οχήματος — ούτε μάρκα/μοντέλο στον τίτλο.
+  if (!vehiclePageVisible(company.rentalMode)) notFound();
   const vehicle = p.vehicleId ? await loadPublicVehicle(companyId, p.vehicleId) : null;
   // Παλιά σελίδα (δεν συνδέεται από πουθενά, οι κάρτες είναι ανά ομάδα): εκτός ευρετηρίου και sitemap.
   return noindexPage(vehicle ? `${vehicle.brand} ${vehicle.model} — ${company.name}` : company.name);
@@ -336,6 +339,8 @@ export async function storefrontVehicleMetadata(p: StorefrontParams): Promise<Me
 
 export async function StorefrontVehiclePage({ params }: { params: StorefrontParams }) {
   const { company, companyId, lang } = await openStorefront(params.slug, params.lang, { vehicleId: params.vehicleId ?? "" });
+  // REQUEST: ο πελάτης βλέπει μόνο κατηγορίες → 404 (requestPrivacy.ts).
+  if (!vehiclePageVisible(company.rentalMode)) notFound();
   const vehicle = params.vehicleId ? await loadPublicVehicle(companyId, params.vehicleId) : null;
   if (!vehicle) notFound();
   return <StorefrontVehicle company={company} vehicle={vehicle} lang={lang} />;

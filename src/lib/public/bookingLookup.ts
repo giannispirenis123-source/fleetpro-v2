@@ -10,6 +10,7 @@ import { similarModelName } from "./catalog";
 import { readLocalized, textFor } from "./text";
 import { checkBookingPayment, expireStaleHolds } from "./paymentServer";
 import { isCheckable } from "./payments";
+import { hidesAssignedVehicle, requestGroupName, requestGroupPhoto } from "./requestPrivacy";
 
 export async function loadConfirmation(
   companyId: string,
@@ -57,15 +58,39 @@ export async function loadConfirmation(
       },
       // ΜΟΝΟ μικρό όνομα και email (μασκάρεται) — ποτέ τηλέφωνο, ηλικία, σχόλια, πτήση.
       customer: { select: { firstName: true, email: true } },
-      rentalGroup: { select: { name: true, similarModels: true, photos: true } },
+      rentalGroup: { select: { id: true, code: true, name: true, similarModels: true, photos: true } },
       vehicle: { select: { brand: true, model: true, photos: true } },
+      tenant: { select: { rentalMode: true } },
     },
   });
   if (!b || !b.publicCode) return null;
+  const { tenant, ...rest } = b;
   const g = b.rentalGroup;
   const similar = g ? similarModelName(textFor(readLocalized(g.similarModels), lang)) : "";
+
+  // REQUEST + κατηγορία: ο πελάτης βλέπει ΜΟΝΟ την κατηγορία — ποτέ όνομα ή
+  // φωτογραφία του οχήματος που ανατέθηκε προσωρινά (requestPrivacy.ts).
+  if (g && hidesAssignedVehicle(tenant.rentalMode, true)) {
+    // Ίδια οχήματα και σειρά με την κάρτα του site (site.ts + catalog.ts).
+    const members = readVehiclePhotos(g.photos).length
+      ? []
+      : await db.vehicle.findMany({
+          where: { tenantId: companyId, rentalGroupId: g.id, isActive: true, publicVisible: true, status: { not: "INACTIVE" } },
+          orderBy: [{ brand: "asc" }, { model: "asc" }, { id: "asc" }],
+          select: { photos: true },
+        });
+    return toConfirmationDTO({
+      ...rest,
+      publicCode: b.publicCode,
+      payment: b.payments[0] ?? null,
+      groupName: requestGroupName(g, lang),
+      groupSimilar: similar || null,
+      photoUrl: requestGroupPhoto(g.photos, members.map((m) => m.photos)),
+    });
+  }
+
   return toConfirmationDTO({
-    ...b,
+    ...rest,
     publicCode: b.publicCode,
     payment: b.payments[0] ?? null,
     groupName: g ? textFor(readLocalized(g.name), lang) : `${b.vehicle.brand} ${b.vehicle.model}`,

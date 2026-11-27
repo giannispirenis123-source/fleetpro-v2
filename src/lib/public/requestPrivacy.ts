@@ -35,3 +35,10 @@ export function requestGroupPhoto(groupPhotos: unknown, memberPhotos: unknown[])
   }
   return null;
 }
+
+/**
+ * Η παλιά σελίδα μεμονωμένου οχήματος (/v/<id>) υπάρχει ΜΟΝΟ σε BOOKING.
+ * Σε REQUEST ο πελάτης βλέπει μόνο κατηγορίες → 404 (και στο redirect
+ * χωρίς γλώσσα), ώστε ένα id από URL φωτογραφίας να μην ανοίγει όχημα.
+ */
+export const vehiclePageVisible = (rentalMode: string | null | undefined): boolean => rentalMode !== "REQUEST";

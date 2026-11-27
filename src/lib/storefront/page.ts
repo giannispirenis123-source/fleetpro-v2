@@ -10,6 +10,7 @@ import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { resolveStorefrontParam, type ResolvedStorefront } from "./resolve";
 import { chooseLanguage, sitePath, type SitePath } from "./slug";
+import { vehiclePageVisible } from "../public/requestPrivacy";
 
 // Μία ανάγνωση της βάσης ανά αίτημα, ακόμη κι αν τη ζητήσουν και τα
 // metadata και η σελίδα.
@@ -49,5 +50,7 @@ export async function redirectToDefaultLanguage(slug: string, vehicleId?: string
   const resolved = await resolveOnce(slug);
   if (!resolved) notFound();
   const { company } = resolved;
+  // REQUEST: η σελίδα οχήματος δεν υπάρχει → 404 εδώ, χωρίς redirect.
+  if (vehicleId && !vehiclePageVisible(company.rentalMode)) notFound();
   redirect(sitePath(company, company.settings.defaultLanguage, vehicleId ? { vehicleId } : ""));
 }

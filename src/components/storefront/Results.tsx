@@ -11,11 +11,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Bike, Briefcase, CarFront, Cog, DoorOpen, Fuel, Snowflake, Users, Gauge } from "lucide-react";
 import { fill, type StorefrontDictionary } from "@/lib/storefront/i18n";
 import { formatCents, perDayOf } from "@/lib/public/money";
-import { cloudinaryThumb } from "@/lib/vehiclePhotos";
 import { filterByType, isBookable, sortCards, type ResultCard, type SortOrder } from "@/lib/public/catalog";
 import type { VehicleType } from "@/lib/public/pricing";
 import { PREFILL_EVENT } from "./SearchBox";
 import { TYPE_EVENT } from "./TypeTabs";
+import CardCarousel from "./CardCarousel";
 
 interface Props {
   cards: ResultCard[];
@@ -145,16 +145,8 @@ export function GroupCard({
   return (
     <article className={`sf-gcard${off ? " is-off" : ""}`}>
       <div className="sf-gcard-img">
-        {c.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={cloudinaryThumb(c.photoUrl, 640)}
-            srcSet={`${cloudinaryThumb(c.photoUrl, 400)} 400w, ${cloudinaryThumb(c.photoUrl, 640)} 640w, ${cloudinaryThumb(c.photoUrl, 960)} 960w`}
-            sizes="(min-width: 1080px) 340px, (min-width: 700px) 45vw, 100vw"
-            alt={alt}
-            loading={eager ? "eager" : "lazy"}
-            decoding="async"
-          />
+        {c.photos.length > 0 ? (
+          <CardCarousel photos={c.photos} alt={alt} eager={eager} d={d} />
         ) : (
           <span className="sf-gcard-ph" role="img" aria-label={d.noPhoto}>
             {c.type === "car" ? <CarFront size={44} aria-hidden /> : <Bike size={44} aria-hidden />}

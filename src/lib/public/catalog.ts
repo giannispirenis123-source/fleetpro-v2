@@ -30,6 +30,8 @@ export interface CatalogGroup {
   airCondition: boolean;
   engineCc: number | null;
   photoUrl: string | null;
+  /** ΟΛΕΣ οι φωτογραφίες της ομάδας, με τη σειρά τους (για το καρουζέλ). */
+  photoUrls?: string[];
   sortOrder: number;
 }
 
@@ -47,6 +49,8 @@ export interface CatalogVehicle {
   fuel: string;
   ac: boolean;
   photoUrl: string | null;
+  /** ΟΛΕΣ οι φωτογραφίες του οχήματος, με τη σειρά τους (για το καρουζέλ). */
+  photoUrls?: string[];
   status: string;
   isActive: boolean;
 }
@@ -69,7 +73,13 @@ export interface PublicCard {
   name: string;
   /** «Fiat Panda» → «Fiat Panda ή παρόμοιο»· null για μεμονωμένο όχημα. */
   similar: string | null;
+  /** Η κύρια φωτογραφία (= photos[0]). */
   photoUrl: string | null;
+  /**
+   * Καρουζέλ: ΜΟΝΟ URLs (καμία άλλη πληροφορία οχήματος) — πρώτα της ομάδας,
+   * μετά των οχημάτων της, χωρίς διπλές, έως CARD_PHOTOS_MAX (collectCardPhotos).
+   */
+  photos: string[];
   specs: CardSpecs;
   sortOrder: number;
 }
@@ -119,6 +129,28 @@ export function similarModelName(text: string): string {
   return text.replace(/[\s,·-]*(ή|or|ou|oder|o|lub)\s+(παρόμοιο|παρόμοια|similar|similaire|ähnlich|simile|podobny)\.?\s*$/iu, "").trim();
 }
 
+/** Όριο φωτογραφιών ανά κάρτα (καρουζέλ). */
+export const CARD_PHOTOS_MAX = 12;
+
+const urlsOf = (x: { photoUrl: string | null; photoUrls?: string[] }): string[] => x.photoUrls ?? (x.photoUrl ? [x.photoUrl] : []);
+
+/**
+ * Οι φωτογραφίες μιας κάρτας: πρώτα της ομάδας, μετά κάθε οχήματος με τη
+ * σειρά που δίνεται (σταθερή — μάρκα, μοντέλο, id). Χωρίς διπλές, μόνο
+ * https URLs, έως `max`. Βγαίνουν ΜΟΝΟ τα URLs — κανένα άλλο στοιχείο.
+ */
+export function collectCardPhotos(groupUrls: string[], memberUrls: string[][], max = CARD_PHOTOS_MAX): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const url of [...groupUrls, ...memberUrls.flat()]) {
+    if (out.length >= max) break;
+    if (typeof url !== "string" || !/^https:\/\//.test(url) || seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
+  }
+  return out;
+}
+
 /** Ορατά οχήματα: ενεργά, όχι «Ανενεργό» (σε service μετρούν ως ύπαρξη, όχι ως διαθέσιμα). */
 const listed = (v: CatalogVehicle) => v.isActive && v.status !== "INACTIVE";
 
@@ -138,7 +170,10 @@ export function buildCards(groups: CatalogGroup[], vehicles: CatalogVehicle[], l
       type: asVehicleType(g.vehicleType),
       name: textFor(g.name, lang) || g.code,
       similar: similar || null,
-      photoUrl: g.photoUrl ?? members.find((v) => v.photoUrl)?.photoUrl ?? null,
+      ...(() => {
+        const photos = collectCardPhotos(urlsOf(g), members.map(urlsOf));
+        return { photoUrl: photos[0] ?? null, photos };
+      })(),
       specs: {
         seats: g.seats,
         doors: g.doors,
@@ -159,7 +194,10 @@ export function buildCards(groups: CatalogGroup[], vehicles: CatalogVehicle[], l
       type: asVehicleType(v.vehicleType),
       name: `${v.brand} ${v.model}`.trim(),
       similar: null,
-      photoUrl: v.photoUrl,
+      ...(() => {
+        const photos = collectCardPhotos(urlsOf(v), []);
+        return { photoUrl: photos[0] ?? null, photos };
+      })(),
       specs: {
         seats: v.seats,
         doors: v.doors,

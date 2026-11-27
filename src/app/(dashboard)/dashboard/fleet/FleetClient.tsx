@@ -136,6 +136,7 @@ export default function FleetClient({
   limitMessage,
   upgradeHref = null,
   publicSite,
+  requestMode = false,
   groups,
 }: {
   initialVehicles: VehicleDTO[];
@@ -146,6 +147,8 @@ export default function FleetClient({
   upgradeHref?: string | null;
   /** Το πακέτο έχει δημόσια σελίδα → φαίνεται ο διακόπτης «Εμφάνιση». */
   publicSite: boolean;
+  /** Η εταιρία είναι σε REQUEST → το site δείχνει μόνο κατηγορίες (ομάδες). */
+  requestMode?: boolean;
   /** Ομάδες του site (SQL 21) για το πεδίο «Ομάδα». */
   groups: VehicleGroupOption[];
 }) {
@@ -270,6 +273,7 @@ export default function FleetClient({
         <VehicleModal
           mode="create"
           publicSite={publicSite}
+          requestMode={requestMode}
           groups={groups}
           tr={tr}
           onClose={() => setShowCreate(false)}
@@ -293,6 +297,7 @@ export default function FleetClient({
           photos={vehicles.find((v) => v.id === editing.id)?.photos ?? editing.photos}
           onPhotos={photosUpdater(editing.id)}
           publicSite={publicSite}
+          requestMode={requestMode}
           groups={groups}
           tr={tr}
           onClose={() => setEditing(null)}
@@ -518,6 +523,7 @@ export function VehicleModal({
   photos,
   onPhotos,
   publicSite,
+  requestMode = false,
   groups,
   tr,
   onClose,
@@ -525,6 +531,7 @@ export function VehicleModal({
 }: {
   mode: "create" | "edit";
   publicSite: boolean;
+  requestMode?: boolean;
   groups: VehicleGroupOption[];
   vehicle?: VehicleDTO;
   /** Οι τρέχουσες φωτογραφίες (από τη λίστα, όχι από το στιγμιότυπο). */
@@ -646,6 +653,7 @@ export function VehicleModal({
                   </option>
                 ))}
               </select>
+              {publicSite && <span className="dash-form-note">{tr("fleet.categoryInternal")}</span>}
             </label>
             <label className="dash-field">
               {tr("fleet.status")}
@@ -745,7 +753,7 @@ export function VehicleModal({
                       </option>
                     ))}
                 </select>
-                <span className="dash-form-note">{tr("fleet.noGroupHint")}</span>
+                <span className="dash-form-note">{tr(requestMode ? "fleet.noGroupHintRequest" : "fleet.noGroupHint")}</span>
               </label>
             )}
             {publicSite && (

@@ -30,7 +30,7 @@ export default async function FleetPage() {
       select: { id: true, code: true, name: true, isActive: true },
     }),
     // Εταιρία με συνδρομή (SQL 36): στο όριο φαίνεται «Αναβάθμιση» → «Συνδρομή».
-    db.tenant.findUnique({ where: { id: session.tenantId }, select: { billingStatus: true } }),
+    db.tenant.findUnique({ where: { id: session.tenantId }, select: { billingStatus: true, rentalMode: true } }),
   ]);
 
   return (
@@ -40,6 +40,7 @@ export default async function FleetPage() {
       limitMessage={limit.ok ? null : limit.message}
       upgradeHref={!limit.ok && billing && billing.billingStatus !== "exempt" ? "/dashboard/billing" : null}
       publicSite={entitlements.modules.publicSite}
+      requestMode={billing?.rentalMode === "REQUEST"}
       groups={groups.map((g) => ({
         id: g.id,
         label: `${g.code} · ${readLocalized(g.name).el ?? ""}`.trim(),

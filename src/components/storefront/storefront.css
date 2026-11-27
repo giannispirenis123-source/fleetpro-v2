@@ -230,6 +230,11 @@
   font: inherit; font-size: 14.5px; font-weight: 650; cursor: pointer; white-space: nowrap; min-height: 40px; color: var(--sf-text);
 }
 .sf-tab[aria-pressed="true"] { background: var(--sf-brand); border-color: var(--sf-brand); color: #fff; }
+/* Καρτέλες τύπου πάνω από τη φόρμα: μία σειρά, οριζόντιο scroll στο κινητό. */
+.sf-type-tabs { flex-wrap: nowrap; margin: 0 0 12px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.sf-type-tabs::-webkit-scrollbar { display: none; }
+.sf-type-tabs .sf-tab { flex: 0 0 auto; }
+.sf-type-tabs .sf-tab[aria-pressed="true"] { font-weight: 800; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); }
 .sf-sort { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--sf-text-2); }
 .sf-sort select { font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--sf-border); background: #fff; color: var(--sf-text); }
 

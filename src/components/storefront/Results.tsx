@@ -1,23 +1,25 @@
 "use client";
 // src/components/storefront/Results.tsx
-// Κάρτες ομάδων με καρτέλες τύπου (Όλα / Αυτοκίνητα / Μηχανές / ATV) και
-// ταξινόμηση. Η καρτέλα και η ταξινόμηση αλλάζουν το URL (type / sort) με
+// Κάρτες ομάδων + ταξινόμηση. Ο τύπος έρχεται από τις καρτέλες πάνω από τη
+// φόρμα (TypeTabs, TYPE_EVENT)· η ταξινόμηση αλλάζει το URL (sort) με
 // history.replaceState — ΧΩΡΙΣ νέο φόρτωμα: οι κάρτες έχουν ήδη έρθει.
 //
 // Οι τιμές έρχονται ΕΤΟΙΜΕΣ από τον server (quote()/fromPrice(), cents)· εδώ
 // μόνο εμφανίζονται μέσω formatCents (money.ts).
 
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Bike, Briefcase, CarFront, Cog, DoorOpen, Fuel, Snowflake, Users, Gauge } from "lucide-react";
 import { fill, type StorefrontDictionary } from "@/lib/storefront/i18n";
 import { formatCents, perDayOf } from "@/lib/public/money";
 import { cloudinaryThumb } from "@/lib/vehiclePhotos";
-import { filterByType, sortCards, typeTabs, type ResultCard, type SortOrder } from "@/lib/public/catalog";
+import { filterByType, isBookable, sortCards, type ResultCard, type SortOrder } from "@/lib/public/catalog";
 import type { VehicleType } from "@/lib/public/pricing";
 import { PREFILL_EVENT } from "./SearchBox";
+import { TYPE_EVENT } from "./TypeTabs";
 
 interface Props {
   cards: ResultCard[];
+  /** Η ενεργή καρτέλα από τον server (activeType)· null = όλες. */
   initialType: VehicleType | null;
   initialSort: SortOrder;
   mode: "home" | "search";
@@ -25,13 +27,19 @@ interface Props {
   lang: string;
   d: StorefrontDictionary;
   title: string;
+  /**
+   * Αναζήτηση: τι φαίνεται όταν η ενεργή καρτέλα δεν έχει ΚΑΝΕΝΑ διαθέσιμο
+   * όχημα για τις ημερομηνίες («δεν βρέθηκαν»). Οι μη διαθέσιμες κάρτες
+   * μένουν από κάτω, όπως πριν.
+   */
+  empty?: ReactNode;
+  /** Επικεφαλίδα όταν ισχύει το `empty`. */
+  emptyTitle?: string;
 }
 
-function updateUrl(type: VehicleType | null, sort: SortOrder) {
+function updateUrl(sort: SortOrder) {
   try {
     const u = new URL(window.location.href);
-    if (type) u.searchParams.set("type", type);
-    else u.searchParams.delete("type");
     if (sort === "price_desc") u.searchParams.set("sort", sort);
     else u.searchParams.delete("sort");
     window.history.replaceState(window.history.state, "", u.toString());
@@ -40,26 +48,29 @@ function updateUrl(type: VehicleType | null, sort: SortOrder) {
   }
 }
 
-export default function Results({ cards, initialType, initialSort, mode, rentalMode, lang, d, title }: Props) {
-  const tabs = typeTabs(cards);
-  const [type, setType] = useState<VehicleType | null>(initialType && tabs.includes(initialType) ? initialType : null);
+export default function Results({ cards, initialType, initialSort, mode, rentalMode, lang, d, title, empty, emptyTitle }: Props) {
+  const [type, setType] = useState<VehicleType | null>(initialType);
   const [sort, setSort] = useState<SortOrder>(initialSort);
   const shown = sortCards(filterByType(cards, type), sort);
+  const noneAvailable = !!empty && !shown.some(isBookable);
 
-  const chooseType = (t: VehicleType | null) => {
-    setType(t);
-    updateUrl(t, sort);
-  };
+  useEffect(() => {
+    const onType = (e: Event) => setType((e as CustomEvent<{ type: VehicleType | null }>).detail?.type ?? null);
+    window.addEventListener(TYPE_EVENT, onType);
+    return () => window.removeEventListener(TYPE_EVENT, onType);
+  }, []);
+
   const chooseSort = (s: SortOrder) => {
     setSort(s);
-    updateUrl(type, s);
+    updateUrl(s);
   };
 
   return (
     <section className="sf-results" aria-labelledby="sf-results-title">
+      {noneAvailable && empty}
       <div className="sf-results-head">
         <h2 className="sf-h2" id="sf-results-title">
-          {title}
+          {noneAvailable && emptyTitle ? emptyTitle : title}
         </h2>
         <span className="sf-muted sf-results-count" aria-live="polite">
           {shown.length === 1 ? d.resultsCountOne : fill(d.resultsCount, { n: shown.length })}
@@ -67,18 +78,6 @@ export default function Results({ cards, initialType, initialSort, mode, rentalM
       </div>
 
       <div className="sf-results-bar">
-        {tabs.length > 0 && (
-          <div className="sf-tabs" role="group" aria-label={d.vehicleTypes}>
-            <button type="button" className="sf-tab" aria-pressed={type === null} onClick={() => chooseType(null)}>
-              {d.tabAll}
-            </button>
-            {tabs.map((t) => (
-              <button key={t} type="button" className="sf-tab" aria-pressed={type === t} onClick={() => chooseType(t)}>
-                {d.tabTypes[t] ?? t}
-              </button>
-            ))}
-          </div>
-        )}
         <label className="sf-sort">
           <span>{d.sortLabel}</span>
           <select value={sort} onChange={(e) => chooseSort(e.target.value === "price_desc" ? "price_desc" : "price_asc")}>

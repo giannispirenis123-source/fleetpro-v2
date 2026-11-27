@@ -15,6 +15,7 @@ import { readVehiclePhotos } from "../vehiclePhotos";
 import { loadBlockingBookings, countAvailableByGroup } from "./availability";
 import {
   buildCards,
+  siteVehiclesForMode,
   vehicleCardKey,
   type CatalogGroup,
   type CatalogVehicle,
@@ -63,7 +64,7 @@ export interface SiteCatalog {
 async function loadCatalog(companyId: string): Promise<SiteCatalog | null> {
   const [ctx, tenant, groups, vehicles] = await Promise.all([
     loadQuoteContext(companyId),
-    db.tenant.findUnique({ where: { id: companyId }, select: { prepTimeMinutes: true, storefrontSettings: true } }),
+    db.tenant.findUnique({ where: { id: companyId }, select: { prepTimeMinutes: true, storefrontSettings: true, rentalMode: true } }),
     db.rentalGroup.findMany({
       where: { tenantId: companyId, isActive: true, isPublic: true },
       orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
@@ -122,7 +123,8 @@ async function loadCatalog(companyId: string): Promise<SiteCatalog | null> {
       photoUrl: readVehiclePhotos(g.photos)[0]?.url ?? null,
       sortOrder: g.sortOrder,
     })),
-    vehicles: vehicles.map((v) => ({
+    // REQUEST: μόνο οχήματα με ομάδα → μόνο κάρτες κατηγορίας (siteVehiclesForMode).
+    vehicles: siteVehiclesForMode(tenant.rentalMode, vehicles).map((v) => ({
       id: v.id,
       tenantId: v.tenantId,
       rentalGroupId: v.rentalGroupId,

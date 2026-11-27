@@ -176,6 +176,18 @@ export function buildCards(groups: CatalogGroup[], vehicles: CatalogVehicle[], l
   return cards;
 }
 
+/**
+ * Τα οχήματα του site ανά τρόπο κράτησης. REQUEST: ο πελάτης ζητά ΚΑΤΗΓΟΡΙΑ,
+ * άρα μένουν ΜΟΝΟ τα οχήματα με ομάδα (καμία κάρτα "v.<id>", κανένα αίτημα για
+ * μεμονωμένο όχημα). BOOKING: όλα, όπως πριν.
+ */
+export function siteVehiclesForMode<V extends Pick<CatalogVehicle, "rentalGroupId">>(
+  rentalMode: string | null | undefined,
+  vehicles: V[]
+): V[] {
+  return rentalMode === "REQUEST" ? vehicles.filter((v) => !!v.rentalGroupId) : vehicles;
+}
+
 /** Σε ποια κάρτα μετρά κάθε όχημα (για τη διαθεσιμότητα). */
 export function vehicleCardKey(v: CatalogVehicle, groups: CatalogGroup[]): string | null {
   if (!v.rentalGroupId) return vehicleKey(v.id);
